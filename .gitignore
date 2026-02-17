@@ -5,6 +5,11 @@
 # vscode
 .vscode
 
+# Ignore the HUGE datasets. May be replaced with git-lfs in the future if needed.
+Datasets/*
+!Datasets/.keep
+!Datasets/Readme.md
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
