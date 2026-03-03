@@ -1,15 +1,17 @@
 # Use Neural Networks to Predict Scattering Parameters
-In circuits, the input and output voltages in a two-port network are related by Z or Y parameters. However, at high frequencies, scattering parameters are often employed as they are easier to measure.
+In circuits, the input and output voltages in a two-port network are related by Z or Y parameters. However, at high frequencies, scattering parameters are often employed as they are easier to measure.  
 $$
     \begin{bmatrix} v_1 \\ v_2 \end{bmatrix}
     = Z \begin{bmatrix} i_1 \\ i_2 \end{bmatrix}
 $$
+
+
 $$
 
     \begin{bmatrix} b_1 \\ b_2 \end{bmatrix}
     =
     S \begin{bmatrix} a_1 \\ a_2 \end{bmatrix}
-$$
+$$  
 Where:
 - $v_1, v_2$ are voltages and $i_1, i_2$ are currents.
 - $b_1, b_2$ and $a_1, a_2$ are forward and backword travelling waves.  
