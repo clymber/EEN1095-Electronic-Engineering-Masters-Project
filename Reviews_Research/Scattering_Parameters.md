@@ -45,6 +45,28 @@ $$
 - Diagonal terms: reflection  
 - Off-diagonal terms: transmission  
 
+## Frequency dependence
+$$
+S_{ij} = S_{ij}(\omega)
+$$
+Meaning:
+- S-parameters are **functions of frequency**
+- Each interconnect produces a **curve across frequency**
+
+My ML model tries to predict: $ IL(u, \omega) $, where
+- $ u = $ geometry parameters
+- $ \omega = $ frequency
+
+
+## S-parameters are complex numbers
+$$
+    S_{ij} = Re(S_{ij}) + j\,Im(S_{ij})
+$$
+IL depends on **magnitude**:
+$$
+    |S_{ij}| = \sqrt{Re(S)^2 + Im(S)^2}
+$$
+
 ## Physical wave properties:
 $$ S_{ij}(\omega) = |S_{ij}(\omega)| e^{j\phi_{ij}(\omega)} $$
 So it describes:
