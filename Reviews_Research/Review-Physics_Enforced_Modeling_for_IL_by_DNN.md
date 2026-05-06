@@ -23,6 +23,16 @@ Review of __*Physics-Enforced Modeling for Insertion Loss of Transmission Lines 
 - $u_7$ - Loss tangent
 - $\omega$ - Frequency $\omega$
 
+## Inputs: $u = (u_1, u_2, \dots, u_7)$  
+- $u_1$ - Via pitch
+- $u_2$ - Via radius
+- $u_3$ - Antipad radius
+- $u_4$ - Cavity height
+- $u_5$ - Trace length
+- $u_6$ - Permittivity
+- $u_7$ - Loss tangent
+- $\omega$ - Frequency $\omega$
+
 ## Output: Insertion Loss - $IL(u, \omega)$
 
 ## Baseline: Standard NN
