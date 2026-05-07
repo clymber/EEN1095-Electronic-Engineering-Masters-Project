@@ -1,3 +1,6 @@
+# Jupyter Notebooks that paired with .py files are not ignored by default.
+sparam-surrogate/**/*.ipynb
+
 # File systems specific and temporary files
 .DS_Store
 ~$*
