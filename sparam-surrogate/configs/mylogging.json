@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "disable_existing_loggers": false,
+
+  "formatters": {
+    "markdown": {
+      "()": "sparam_surrogate.mylogging.MarkdownFormatter"
+    },
+    "console": {
+      "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+      "datefmt": "%H:%M:%S"
+    }
+  },
+
+  "handlers": {
+    "markdown_file": {
+      "class": "logging.FileHandler",
+      "level": "DEBUG",
+      "formatter": "markdown",
+      "filename": "sparam_surrogate.md",
+      "mode": "a",
+      "encoding": "utf-8"
+    },
+    "console": {
+      "class": "logging.StreamHandler",
+      "level": "WARNING",
+      "formatter": "console",
+      "stream": "ext://sys.stdout"
+    }
+  },
+
+  "loggers": {
+    "sparam_surrogate": {
+      "level": "DEBUG",
+      "handlers": ["markdown_file", "console"],
+      "propagate": false
+    }
+  },
+
+  "root": {
+    "level": "WARNING",
+    "handlers": ["console"]
+  }
+}
