@@ -18,13 +18,22 @@
 """
 CLI for sparam-surrogate
 """
-import argparse
+import argparse, sys
 from sparam_surrogate import __version__
+import sparam_surrogate.mylogging as mylogging
 
+
+# %%
 def main()-> None:
     """
     Main function for the CLI.
     """
+
+    mylogging.set_logging_cfg()
+    logger = mylogging.get_md_logger("sparam_surrogate.cli")
+
+    logger.debug("Starting sparam-surrogate CLI, version %s", __version__)
+    logger.debug("Initial CLI arguments: %s", " ".join(sys.argv))
 
     parser = argparse.ArgumentParser(
         prog = "sparam-surrogate",
