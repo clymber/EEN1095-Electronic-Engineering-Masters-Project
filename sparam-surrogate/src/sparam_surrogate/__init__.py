@@ -14,7 +14,10 @@ except PackageNotFoundError:
 
 __author__ = "Chunyu Long"
 
+__app_name__ = "sparam-surrogate"
+
 __all__ = [
     "__version__",
     "__author__",
+    "__app_name__",
 ]
