@@ -25,7 +25,8 @@ import logging.config
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from sparam_surrogate.config import LOGGING_DIR, LOG_CFG_PATH
+from .basic_cfg import load_config
+from .paths import PROJECT_ROOT
 
 
 # %%
@@ -102,7 +103,7 @@ class MarkdownFormatter(logging.Formatter):
 
 
 def set_logging_cfg(
-    log_dir: Path = LOGGING_DIR, log_cfg_path: Path = LOG_CFG_PATH
+    log_dir: Path|None = None, log_cfg_path: Path|None = None
 ) -> None:
     """
     Setup logging configuration from a JSON file
@@ -111,10 +112,17 @@ def set_logging_cfg(
     - log_dir: Directory where log files will be saved, default is LOGGING_DIR
     - log_cfg_path: Path to the logging configuration JSON file
     """
-
     # Only set up logging if it hasn't been configured yet
     if logging.root.handlers:
         return
+
+    # Load the configuration to get the default paths if not provided
+    if log_dir is None or log_cfg_path is None:
+        cfg = load_config()
+        if log_dir is None:
+            log_dir = Path(cfg["paths"]["logs"])
+        if log_cfg_path is None:
+            log_cfg_path = PROJECT_ROOT / "configs/mylogging.json"
 
     # Ensure the log directory exists
     log_dir.mkdir(parents=True, exist_ok=True)

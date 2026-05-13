@@ -38,13 +38,3 @@ def find_project_root(start: Path | None = None) -> Path:
 
 # %%
 PROJECT_ROOT = find_project_root()
-CONFIG_DIR = PROJECT_ROOT / "configs" # Path to configuration files
-OUTPUT_DIR = PROJECT_ROOT / "outputs" # Path to output files (logs, models...)
-LOGGING_DIR = OUTPUT_DIR / "logs"     # Path to logging files
-DATA_DIR = PROJECT_ROOT / "data"      # Path to data files
-
-# %% [markdown]
-# Basic configuration files:
-
-# %%
-LOG_CFG_PATH = CONFIG_DIR / "mylogging.json"
