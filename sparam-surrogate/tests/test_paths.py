@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Tests for the find_project_root function in sparam_surrogate.paths.
+Tests for the find_project_root function in sparam_surrogate.config.
 """
 
 import pytest
 from pathlib import Path
-from sparam_surrogate.paths import find_project_root
+from sparam_surrogate.config import find_project_root
 
 def test_find_project_root_from_project_root(tmp_path: Path):
     """

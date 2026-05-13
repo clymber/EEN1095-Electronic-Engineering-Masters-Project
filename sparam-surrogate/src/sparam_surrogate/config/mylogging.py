@@ -25,7 +25,7 @@ import logging.config
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from sparam_surrogate.paths import LOGGING_DIR, LOG_CFG_PATH
+from sparam_surrogate.config import LOGGING_DIR, LOG_CFG_PATH
 
 
 # %%

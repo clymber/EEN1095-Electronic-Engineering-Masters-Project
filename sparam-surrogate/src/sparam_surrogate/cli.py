@@ -22,7 +22,7 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
-import sparam_surrogate.mylogging as mylogging
+import sparam_surrogate.config.mylogging as mylogging
 from sparam_surrogate import utils, __app_name__, __version__
 
 
