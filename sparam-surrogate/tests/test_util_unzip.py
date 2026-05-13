@@ -72,4 +72,3 @@ class TestUnzip:
 
         with pytest.raises(ValueError, match="Unsafe ZIP member path: ../evil.txt"):
             unzip.extract_zip(zip_path, out_dir, False)
-
