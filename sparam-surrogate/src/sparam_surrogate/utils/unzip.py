@@ -39,9 +39,6 @@ def extract_zip(srcfile: Path, outdir: Path, keep_zipname: bool = True) -> Path:
     if keep_zipname and outdir.name != srcfile.stem:
         outdir = outdir / srcfile.stem
 
-    # Creates the output directory if it doesn't exist.
-    outdir.mkdir(parents=True, exist_ok=True)
-
     # Security check to prevent path traversal attacks.
     with ZipFile(srcfile) as archive:
         for member in archive.infolist():
@@ -49,6 +46,8 @@ def extract_zip(srcfile: Path, outdir: Path, keep_zipname: bool = True) -> Path:
             if outdir != target_path and outdir not in target_path.parents:
                 raise ValueError(f"Unsafe ZIP member path: {member.filename}")
 
+        # Creates the output directory if it doesn't exist.
+        outdir.mkdir(parents=True, exist_ok=True)
         archive.extractall(outdir)
 
     return outdir

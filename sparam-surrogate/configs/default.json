@@ -1,0 +1,35 @@
+{
+    "project": {
+        "name": "sparam-surrogate",
+        "seed": 42
+    },
+    "paths": {
+        "data_root": "data",
+        "raw_data": "data/raw",
+        "processed_data": "data/processed",
+        "outputs": "outputs",
+        "logs": "outputs/logs",
+        "figures": "outputs/figures",
+        "models": "outputs/models",
+        "reports": "outputs/reports"
+    },
+    "dataset": {
+        "parameter_file": "parameter.csv",
+        "variation_dir": "variation",
+        "touchstone_pattern": "simu_{index}.s12p",
+        "ports": [
+            [7, 1],
+            [8, 2],
+            [9, 3],
+            [10, 4],
+            [11, 5],
+            [12, 6]
+        ]
+    },
+    "training": {
+        "test_size": 0.2,
+        "val_size": 0.2,
+        "batch_size": 32,
+        "epochs": 100
+  }
+}

@@ -1,6 +1,7 @@
 # Jupyter Notebooks that paired with .py files are not ignored by default.
 sparam-surrogate/**/*.ipynb
 sparam-surrogate/data/
+sparam-surrogate/configs/local.json
 sparam-surrogate/outputs/logs
 
 # File systems specific and temporary files
