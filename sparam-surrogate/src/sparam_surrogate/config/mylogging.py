@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.1
+#       jupytext_version: 1.19.2
 #   kernelspec:
 #     display_name: meng
 #     language: python
@@ -25,6 +25,8 @@ import logging.config
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from pandas import DataFrame
+
 from .basic_cfg import load_config
 from .paths import PROJECT_ROOT
 
@@ -50,6 +52,14 @@ class MarkdownLogger(logging.Logger):
     def bullet(self, msg: str, *args: Any, **kwargs: Any) -> None:
         """Markdown bullet point."""
         self._log(logging.INFO, msg, args, extra={"md_type": "bullet"}, **kwargs)
+
+    def pd_table(self, data: DataFrame|dict, msg: str = "") -> None:
+        """Markdown table from a pandas DataFrame or a dictionary."""
+        if isinstance(data, dict):
+            data = DataFrame(data)
+        table_md = data.to_markdown(index=False)
+        full_msg = f"{msg}\n\n{table_md}" if msg else table_md
+        self._log(logging.INFO, full_msg, (), extra={"md_type": "table"})
 
     def code_block(self, code: str, language: str = "") -> None:
         """Markdown code block."""
@@ -80,27 +90,23 @@ class MarkdownFormatter(logging.Formatter):
         message = record.getMessage()
         md_type = getattr(record, "md_type", "log")
 
-        if md_type == "h1":
-            return f"\n# {message}\n"
-
-        if md_type == "h2":
-            return f"\n## {message}\n"
-
-        if md_type == "h3":
-            return f"\n### {message}\n"
-
-        if md_type == "bullet":
-            return f"- {message}"
-
-        if md_type == "raw":
-            return message
-
-        icon = self.level_icons.get(record.levelno, "")
-        timestamp = datetime.fromtimestamp(record.created)
-        timestamp = timestamp.strftime("%m-%d %H:%M:%S.%f")[:-3]
-
-        return f"{icon} {timestamp} {record.name} — {message}  "
-
+        match md_type:
+            case "h1":
+                return f"\n# {message}\n"
+            case "h2":
+                return f"\n## {message}\n"
+            case "h3":
+                return f"\n### {message}\n"
+            case "bullet":
+                return f"- {message}"
+            case "raw":
+                return message
+            case _:
+                icon = self.level_icons.get(record.levelno, "")
+                timestamp = datetime.fromtimestamp(record.created)
+                timestamp = timestamp.strftime("%m-%d %H:%M:%S.%f")[:-3]
+                endl = "\n\n" if md_type == "table" else "  "
+                return f"{icon} {timestamp} {record.name} — {message}{endl}"
 
 def set_logging_cfg(
     log_dir: Path|None = None, log_cfg_path: Path|None = None
