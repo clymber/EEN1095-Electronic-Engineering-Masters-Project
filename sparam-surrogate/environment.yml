@@ -1,0 +1,45 @@
+# Anaconda environment config for MEng project on Apple MacOS with M1 GPU.
+
+name: meng
+
+channels:
+  - conda-forge
+
+dependencies:
+  # Base Python and pip
+  - python=3.10
+  - pip
+
+  # Scientific libraries
+  - numpy=1.26.4
+  - pandas
+  - scikit-learn
+  - scikit-rf 
+  - scipy
+
+  # Visualization libraries
+  - matplotlib
+  - seaborn
+  - tabulate
+
+  # Jupyter and related tools
+  - jupyterlab
+  - ipykernel
+  - jupytext
+  - ipynbname
+
+  # Development tools
+  - pytest
+  - black
+  - ruff
+  - mypy
+
+  # PDF generation
+  - nbconvert
+  - pandoc
+
+  # Tensorflow for macOS M1 GPU
+  - pip:
+      - tensorflow-macos==2.16.2
+      - tensorflow-metal==1.2.0
+

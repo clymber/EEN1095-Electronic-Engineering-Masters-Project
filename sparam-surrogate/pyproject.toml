@@ -1,0 +1,115 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sparam-surrogate"
+version = "0.1.0"
+description = "Machine learning surrogate models for predicting PCB interconnect S-parameters and signal integrity metrics."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+authors = [
+    { name = "Chunyu Long", email = "chunyu.long2@mail.dcu.ie" }
+]
+
+keywords = [
+    "machine-learning",
+    "signal-integrity",
+    "s-parameters",
+    "surrogate-modeling",
+    "pcb",
+    "touchstone"
+]
+
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Operating System :: MacOS",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence"
+]
+
+dependencies = [
+    "numpy>=1.26,<2.0",
+    "pandas",
+    "scipy",
+    "scikit-learn",
+    "scikit-rf",
+    "matplotlib",
+    "pyyaml",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "black",
+    "ruff",
+    "mypy",
+]
+
+notebook = [
+    "jupyterlab",
+    "ipykernel",
+    "jupytext",
+    "ipynbname",
+    "seaborn",
+]
+
+docs = [
+    "nbconvert",
+]
+
+ml = [
+    "tensorflow-macos==2.16.2; platform_system == 'Darwin' and platform_machine == 'arm64'",
+    "tensorflow-metal==1.2.0; platform_system == 'Darwin' and platform_machine == 'arm64'",
+]
+
+
+[project.scripts]
+sparam-surrogate = "sparam_surrogate.cli:main"
+
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "I",
+    "B",
+    "UP"
+]
+
+
+[tool.mypy]
+python_version = "3.10"
+strict = false
+ignore_missing_imports = true
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+]
+markers = [
+    "slow: tests that are slow or require larger datasets",
+    "integration: tests that check multiple components together",
+]
