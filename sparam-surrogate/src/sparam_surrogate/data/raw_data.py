@@ -16,8 +16,22 @@
 """
 Raw data(unzipped dataset) processing.
 """
+import pandas as pd
+import re
 from pathlib import Path
+from typing import TypedDict
 
+
+# %%
+class IndexConsistencyReport(TypedDict):
+    """
+    Report describing consistency between parameter.csv and Touchstone files.
+    """
+    parameter_count: int
+    touchstone_count: int
+    missing_parameter_records: list[int]
+    missing_touchstones: list[int]
+    extra_touchstone_files: list[str]
 
 # %%
 class RawData:
@@ -57,5 +71,61 @@ class RawData:
         """
         Returns a list of paths to all touchstone files in the variation directory.
         """
-        return sorted(self.variation_path.glob(f"variation_*.s{self._nports}p"))
+        return sorted(self.variation_path.glob(f"simu_*.s{self._nports}p"))
 
+    def _get_touchstone_indices(self) -> dict[int, list[str]]:
+        """
+        Returns a dictionary that maps indices to Touchstone file names.
+        """
+        touchstone_paths = self.touchstones()
+        regex = re.compile(r"simu_(\d+)\.s\d+p$", re.IGNORECASE)
+
+        touchstone_by_index: dict[int, list[str]] = {}
+
+        for path in touchstone_paths:
+            match = regex.match(path.name)
+            if not match:
+                continue
+            idx = int(match.group(1))
+            touchstone_by_index.setdefault(idx, []).append(path.name)
+
+        return touchstone_by_index
+
+    def check_index_consistency(self) -> IndexConsistencyReport:
+        """
+        Identify mismatches between parameter.csv records and Touchstone files.
+        
+        Returns:
+        {
+            "parameter_count": int,
+            "touchstone_count": int,
+            "missing_parameter_records": list[int],
+            "missing_touchstones": list[int],
+            "extra_touchstone_files": list[str],
+        }
+        """
+        params = pd.read_csv(self.parameter_csv)
+        index_to_touchstone = self._get_touchstone_indices()
+
+        ts_index_set = set(index_to_touchstone.keys())
+        param_index_set = set(params["SIMU_INDEX"].astype(int).tolist())
+
+        missing_params = sorted(
+            ts_index_set - param_index_set
+        )
+        missing_touchstones = sorted(
+            param_index_set - ts_index_set
+        )
+        extra_touchstone_files = [
+            path
+            for idx in missing_params
+            for path in index_to_touchstone[idx]
+        ]
+
+        return {
+            "parameter_count": len(params),
+            "touchstone_count": len(self.touchstones()),
+            "missing_parameter_records": missing_params,
+            "missing_touchstones": missing_touchstones,
+            "extra_touchstone_files": extra_touchstone_files,
+        }
