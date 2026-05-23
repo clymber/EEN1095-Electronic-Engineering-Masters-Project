@@ -3,6 +3,8 @@ sparam-surrogate/**/*.ipynb
 sparam-surrogate/data/
 sparam-surrogate/configs/local.json
 sparam-surrogate/outputs/logs
+sparam-surrogate/reports/pdf/
+sparam-surrogate/reports/html/
 
 # File systems specific and temporary files
 .DS_Store
