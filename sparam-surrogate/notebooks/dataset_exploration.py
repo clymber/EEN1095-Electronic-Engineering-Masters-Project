@@ -7,7 +7,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.2
+#       jupytext_version: 1.19.3
 #   kernelspec:
 #     display_name: Python (sparam-surrogate)
 #     language: python
@@ -60,8 +60,9 @@ _ = subprocess.run(
 # - `parameter.csv`: Table of design or simulation parameters. Each row typically corresponds to one simulation case, often linked by a simulation index such as `SIMU_INDEX`.
 #
 # - `variation`: Directory containing the simulated S-parameter files for each parameter variation.
-# - - `simu_0.s12p`, `simu_1.s12p`, etc.: Touchstone files containing S-parameter data for individual simulation cases. The number before .s12p identifies the simulation index.
-# - - `.s12p`: Touchstone format for a 12-port network, so each file stores frequency-dependent S-parameters for 12 ports.
+#
+# - - `simu_0.s12p`, `simu_1.s12p`, etc.: Touchstone files containing S-parameter data for individual simulation cases. The number before .s12p identifies the simulation index.  
+# - - `.s12p`: Touchstone format for a 12-port network, so each file stores frequency-dependent S-parameters for 12 ports.  
 #
 # `class RawData` was developed to embody the fixed structure of the dataset, and to provide convenience for further operation:
 #
@@ -102,6 +103,7 @@ with pd.option_context(
 # ### 2.1 Feature interpretations
 #
 # The features naturally divide into several categories:
+#
 # | Category | Features |
 # | -------- | -------- |
 # | Material properties | EPS, TAND |
@@ -203,7 +205,7 @@ with pd.option_context(
 # </table>
 
 # %% [markdown]
-# #### 2.1.1 EPS — Relative Permittivity
+# #### 2.1.1 EPS — Relative Permittivity  
 #
 # This parameter represents the substrate dielectric constant: 
 # $\varepsilon_r = \frac{\varepsilon}{\varepsilon_0}$, where $\varepsilon$ is
@@ -213,10 +215,10 @@ with pd.option_context(
 #
 # Signal propagation velocity approximately follows:
 # $v \approx \frac{c}{\sqrt{\varepsilon_r}}$, so higher EPS:
-# - reduces propagation speed,
-# - increases delay,
-# - shifts resonant frequencies downward, and
-# - changes transmission line impedance
+# - reduces propagation speed,  
+# - increases delay,  
+# - shifts resonant frequencies downward, and  
+# - changes transmission line impedance  
 #
 # **ML Significance:**
 #
@@ -224,10 +226,10 @@ with pd.option_context(
 # resonance location and insertion loss profile.
 
 # %% [markdown]
-# #### 2.1.2 TAND — Loss Tangent
+# #### 2.1.2 TAND — Loss Tangent  
 #
 # Loss tangent describes dielectric energy dissipation:
-# $\tan\delta = \frac{\varepsilon''}{\varepsilon'}$, where $ \varepsilon''$ is
+# $\tan\delta = \frac{\varepsilon''}{\varepsilon'}$, where $\varepsilon''$ is
 # imaginary permittivity (loss) and $\varepsilon'$ is real permittivity.
 #
 # **Physical effect:**
@@ -266,11 +268,11 @@ with pd.option_context(
 # START determines the spacing between the via-array structures and the PCB edges.
 #
 # Changing START may influence:
-# - PCB cavity dimensions
-# - electromagnetic boundary conditions
-# - resonance behavior
-# - return-current spreading
-# - coupling to board edges
+# - PCB cavity dimensions  
+# - electromagnetic boundary conditions  
+# - resonance behavior  
+# - return-current spreading  
+# - coupling to board edges  
 
 # %% [markdown]
 # #### 2.1.6 VIAR — Via Radius
@@ -312,13 +314,11 @@ with pd.option_context(
 # #### 2.1.10 TLWIDTH — Transmission Line Width
 #
 # Width of PCB traces.
-# - Wider traces result to lower impedance, lower conductor resistance and
-# reduced conductor loss.
+# - Wider traces result to lower impedance, lower conductor resistance and reduced conductor loss.  
 #
-# - Narrow traces lead to higher impedance, higher current density and more loss.
+# - Narrow traces lead to higher impedance, higher current density and more loss.  
 #
-# - This parameter strongly affects characteristic impedance, insertion loss
-# and matching quality.
+# - This parameter strongly affects characteristic impedance, insertion loss and matching quality.  
 
 # %% [markdown]
 # ### 2.2 Data inspection
@@ -329,7 +329,7 @@ with pd.option_context(
 parameters.info()
 
 # %% [markdown]
-# The `parameters.infor()` function reveals several important things about the dataset quality, ML readiness and even hidden problems.
+# The `parameters.info()` function reveals several important things about the dataset quality, ML readiness and even hidden problems.
 #
 # #### 2.2.1 The dataset is numerically clean
 #
@@ -362,6 +362,7 @@ parameters.info()
 # #### 2.2.4 Moderate size of dataset
 #
 # `7048 entries` suggests that:
+#
 # | Model Type               | Suitability         |
 # | ------------------------ | ------------------- |
 # | Linear regression        | Easy                |
@@ -498,9 +499,9 @@ print(parameters.iloc[:, 5:-1].describe())
 #
 # The feature magnitudes are very different:
 #
-# * `TAND`: around 0.00–0.02
-# * `TRACE_LEN`: around 500–2000
-# * `EPS`: around 3.6–4.4
+# * `TAND`: around 0.00–0.02  
+# * `TRACE_LEN`: around 500–2000  
+# * `EPS`: around 3.6–4.4  
 #
 # This suggests that `TRACE_LEN` may easily dominate the prediction. A neural network would be poorly conditioned without normalization or standardization.
 
@@ -576,7 +577,9 @@ parameters[["BOARD_HEIGHT", "BOARD_WIDTH", "BOARD_AREA"]].describe()
 #
 # 1. **Ratio of antipad radius to via radius**
 #
-# $$\text{ANTIPAD\_TO\_VIA\_RATIO} = \frac{ANTIPADR}{VIAR}$$
+# $$
+#     \mathrm{ANTIPAD\_TO\_VIA\_RATIO} = \frac{ANTIPADR}{VIAR}
+# $$
 #
 # This ratio measures how much clearance surrounds the via barrel. This ratio
 # influences (1) parasitic capacitance, (2) impedance discontinuity, and (3) via
@@ -588,7 +591,7 @@ parameters[["BOARD_HEIGHT", "BOARD_WIDTH", "BOARD_AREA"]].describe()
 #
 # Measures trace width relative to dielectric thickness.
 # $$
-#     \text{TLWIDTH\_TO\_DIEL\_RATIO} = \frac{TLWIDTH}{TDIEL}
+#     \mathrm{TLWIDTH\_TO\_DIEL\_RATIO} = \frac{TLWIDTH}{TDIEL}
 # $$
 #
 # This ratio is fundamental to transmission-line behavior because characteristic
@@ -605,21 +608,21 @@ parameters[["BOARD_HEIGHT", "BOARD_WIDTH", "BOARD_AREA"]].describe()
 #
 # Measures trace length relative to via-array spacing scale.
 # $$
-#     \text{TRACE\_ASPECT\_RATIO} = \frac{TRACE\_LEN}{PITCH}
+#     \mathrm{TRACE\_ASPECT\_RATIO} = \frac{TRACE\_LEN}{PITCH}
 # $$
 #
 # This gives a rough indication of:
 #
-# * electrical path elongation,
-# * routing scale,
-# * resonance opportunity,
-# * and accumulated attenuation.
+# * electrical path elongation,  
+# * routing scale,  
+# * resonance opportunity,  
+# * and accumulated attenuation.  
 #
 # Large values may imply:
 #
-# * more insertion loss,
-# * more distributed transmission-line effects,
-# * and stronger frequency-dependent behavior.
+# * more insertion loss,  
+# * more distributed transmission-line effects,  
+# * and stronger frequency-dependent behavior.  
 
 # %%
 parameters["ANTIPAD_TO_VIA_RATIO"] = (
@@ -702,8 +705,8 @@ plt.show()
 #
 # This section uses:
 #
-# - a correlation heatmap to summarize linear relationships;
-# - scatter plots for selected engineering-relevant parameter pairs.
+# - a correlation heatmap to summarize linear relationships;  
+# - scatter plots for selected engineering-relevant parameter pairs.  
 
 # %%
 correlation_features = physical_features + [
@@ -818,20 +821,18 @@ plt.show()
 #
 # The first group focuses on physical parameter relationships:
 #
-# - `ANTIPADR` versus `VIAR` checks the clearance relationship around vias.
-# - `TLWIDTH` versus `TDIEL` relates trace width to dielectric thickness, which
-#   is important for characteristic impedance.
-# - `PITCH` versus `TRACE_LEN` checks whether via-array spacing and trace
-#   length were sampled independently.
-# - `DISTTL` versus `TLWIDTH` checks whether line spacing remains larger than
-#   trace width.
+# - `ANTIPADR` versus `VIAR` - checks the clearance relationship around vias.  
+# - `TLWIDTH` versus `TDIEL` - relates trace width to dielectric thickness, which
+#   is important for characteristic impedance.  
+# - `PITCH` versus `TRACE_LEN` - checks whether via-array spacing and trace
+#   length were sampled independently.  
+# - `DISTTL` versus `TLWIDTH` - checks whether line spacing remains larger than
+#   trace width.  
 #
 # The second group focuses on derived board-geometry verification:
 #
-# - `BOARD_HEIGHT` versus `PITCH` verifies the deterministic board-height
-#   definition.
-# - `BOARD_WIDTH` versus `TRACE_LEN` verifies the deterministic board-width
-#   definition.
+# - `BOARD_HEIGHT` versus `PITCH` - verifies the deterministic board-height definition.  
+# - `BOARD_WIDTH` versus `TRACE_LEN` - verifies the deterministic board-width definition.  
 #
 # Separating these plots avoids mixing physical feature analysis with derived
 # geometry checks. The dashed reference lines mark simple geometric boundary

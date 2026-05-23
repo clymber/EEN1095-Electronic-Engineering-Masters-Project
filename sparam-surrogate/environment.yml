@@ -36,7 +36,14 @@ dependencies:
 
   # PDF generation
   - nbconvert
+  - nbconvert-webpdf
   - pandoc
+  - pyppeteer
+  - playwright
+  - tqdm
+  - rich
+  - notebook
+
 
   # Tensorflow for macOS M1 GPU
   - pip:
