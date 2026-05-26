@@ -15,14 +15,12 @@
 # ---
 
 # %% [markdown]
-# # Dataset Exploration
+# # Exploratory Data Analysis
 
 # %%
 """
 Analytical exploration of dataset linkOn8CavityStackBetween10x10Array_19_08_2021
 """
-
-import subprocess
 from pathlib import Path
 
 from sparam_surrogate.config import load_config
@@ -48,13 +46,8 @@ nports = cfg["dataset"]["nports"]                   # Number of ports
 #  have uniform archive structure, shown by the following procedure:
 
 # %%
-# Utilize `tree` command to display the archive structure
-_ = subprocess.run(
-    f'tree --filesfirst "{DS_NAME}" | head',
-    cwd=Path(cfg["paths"]["raw_data"]),
-    shell=True,
-    check=True
-)
+print(directory_tree(dataset, max_depth=2, max_children=5))
+
 
 # %% [markdown]
 # - `description.pdf`: Documentation for the dataset, describing the PCB
