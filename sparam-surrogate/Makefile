@@ -18,6 +18,8 @@ TEMPLATE_FILES := \
 	$(TEMPLATE_DIR)/tight/index.html.j2
 
 EXECUTE ?= --execute
+# WebPDF uses Playwright. Permit its browser runtime to be installed on first use.
+WEBPDF_FLAGS ?= --allow-chromium-download
 
 .PHONY: webpdf sync-notebooks clean-pdf list-pdf-targets
 
@@ -34,6 +36,7 @@ $(NOTEBOOK_DIR)/%.ipynb: $(NOTEBOOK_DIR)/%.py
 $(REPORT_DIR)/%.pdf: $(NOTEBOOK_DIR)/%.ipynb $(TEMPLATE_FILES) | $(REPORT_DIR)
 	jupyter nbconvert $< \
 		--to webpdf \
+		$(WEBPDF_FLAGS) \
 		$(EXECUTE) \
 		--template tight \
 		--TemplateExporter.extra_template_basedirs=./$(TEMPLATE_DIR) \

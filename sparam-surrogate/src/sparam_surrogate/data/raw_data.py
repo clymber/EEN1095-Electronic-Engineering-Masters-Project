@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.2
+#       jupytext_version: 1.19.3
 #   kernelspec:
 #     display_name: Python (sparam-surrogate)
 #     language: python
@@ -18,6 +18,7 @@ Raw data(unzipped dataset) processing.
 """
 import pandas as pd
 import re
+import textwrap
 from pathlib import Path
 from typing import TypedDict
 
@@ -129,3 +130,25 @@ class RawData:
             "missing_touchstones": missing_touchstones,
             "extra_touchstone_files": extra_touchstone_files,
         }
+
+    def report_index_consistency(self) -> None:
+        """
+        Print index consistency report to stdout.
+        """
+        report = self.check_index_consistency()
+        print(f"Total parameter record: {report['parameter_count']}")
+        print(f"Total touchstone files: {report['touchstone_count']}")
+
+        if report['extra_touchstone_files']:
+            missing = " ".join(report['extra_touchstone_files'])
+            print("{} Touchstones with no parameter record:\n\t{}".format(
+                len(report['extra_touchstone_files']),
+                textwrap.shorten(missing, 80)
+            ))
+
+        if report['missing_touchstones']:
+            missing = " ".join([str(i) for i in report['missing_touchstones']])
+            print("{} parameter records with no Touchstones:\n\t{}".format(
+                len(report['missing_touchstones']),
+                textwrap.shorten(missing, 80)
+            ))
