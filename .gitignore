@@ -5,6 +5,8 @@ sparam-surrogate/configs/local.json
 sparam-surrogate/outputs/logs
 sparam-surrogate/reports/pdf/
 sparam-surrogate/reports/html/
+sparam-surrogate/PLAN.md
+sparam-surrogate/memorandum.md
 
 # File systems specific and temporary files
 .DS_Store
