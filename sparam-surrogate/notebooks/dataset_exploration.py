@@ -14,17 +14,19 @@
 #     name: sparam-surrogate
 # ---
 
+# %% [markdown]
+# # Dataset Exploration
+
 # %%
 """
 Analytical exploration of dataset linkOn8CavityStackBetween10x10Array_19_08_2021
 """
 
-import pandas as pd
 import subprocess
-import textwrap
 from pathlib import Path
+
 from sparam_surrogate.config import load_config
-from sparam_surrogate.data.raw_data import RawData
+from sparam_surrogate.data import PcbDatasetEDA, PcbParameters, RawData
 
 DS_NAME = "linkOn8CavityStackBetween10x10Array_19_08_2021"
 
@@ -55,17 +57,25 @@ _ = subprocess.run(
 )
 
 # %% [markdown]
-# - `description.pdf`: Documentation for the dataset, describing the PCB structure, simulation setup, parameters, and intended use.
+# - `description.pdf`: Documentation for the dataset, describing the PCB
+#     structure, simulation setup, parameters, and intended use.
 #
-# - `parameter.csv`: Table of design or simulation parameters. Each row typically corresponds to one simulation case, often linked by a simulation index such as `SIMU_INDEX`.
+# - `parameter.csv`: Table of design or simulation parameters. Each row
+#     typically corresponds to one simulation case, often linked by a simulation
+#     index such as `SIMU_INDEX`.
 #
-# - `variation`: Directory containing the simulated S-parameter files for each parameter variation.
+# - `variation`: Directory containing the simulated S-parameter files for each
+#     parameter variation.
 #
-# - - `simu_0.s12p`, `simu_1.s12p`, etc.: Touchstone files containing S-parameter data for individual simulation cases. The number before .s12p identifies the simulation index.  
-# - - `.s12p`: Touchstone format for a 12-port network, so each file stores frequency-dependent S-parameters for 12 ports.  
+# - - `simu_0.s12p`, `simu_1.s12p`, etc.: Touchstone files containing
+#   S-parameter data for individual simulation cases. The number before .s12p
+#   identifies the simulation index.
 #
-# `class RawData` was developed to embody the fixed structure of the dataset, and to provide convenience for further operation:
+# - - `.s12p`: Touchstone format for a 12-port network, so each file stores
+#     frequency-dependent S-parameters for 12 ports.  
 #
+# `class RawData` was developed to embody the fixed structure of the dataset,
+#   and to provide convenience for further operation:
 
 # %%
 rawdata = RawData(dataset, nports)
@@ -80,24 +90,18 @@ print(f"{len(rawdata.touchstones())} touchstone files found in the dataset.")
 # impedance matching, insertion loss, reflections, coupling, resonance behavior,
 # and signal propagation characteristics in the high-speed interconnect.  
 #
-# All parameter variations are stored in the file `parameter.csv`. It is a tabular
-# file with multiple columns and rows. The first row has all the parameter names
-# as named in the tables and figures of this document. Each row is one EM
-# simulation. By the column `SIMU_INDEX` the corresponding network parameters are
-# found in the `variation/` folder.
+# All parameter variations are stored in the file `parameter.csv`. It is a
+# tabular file with multiple columns and rows. The first row has all the
+# parameter names as named in the tables and figures of this document. Each row
+# is one EM simulation. By the column `SIMU_INDEX` the corresponding network
+# parameters are found in the `variation/` folder.
 #
 # The following procedure shows the table structure, and displays the first and
 # last five recoreds along with the PCB parameter variables:
 
 # %%
-parameters = pd.read_csv(rawdata.parameter_csv) # load the tabular data
-with pd.option_context(
-    "display.max_rows", 11,
-    "display.min_rows", 10,
-    "display.max_columns", None,
-    "display.width", 120,
-):
-    print(parameters)
+parameters = PcbParameters(rawdata.parameter_csv)
+print(parameters.preview())
 
 # %% [markdown]
 # ### 2.1 Feature interpretations
@@ -126,79 +130,100 @@ with pd.option_context(
 #
 # <tbody>
 # <tr>
-# <td><code>EPS</code> - Relative Permittivity</td>
+# <td><code>EPS</code></td>
 # <td>/</td>
-# <td>Dielectric constant of PCB substrate material</td>
-# <td>Higher EPS slows wave propagation, reduces wavelength, changes impedance, and shifts resonances</td>
+# <td>Relative Permittivity - Dielectric constant of PCB substrate material</td>
+# <td>
+#     Higher EPS slows wave propagation, reduces wavelength, changes impedance,
+#     and shifts resonances</td>
 # </tr>
 #
 # <tr>
-# <td><code>TAND</code> - Loss Tangent</td>
+# <td><code>TAND</code></td>
 # <td>/</td>
-# <td>Dielectric dissipation factor describing dielectric loss</td>
-# <td>Higher TAND increases dielectric attenuation and insertion loss, especially at high frequency</td>
+# <td>Loss Tangent - Dielectric dissipation factor describing dielectric loss</td>
+# <td>
+#   Higher TAND increases dielectric attenuation and insertion loss,
+#   especially at high frequency
+# </td>
 # </tr>
 #
 # <tr>
-# <td><code>PITCH</code> - Via Pitch</td>
+# <td><code>PITCH</code></td>
 # <td>mil</td>
-# <td>Center-to-center spacing between adjacent vias in the array</td>
-# <td>Affects electromagnetic coupling, impedance, and crosstalk between vias</td>
+# <td>Via Pitch - Center-to-center spacing between adjacent vias in the array</td>
+# <td>
+#   Affects electromagnetic coupling, impedance, and crosstalk between vias
+# </td>
 # </tr>
 #
 # <tr>
-# <td><code>TRACE_LEN</code> - Trace Length</td>
+# <td><code>TRACE_LEN</code></td>
 # <td>mil</td>
-# <td>Length of stripline/interconnect trace between via arrays</td>
-# <td>Longer traces generally increase insertion loss, delay, and resonance opportunities</td>
+# <td>Trace Length - Length of stripline/interconnect trace between via arrays</td>
+# <td>
+#     Longer traces generally increase insertion loss, delay, and resonance
+#     opportunities
+# </td>
 # </tr>
 #
 # <tr>
-# <td><code>START</code> - Start of via-array region</td>
+# <td><code>START</code></td>
 # <td>mil</td>
-# <td>Defines PCB margin surrounding the via arrays</td>
-# <td>Influences boundary effects, return current distribution, and overall board dimensions</td>
+# <td>Start of Via-Array Region - Defines PCB margin surrounding the via arrays</td>
+# <td>
+#   Influences boundary effects, return current distribution, and overall
+#   board dimensions
+# </td>
 # </tr>
 #
 # <tr>
-# <td><code>VIAR</code> - Via Radius</td>
+# <td><code>VIAR</code></td>
 # <td>mil</td>
-# <td>Radius of the via barrel</td>
-# <td>Changes via inductance/capacitance and therefore impedance and resonance behavior</td>
+# <td>Via Radius - Radius of the via barrel</td>
+# <td>
+#     Changes via inductance/capacitance and therefore impedance and resonance
+#     behavior
+# </td>
 # </tr>
 #
 # <tr>
-# <td><code>ANTIPADR</code> - Antipad Radius</td>
+# <td><code>ANTIPADR</code></td>
 # <td>mil</td>
-# <td>Radius of the clearance hole around the via in reference planes</td>
+# <td>Antipad Radius - Radius of the clearance hole around the via in reference planes</td>
 # <td>Strongly affects parasitic capacitance and impedance discontinuity</td>
 # </tr>
 #
 # <tr>
-# <td><code>TDIEL</code> - Dielectric Thickness</td>
+# <td><code>TDIEL</code></td>
 # <td>mil</td>
-# <td>Thickness of dielectric layer(s)</td>
-# <td>Influences characteristic impedance and electromagnetic field distribution</td>
+# <td>Thickness of Dielectric - Thickness of dielectric layer(s)</td>
+# <td>
+#     Influences characteristic impedance and electromagnetic field distribution
+# </td>
 # </tr>
 #
 # <tr>
-# <td><code>DISTTL</code> - Distance Between Transmission Lines</td>
+# <td><code>DISTTL</code></td>
 # <td>mil</td>
-# <td>Spacing between neighboring traces/links</td>
+# <td>Distance between Transmission Lines - Spacing between neighboring traces/links</td>
 # <td>Larger spacing reduces coupling and crosstalk</td>
 # </tr>
 #
 # <tr>
-# <td><code>TLWIDTH</code>Transmission Line Width</td>
+# <td><code>TLWIDTH</code></td>
 # <td>mil</td>
-# <td>Width of the stripline/trace</td>
+# <td>Transmission Line Width - Width of the stripline/trace</td>
 # <td>Strongly affects characteristic impedance and conductor loss</td>
 # </tr>
 #
 # <tr>
-# <td><code>SIMU_INDEX</code> - Simulation Index</td>
+# <td><code>SIMU_INDEX</code></td>
 # <td>integer</td>
-# <td>Unique identifier linking parameter row to corresponding <code>.s12p</code> Touchstone file</td>
+# <td>
+#   Simulation Index - Unique identifier linking parameter row to corresponding
+#   <code>.s12p</code> Touchstone file
+# </td>
 # <td>Used only for dataset mapping, not a physical parameter</td>
 # </tr>
 # </tbody>
@@ -234,7 +259,9 @@ with pd.option_context(
 #
 # **Physical effect:**
 #
-# Higher TAND (1) increases dielectric attenuation, (2) degrades insertion loss, (3) worsens eye diagrams and (4) becomes more significant at high frequencies. This parameter is directly related to IL target.
+# Higher TAND (1) increases dielectric attenuation, (2) degrades insertion loss,
+# (3) worsens eye diagrams and (4) becomes more significant at high frequencies.
+# This parameter is directly related to IL target.
 
 # %% [markdown]
 # #### 2.1.3 PITCH — Via Pitch
@@ -242,16 +269,18 @@ with pd.option_context(
 # Via pitch is the center-to-center spacing between vias.
 #
 # Smaller pitch (1) increases electromagnetic coupling, (2) changes parasitic
-# capacitance and (4) can increase crosstalk. Larger pitch reduces coupling and alters current return paths.
+# capacitance and (4) can increase crosstalk. Larger pitch reduces coupling and
+# alters current return paths.
 #
-# This parameter strongly influences (1) near-end crosstalk (NEXT), (2) far-end crosstalk (FEXT) and (3) modal behavior.
+# This parameter strongly influences (1) near-end crosstalk (NEXT), (2) far-end
+# crosstalk (FEXT) and (3) modal behavior.
 
 # %% [markdown]
 # #### 2.1.4 TRACE_LEN — Trace Length
 #
-# It's the length of interconnect routing. Longer traces (1) increase attenuation,
-# (2) increase phase delay, (3) create more resonance opportunities, and
-# (4) worsen insertion loss.
+# It's the length of interconnect routing. Longer traces (1) increase
+# attenuation, (2) increase phase delay, (3) create more resonance
+# opportunities, and (4) worsen insertion loss.
 #
 # Insertion loss typically increases approximately with length:
 # $IL \propto \alpha \ell$, where: $\alpha$ is attenuation constant, and $\ell$
@@ -265,7 +294,8 @@ with pd.option_context(
 # \text{Height} = 2 \cdot START + 9 \cdot PITCH \\
 # \text{Width} = 2 \cdot START + TRACE\_LEN + 18 \cdot PITCH
 # $$
-# START determines the spacing between the via-array structures and the PCB edges.
+# START determines the spacing between the via-array structures and the PCB
+# edges.
 #
 # Changing START may influence:
 # - PCB cavity dimensions  
@@ -300,42 +330,52 @@ with pd.option_context(
 # $Z_0 \sim f\left(\frac{w}{h}, \varepsilon_r\right)$, where $w$ is trace width,
 # and $h$ is dielectric height.
 #
-# TDIEL directly affects: (1) impedance, (2) field confinement, and (3) coupling.
+# TDIEL directly affects: (1) impedance, (2) field confinement and (3) coupling.
 #
 
 # %% [markdown]
 # #### 2.1.9 DISTTL — Distance Between Transmission Lines
 #
-# DISTTL measures spacing between neighboring traces. Smaller spacing increases coupling and crosstalk, while larger spacing improves isolation.
+# DISTTL measures spacing between neighboring traces. Smaller spacing increases
+# coupling and crosstalk, while larger spacing improves isolation.
 #
-# This parameter is especially important for: (1) differential signaling, and (2) multi-lane high-speed channels.
+# This parameter is especially important for: (1) differential signaling, and
+# (2) multi-lane high-speed channels.
 
 # %% [markdown]
 # #### 2.1.10 TLWIDTH — Transmission Line Width
 #
 # Width of PCB traces.
-# - Wider traces result to lower impedance, lower conductor resistance and reduced conductor loss.  
+# - Wider traces result to lower impedance, lower conductor resistance and
+#   reduced conductor loss.  
 #
-# - Narrow traces lead to higher impedance, higher current density and more loss.  
+# - Narrow traces lead to higher impedance, higher current density and more
+#   loss.  
 #
-# - This parameter strongly affects characteristic impedance, insertion loss and matching quality.  
+# - This parameter strongly affects characteristic impedance, insertion loss and
+# matching quality.  
 
 # %% [markdown]
 # ### 2.2 Data inspection
 #
-# The following procedure shows the technical information about the data frame:
+# The following procedure shows the information about the data frame, from
+# perspective of technical implementation:
 
 # %%
-parameters.info()
+parameters.structural_summary()
 
 # %% [markdown]
-# The `parameters.info()` function reveals several important things about the dataset quality, ML readiness and even hidden problems.
+# The the structural summary reveals several important things about the
+# dataset quality, ML readiness and even hidden problems.
 #
 # #### 2.2.1 The dataset is numerically clean
 #
-# For every features, `7048 non-null` means the dataset has (1) no missing values (NaN), (2) no partically corrupted rows, and (3) no incomplete parameter records.
+# For every features, `7048 non-null` means the dataset has (1) no missing
+# values (NaN), (2) no partically corrupted rows, and (3) no incomplete
+# parameter records.
 #
-# **This dataset is clean** for data engineering, so we do need typical data cleaning such as imputation, row filtering or missing-data handling.
+# **This dataset is clean** for data engineering, so we don't need typical data
+# cleaning such as imputation, row filtering or missing-data handling.
 
 # %% [markdown]
 # #### 2.2.2 All features are continuous numerical variables
@@ -343,17 +383,18 @@ parameters.info()
 # `float64(11)` means every column is stored as floating-point numbers. This
 # implies no categorical encoding needed, no string parsing.
 #
-# The dataset is suitable for solving **continuous regression problem**, and aligns well with neural networks, tree regressors and surrogate modeling.
+# The dataset is suitable for solving **continuous regression problem**, and
+# aligns well with neural networks, tree regressors and surrogate modeling.
 
 # %% [markdown]
 # #### 2.2.3 Data type of `SIMU_INDEX` is wrong
 #
 # `SIMU_INDEX` originally is of type `float64`, but conceptually it is an
-# indentifier, not a physical quantity. This would directly make the wrong mapping
-# between index from `parameter.csv` and Touchstone files.
+# indentifier, not a physical quantity. This would directly make the wrong
+# mapping between index from `parameter.csv` and Touchstone files.
 #
-# So, **data cleaning is required here to convert to correct data type: `int64`**,
-# like:
+# So, **data cleaning is required here to convert to correct data type:
+# `int64`**, like:
 # ```Python
 # parameters["SIMU_INDEX"] = parameters["SIMU_INDEX"].astype(int64)
 # ```
@@ -372,18 +413,20 @@ parameters.info()
 # | Transformer-scale models | Overkill            |
 #
 # This may implicate the **risk of overfitting** for complex modelling like
-# full S-matrix prediction. So the staged approach of "starting simple, and gradually increase model complexity" is helpful.
+# full S-matrix prediction. So the staged approach of "starting simple, and
+# gradually increase model complexity" is helpful.
 
 # %% [markdown]
 # #### 2.2.5 Memory footprint challenge
 #
 # Although `memory usage: 605.8 KB` implicates the parameter table is not large,
-# and preprocessing cost is low, but the real dataset size is not $7048 \times 10$
-# but $7048 \times N_f \times N_{S}$, where $N_f$ is number of frequency points
-# and $N_S$ is number of S-parameters. This is the ML scale of the problem.
+# and preprocessing cost is low, but the real dataset size is not
+# $7048 \times 10$ but $7048 \times N_f \times N_{S}$, where $N_f$ is number of
+# frequency points and $N_S$ is number of S-parameters. This is the ML scale of
+# the problem.
 #
-# The heavy computation would be required by Touchstone parsing, frequency-domain
-# outputs, and multi-output regression tensors.
+# The heavy computation would be required by Touchstone parsing,
+# frequency-domain outputs, and multi-output regression tensors.
 
 # %% [markdown]
 # #### 2.2.6 No topology variation
@@ -397,9 +440,9 @@ parameters.info()
 # %% [markdown]
 # #### 2.2.7 Data precision
 #
-# All features use `float64`, and this implies high numerical precision retained,
-# and probably sampled from continuous distributions. Further investigations are
-# required to identify their distribution.
+# All features use `float64`, and this implies high numerical precision
+# retained, and probably sampled from continuous distributions. Further
+# investigations are required to identify their distribution.
 
 # %% [markdown]
 # #### 2.2.8 Dataset inconsistency issue
@@ -413,25 +456,11 @@ parameters.info()
 # Touchstones:
 
 # %%
-report = rawdata.check_index_consistency()
-print(f"Total parameter record: {report['parameter_count']}")
-print(f"Total touchstone files: {report['touchstone_count']}")
-
-if report['extra_touchstone_files']:
-    missing = " ".join(report['extra_touchstone_files'])
-    print("{} Touchstones with no parameter record:\n\t{}".format(
-        len(report['extra_touchstone_files']), textwrap.shorten(missing, 80)
-    ))
-
-if report['missing_touchstones']:
-    missing = " ".join([str(i) for i in report['missing_touchstones']])
-    print("{} parameter records with no Touchstones:\n\t{}".format(
-        len(report['missing_touchstones']), textwrap.shorten(missing, 80)
-    ))
+rawdata.report_index_consistency()
 
 # %% [markdown]
-# The resulting output indicates 609 orphan Touchstones, and 18 missing parameter
-# recores.
+# The resulting output indicates 609 orphan Touchstones, and 18 missing
+# parameter recores.
 #
 # Real-world dataset are imperfect, and this data integrity checks suggests that
 # further data preprocessing is needed.
@@ -453,24 +482,34 @@ if report['missing_touchstones']:
 # `DataFrame`:
 
 # %%
-print(parameters.iloc[:, :5].describe(), end="\n\n")
-print(parameters.iloc[:, 5:-1].describe())
+parameters.statistical_summary()
+
+# %% [markdown]
+# Unlike structural summary aforementioned, which focus on how the technical
+# implementation builds memory structure and stores data, statistical summary
+# describes the data distribution: mean, median, standard deviation, and range.
+# In other words, structural summary describes metadata(data about data), while
+# statistical summary describes data itself.
 
 # %% [markdown] vscode={"languageId": "latex"}
 # #### 2.3.1 Most parameters are roughly uniformly sampled
 #
-# For many columns, the median is close to the mean, and the 25% / 75% values are fairly symmetric. Examples:
+# For many columns, the median is close to the mean, and the 25% / 75% values
+# are fairly symmetric. Examples:
 #
 # EPS: mean ≈ 4.0009, median ≈ 4.0015  
 # PITCH: mean ≈ 60.08, median ≈ 60.12  
 # START: mean ≈ 120.16, median ≈ 120.24  
 #
-# This suggests the design space may have been sampled deliberately, likely to cover the parameter range evenly.
+# This suggests the design space may have been sampled deliberately, likely to
+# cover the parameter range evenly.
 
 # %% [markdown]
 # #### 2.3.2 `TRACE_LEN` has a very wide range
 #
-# TRACE_LEN varies from about 500 mil to 2000 mil. This is likely one of the most important parameters for insertion loss, because longer traces usually produce more attenuation and delay.
+# TRACE_LEN varies from about 500 mil to 2000 mil. This is likely one of the
+# most important parameters for insertion loss, because longer traces usually
+# produce more attenuation and delay.
 
 # %% [markdown]
 # #### 2.3.3 `DISTTL` may have a skewed or outlier-like distribution
@@ -480,19 +519,25 @@ print(parameters.iloc[:, 5:-1].describe())
 # max = 56.71
 # ```
 #
-# The max is much larger than the 75% value, 22.00. This suggests a right-skewed distribution or some large-spacing cases. This is worth plotting with a histogram.
+# The max is much larger than the 75% value, 22.00. This suggests a right-skewed
+# distribution or some large-spacing cases. This is worth plotting with a
+# histogram.
 
 # %% [markdown]
 # #### 2.3.4 `TAND` includes zero
-# The minimum of `TAND` is 0.000000. Physically, this means some simulations assume almost lossless dielectric material. These cases may produce noticeably lower insertion loss.
+# The minimum of `TAND` is 0.000000. Physically, this means some simulations
+# assume almost lossless dielectric material. These cases may produce noticeably lower insertion loss.
 #
 # For insertion loss prediction, this is important because:
 #
 # - higher `TAND` usually increases dielectric loss;
 # - `TAND` = 0 cases may produce lower insertion loss;
-# - the model should learn the effect of dielectric loss separately from geometry effects.
+# - the model should learn the effect of dielectric loss separately from
+# geometry effects.
 #
-# Later, you should check correlation between TAND and insertion loss at high frequency. Its effect may be weak at low frequency but stronger at high frequency.
+# Later, you should check correlation between TAND and insertion loss at high
+# frequency. Its effect may be weak at low frequency but stronger at high
+# frequency.
 
 # %% [markdown]
 # #### 2.3.5 Feature scaling will be required before neural networks
@@ -503,55 +548,41 @@ print(parameters.iloc[:, 5:-1].describe())
 # * `TRACE_LEN`: around 500–2000  
 # * `EPS`: around 3.6–4.4  
 #
-# This suggests that `TRACE_LEN` may easily dominate the prediction. A neural network would be poorly conditioned without normalization or standardization.
+# This suggests that `TRACE_LEN` may easily dominate the prediction. A neural
+# network would be poorly conditioned without normalization or standardization.
 
 # %% [markdown]
 # ### 2.4 Constraint-based validity checking
 #
-# Some parameters should not be interpreted independently only. For example, the antipad radius is always expected larger than the via radius.
+# Some parameters should not be interpreted independently only. For example,
+# the antipad radius is always expected larger than the via radius.
 #
 # #### 2.4.1 Geometry relationship checks
 #
-# Check whether any parameter records violate `ANTIPADR > VIAR`:
+# Check whether any parameter records violate:
+# - `ANTIPADR > VIAR`
+# - `DISTTL > TLWIDTH`
 
 # %%
-invalid_antipad = parameters[parameters["ANTIPADR"] <= parameters["VIAR"]]
-print(len(invalid_antipad))
-
-# %% [markdown]
-# `DISTTL > TLWIDTH`: 
-
-# %%
-invalid_spacing = parameters[parameters["DISTTL"] <= parameters["TLWIDTH"]]
-print(len(invalid_spacing))
+_ = parameters.check_geometry_relationship()
 
 # %% [markdown]
 # #### 2.4.2 Physical range checks
 
 # %%
-checks = {
-    "EPS_positive": parameters["EPS"] > 1,
-    "TAND_non_negative": parameters["TAND"] >= 0,
-    "PITCH_positive": parameters["PITCH"] > 0,
-    "TRACE_LEN_positive": parameters["TRACE_LEN"] > 0,
-    "VIAR_positive": parameters["VIAR"] > 0,
-    "ANTIPADR_larger_than_VIAR": parameters["ANTIPADR"] > parameters["VIAR"],
-    "DISTTL_larger_than_TLWIDTH": parameters["DISTTL"] > parameters["TLWIDTH"],
-}
-
-for name, mask in checks.items():
-    n_failed = (~mask).sum()
-    print(f"{name}: {n_failed} failed")
+_ = parameters.check_physical_range()
 
 # %% [markdown]
 # #### 2.5.3 Derived feature sanity checks
 #
 # New features could be derived from existed ones. Further data engineering are
-# required to identify which features are helpful, and which ones are meaningless.
+# required to identify which features are helpful, and which ones are
+# meaningless.
 #
 # In the `description.pdf`, the PCB board size is defined as:
-# $$  
-# Height = 2 \cdot START + 9 \cdot PITCH \\  
+#
+# $$
+# Height = 2 \cdot START + 9 \cdot PITCH \\
 # Width = 2 \cdot START + TRACE\_LEN + 18 \cdot PITCH
 # $$
 #
@@ -559,17 +590,8 @@ for name, mask in checks.items():
 # could be derived from existed `START`, `PITCH` and `TRACE_LEN` if needed:
 
 # %%
-parameters["BOARD_HEIGHT"] = (
-    2 * parameters["START"] + 9 * parameters["PITCH"]
-)
-parameters["BOARD_WIDTH"] = (
-    2 * parameters["START"] + parameters["TRACE_LEN"] + 18 * parameters["PITCH"]
-)
-parameters["BOARD_AREA"] = (
-    parameters["BOARD_HEIGHT"] * parameters["BOARD_WIDTH"]
-)
-
-parameters[["BOARD_HEIGHT", "BOARD_WIDTH", "BOARD_AREA"]].describe()
+eda = PcbDatasetEDA(parameters)
+eda.statistical_summary(["BOARD_HEIGHT", "BOARD_WIDTH", "BOARD_AREA"])
 
 # %% [markdown]
 # Some derived ratios may be more physically meaningful than raw parameters
@@ -583,8 +605,8 @@ parameters[["BOARD_HEIGHT", "BOARD_WIDTH", "BOARD_AREA"]].describe()
 #
 # This ratio measures how much clearance surrounds the via barrel. This ratio
 # influences (1) parasitic capacitance, (2) impedance discontinuity, and (3) via
-# transition behavior. Larger values generally imply weaker capacitive loading and
-# higher impedance around the via.
+# transition behavior. Larger values generally imply weaker capacitive loading
+# and higher impedance around the via.
 
 # %% [markdown]
 # 2. **Ratio of tranmission line width to dielectric thickness**
@@ -601,7 +623,8 @@ parameters[["BOARD_HEIGHT", "BOARD_WIDTH", "BOARD_AREA"]].describe()
 # $$
 # where: $w$ is trace width, and $h$ is dielectric thickness.
 #
-# Larger ratios usually correspond to lower characteristic impedance and stronger field confinement.
+# Larger ratios usually correspond to lower characteristic impedance and
+# stronger field confinement.
 
 # %% [markdown]
 # 3. **Trace aspect ratio**
@@ -625,19 +648,10 @@ parameters[["BOARD_HEIGHT", "BOARD_WIDTH", "BOARD_AREA"]].describe()
 # * and stronger frequency-dependent behavior.  
 
 # %%
-parameters["ANTIPAD_TO_VIA_RATIO"] = (
-    parameters["ANTIPADR"] / parameters["VIAR"]
-)
-parameters["TLWIDTH_TO_DIEL_RATIO"] = (
-    parameters["TLWIDTH"] / parameters["TDIEL"]
-)
-parameters["TRACE_ASPECT_RATIO"] = (
-    parameters["TRACE_LEN"] / parameters["PITCH"]
-)
-
-parameters[
-    ["ANTIPAD_TO_VIA_RATIO", "TLWIDTH_TO_DIEL_RATIO","TRACE_ASPECT_RATIO",]
-].describe()
+ratio_features = [
+    "ANTIPAD_TO_VIA_RATIO", "TLWIDTH_TO_DIEL_RATIO", "TRACE_ASPECT_RATIO"
+]
+eda.statistical_summary(ratio_features)
 
 # %% [markdown]
 # ### 2.5 Visualisation
@@ -650,25 +664,11 @@ parameters[
 # parameters are skewed, and whether unusual values or clusters exist.
 
 # %%
-import matplotlib.pyplot as plt
-
 physical_features = [
     "EPS", "TAND", "PITCH", "TRACE_LEN", "START",
     "VIAR", "ANTIPADR", "TDIEL", "DISTTL", "TLWIDTH",
 ]
-
-fig, axes = plt.subplots(
-    nrows=5, ncols=2, figsize=(12, 14),constrained_layout=True
-)
-axes = axes.ravel()
-
-for ax, feature in zip(axes, physical_features):
-    ax.hist(parameters[feature], bins=30)
-    ax.set_title(feature)
-    ax.set_xlabel(feature)
-    ax.set_ylabel("Count")
-
-plt.show()
+_ = eda.plot_distribution_histograms(physical_features)
 
 # %% [markdown]
 # The histograms show the marginal distributions of the physical input
@@ -714,25 +714,7 @@ correlation_features = physical_features + [
     "ANTIPAD_TO_VIA_RATIO", "TLWIDTH_TO_DIEL_RATIO", "TRACE_ASPECT_RATIO"
 ]
 
-corr = parameters[correlation_features].corr(numeric_only=True)
-fig, ax = plt.subplots(figsize=(12, 10), constrained_layout=True)
-im = ax.imshow(corr, vmin=-1, vmax=1, cmap="coolwarm")
-
-ax.set_xticks(range(len(correlation_features)))
-ax.set_yticks(range(len(correlation_features)))
-ax.set_xticklabels(correlation_features, rotation=90)
-ax.set_yticklabels(correlation_features)
-ax.set_title("Correlation heatmap of physical and derived parameters")
-
-# Annotate only strong correlations to avoid visual clutter.
-for i in range(len(correlation_features)):
-    for j in range(len(correlation_features)):
-        value = corr.iloc[i, j]
-        if i == j or abs(value) >= 0.5:
-            ax.text(j, i, f"{value:.2f}", ha="center", va="center", fontsize=7)
-
-fig.colorbar(im, ax=ax, label="Pearson correlation coefficient")
-plt.show()
+_ = eda.plot_correlation_heatmap(correlation_features)
 
 # %% [markdown]
 # The correlation heatmap provides a compact summary of pairwise linear
@@ -744,25 +726,7 @@ plt.show()
 
 # %%
 # List the strongest non-diagonal correlations for easier interpretation.
-mask_upper_triangle = pd.DataFrame(
-    data=False, index=corr.index, columns=corr.columns
-)
-
-for row_idx, feature_1 in enumerate(corr.index):
-    for col_idx, feature_2 in enumerate(corr.columns):
-        if row_idx < col_idx:
-            mask_upper_triangle.loc[feature_1, feature_2] = True
-
-corr_pairs = (
-    corr.where(mask_upper_triangle)
-        .stack()
-        .rename("corr")
-        .reset_index()
-        .rename(columns={"level_0": "feature_1", "level_1": "feature_2"})
-)
-
-corr_pairs["abs_corr"] = corr_pairs["corr"].abs()
-corr_pairs = corr_pairs.sort_values("abs_corr", ascending=False)
+corr_pairs = eda.correlation_pairs(correlation_features)
 corr_pairs.head(15)
 
 # %%
@@ -771,50 +735,10 @@ physical_constraint_pairs = [
     ("PITCH", "TRACE_LEN"), ("DISTTL", "TLWIDTH"),
 ]
 
-fig, axes = plt.subplots(
-    nrows=2, ncols=2,figsize=(12, 8), constrained_layout=True
-)
-axes = axes.ravel()
+_ = eda.plot_physical_relationships(physical_constraint_pairs)
 
-for ax, (x_feature, y_feature) in zip(axes, physical_constraint_pairs):
-    ax.scatter(parameters[x_feature], parameters[y_feature], s=8, alpha=0.35)
-
-    # Add physical constraint reference lines where meaningful.
-    if (x_feature, y_feature) == ("VIAR", "ANTIPADR"):
-        lower = min(parameters[x_feature].min(), parameters[y_feature].min())
-        upper = max(parameters[x_feature].max(), parameters[y_feature].max())
-        ax.plot([lower, upper], [lower, upper], linestyle="--", linewidth=1)
-        ax.text(lower, lower, "ANTIPADR = VIAR", fontsize=8, va="bottom")
-
-    if (x_feature, y_feature) == ("DISTTL", "TLWIDTH"):
-        lower = min(parameters[x_feature].min(), parameters[y_feature].min())
-        upper = max(parameters[x_feature].max(), parameters[y_feature].max())
-        ax.plot([lower, upper], [lower, upper], linestyle="--", linewidth=1)
-        ax.text(lower, lower, "TLWIDTH = DISTTL", fontsize=8, va="bottom")
-
-    ax.set_xlabel(x_feature)
-    ax.set_ylabel(y_feature)
-    ax.set_title(f"{y_feature} vs {x_feature}")
-
-fig.suptitle("Physical parameter relationships", fontsize=14)
-plt.show()
-
-derived_geometry_pairs = [
-    ("PITCH", "BOARD_HEIGHT"), ("TRACE_LEN", "BOARD_WIDTH"),
-]
-
-fig, axes = plt.subplots(
-    nrows=1, ncols=2, figsize=(12, 4), constrained_layout=True
-)
-
-for ax, (x_feature, y_feature) in zip(axes, derived_geometry_pairs):
-    ax.scatter(parameters[x_feature], parameters[y_feature], s=8, alpha=0.35)
-    ax.set_xlabel(x_feature)
-    ax.set_ylabel(y_feature)
-    ax.set_title(f"{y_feature} vs {x_feature}")
-
-fig.suptitle("Derived board-geometry verification", fontsize=14)
-plt.show()
+# %%
+_ = eda.plot_board_geometry_verification()
 
 # %% [markdown]
 # The scatter plots are separated into two groups.
@@ -840,27 +764,7 @@ plt.show()
 # side of these boundaries.
 
 # %%
-parameter_pairs = [
-    ("VIAR",  "ANTIPADR",  "ANTIPAD_TO_VIA_RATIO"),
-    ("TDIEL", "TLWIDTH",   "TLWIDTH_TO_DIEL_RATIO"),
-    ("PITCH", "TRACE_LEN", "TRACE_ASPECT_RATIO"),
-]
-
-fig, axes = plt.subplots(
-    nrows=1, ncols=3, figsize=(15, 4), constrained_layout=True,
-)
-
-for ax, (x_feature, y_feature, color_feature) in zip(axes, parameter_pairs):
-    scatter = ax.scatter(
-        parameters[x_feature], parameters[y_feature],
-        c=parameters[color_feature], s=8, alpha=0.6
-    )
-    ax.set_xlabel(x_feature)
-    ax.set_ylabel(y_feature)
-    ax.set_title(f"{y_feature} vs {x_feature}")
-    fig.colorbar(scatter, ax=ax, label=color_feature)
-
-plt.show()
+_ = eda.plot_ratio_relationships()
 
 # %% [markdown]
 # The colour-coded scatter plots add the derived ratio as an extra dimension.

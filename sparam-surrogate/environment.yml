@@ -25,7 +25,7 @@ dependencies:
   # Jupyter and related tools
   - jupyterlab
   - ipykernel
-  - jupytext
+  - jupytext=1.19.3
   - ipynbname
 
   # Development tools
