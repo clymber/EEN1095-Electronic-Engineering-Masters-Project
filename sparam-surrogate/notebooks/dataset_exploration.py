@@ -24,7 +24,13 @@ Analytical exploration of dataset linkOn8CavityStackBetween10x10Array_19_08_2021
 from pathlib import Path
 
 from sparam_surrogate.config import load_config
-from sparam_surrogate.data import PcbDatasetEDA, PcbParameters, RawData
+from sparam_surrogate.utils.filesystem import directory_tree
+from sparam_surrogate.data import (
+    PcbDatasetEDA,
+    PcbParameters,
+    RawData,
+    SParameterDataset,
+)
 
 DS_NAME = "linkOn8CavityStackBetween10x10Array_19_08_2021"
 
@@ -770,16 +776,84 @@ _ = eda.plot_ratio_relationships()
 # ## 3. Touchstone files
 
 # %% [markdown]
-# ### 3.1 Extract one simple SI target -- TODO
+# Each response file is a 12-port Touchstone network in real/imaginary form:
 #
-# Start with insertion loss at one frequency, e.g. 10 GHz.
+# - Format header: `# GHz S RI R 50.0`
+# - Frequency grid: 200 values, from `0.5 GHz` to `100.0 GHz` in `0.5 GHz`
+#   increments
+# - First response target: the six through paths declared in configuration,
+#   `(7,1)` through `(12,6)`
+#
+# Since the raw response directory is large, only these response curves are
+# extracted and cached for subsequent notebook runs.
+
+# %%
+port_pairs = [tuple(pair) for pair in cfg["dataset"]["ports"]]
+response_cache = interim_dir / f"{DS_NAME}_through_s_db.npz"
+responses = SParameterDataset.from_touchstones(
+    parameters,
+    rawdata,
+    port_pairs,
+    cache_path=response_cache,
+)
+response_eda = PcbDatasetEDA(parameters, responses)
 
 # %% [markdown]
-# ### 3.2 Relate parameters to that SI target  -- TODO
+# ### 3.1 Inspect through-path response curves
 #
-# Scatter/correlation between parameters and `IL_10GHz`.
+# The magnitude in dB is named directly as `S*_DB`, rather than using an
+# insertion-loss label with ambiguous sign. For example, `S7_1_DB` is
+# $20 \log_{10} |S_{71}|$.
+
+# %%
+representative_index = int(responses.simulation_indices[0])
+_ = response_eda.plot_through_response_curves(
+    simulation_indices=[representative_index]
+)
 
 # %% [markdown]
-# ### 3.3 Move from scalar target to curve target  -- TODO
+# ### 3.2 Relate parameters to response at 10 GHz
 #
-# Plot full IL curves and compare groups.
+# `10 GHz` is present exactly in the frequency grid, so scalar targets can be
+# extracted without interpolation and joined only to matched simulations.
+
+# %%
+response_at_10ghz = response_eda.response_frame_at_frequency(10.0)
+response_columns = [
+    SParameterDataset.response_column(pair) for pair in responses.port_pairs
+]
+response_at_10ghz[response_columns].describe()
+
+# %%
+_ = response_eda.plot_response_distributions(10.0)
+
+# %%
+response_correlations = response_eda.response_correlation_pairs(
+    frequency_ghz=10.0,
+    features=[
+        "EPS",
+        "TAND",
+        "TRACE_LEN",
+        "BOARD_AREA",
+        "TRACE_ASPECT_RATIO",
+    ],
+)
+response_correlations.head(20)
+
+# %%
+_ = response_eda.plot_parameter_response_relationships(
+    pair=(7, 1),
+    frequency_ghz=10.0,
+)
+
+# %% [markdown]
+# ### 3.3 Move from scalar targets to curve targets
+#
+# Plot population summaries for each selected through path. Median curves and
+# percentile bands show the response spread without rendering thousands of
+# individual simulations.
+
+# %%
+_ = response_eda.plot_through_response_curves()
+
+# %%

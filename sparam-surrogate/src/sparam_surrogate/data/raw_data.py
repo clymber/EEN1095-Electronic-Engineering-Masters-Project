@@ -55,6 +55,13 @@ class RawData:
         return self._path / "parameter.csv"
 
     @property
+    def nports(self) -> int:
+        """
+        Return the number of ports expected in each Touchstone file.
+        """
+        return self._nports
+
+    @property
     def variation_path(self) -> Path:
         """
         Returns the path to the directory containing the touchstone files.
