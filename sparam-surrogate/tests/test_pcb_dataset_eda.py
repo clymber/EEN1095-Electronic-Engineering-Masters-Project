@@ -4,12 +4,14 @@ Unit tests for :class:`PcbDatasetEDA`.
 
 from unittest.mock import patch
 
+import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 from pandas.testing import assert_frame_equal
 
 from sparam_surrogate.data.pcb_dataset_eda import PcbDatasetEDA
 from sparam_surrogate.data.pcb_parameters import PcbParameters
+from sparam_surrogate.data.s_parameter_dataset import SParameterDataset
 
 
 def _make_parameters() -> PcbParameters:
@@ -28,6 +30,38 @@ def _make_parameters() -> PcbParameters:
             }
         )
     )
+
+
+def _make_response_eda() -> PcbDatasetEDA:
+    parameters = PcbParameters(
+        pd.DataFrame(
+            {
+                "SIMU_INDEX": [0, 1, 2],
+                "START": [10.0, 20.0, 30.0],
+                "PITCH": [5.0, 6.0, 7.0],
+                "TRACE_LEN": [100.0, 120.0, 140.0],
+                "VIAR": [1.0, 2.0, 2.0],
+                "ANTIPADR": [2.0, 3.0, 4.0],
+                "TDIEL": [2.0, 2.5, 4.0],
+                "TLWIDTH": [1.0, 1.0, 2.0],
+                "DISTTL": [3.0, 3.5, 4.0],
+                "EPS": [3.8, 4.0, 4.2],
+                "TAND": [0.001, 0.01, 0.02],
+            }
+        )
+    )
+    responses = SParameterDataset(
+        simulation_indices=[0, 2],
+        frequencies_ghz=[1.0, 10.0],
+        port_pairs=[(7, 1), (8, 2)],
+        through_s_db=np.array(
+            [
+                [[-1.0, -1.2], [-3.0, -3.2]],
+                [[-2.0, -2.2], [-5.0, -5.2]],
+            ]
+        ),
+    )
+    return PcbDatasetEDA(parameters, responses)
 
 
 class TestPcbDatasetEDA:
@@ -78,7 +112,9 @@ class TestPcbDatasetEDA:
         eda = PcbDatasetEDA(_make_parameters())
 
         with patch("sparam_surrogate.data.pcb_dataset_eda.plt.show") as show:
-            fig = eda.plot_distribution_histograms(["START", "PITCH", "TRACE_LEN"], show=False)
+            fig = eda.plot_distribution_histograms(
+                ["START", "PITCH", "TRACE_LEN"], show=False
+            )
 
         assert fig is not None
         assert len(fig.axes) == 4
@@ -235,3 +271,71 @@ class TestPcbDatasetEDA:
             ("START", "TRACE_LEN"),
             ("PITCH", "TRACE_LEN"),
         }
+
+    def test_response_frame_inner_joins_aligned_simulations(self) -> None:
+        eda = _make_response_eda()
+
+        response_frame = eda.response_frame_at_frequency()
+
+        assert response_frame["SIMU_INDEX"].to_list() == [0, 2]
+        assert response_frame["S7_1_DB"].to_list() == [-3.0, -5.0]
+        assert "BOARD_AREA" in response_frame.columns
+
+    def test_response_correlations_are_feature_to_target_pairs(self) -> None:
+        eda = _make_response_eda()
+
+        correlations = eda.response_correlation_pairs(features=["TRACE_LEN", "TAND"])
+
+        assert set(correlations["feature"]) == {"TRACE_LEN", "TAND"}
+        assert set(correlations["response"]) == {"S7_1_DB", "S8_2_DB"}
+        assert correlations["abs_corr"].is_monotonic_decreasing
+
+    def test_plot_response_distributions(self) -> None:
+        eda = _make_response_eda()
+
+        with patch("sparam_surrogate.data.pcb_dataset_eda.plt.show") as show:
+            fig = eda.plot_response_distributions(show=False)
+
+        assert fig is not None
+        assert [axis.get_title() for axis in fig.axes] == [
+            "S7_1_DB at 10 GHz",
+            "S8_2_DB at 10 GHz",
+        ]
+        assert fig._suptitle.get_text() == "Through-path response distributions"
+        show.assert_not_called()
+        plt.close(fig)
+
+    def test_plot_parameter_response_relationships(self) -> None:
+        eda = _make_response_eda()
+
+        with patch("sparam_surrogate.data.pcb_dataset_eda.plt.show") as show:
+            fig = eda.plot_parameter_response_relationships(
+                pair=(7, 1),
+                features=["TRACE_LEN", "TAND"],
+                show=False,
+            )
+
+        assert fig is not None
+        assert [axis.get_title() for axis in fig.axes] == [
+            "S7_1_DB vs TRACE_LEN",
+            "S7_1_DB vs TAND",
+        ]
+        assert len(fig.axes[0].collections[0].get_offsets()) == 2
+        show.assert_not_called()
+        plt.close(fig)
+
+    def test_plot_through_response_curves_with_simulation_overlay(self) -> None:
+        eda = _make_response_eda()
+
+        with patch("sparam_surrogate.data.pcb_dataset_eda.plt.show") as show:
+            fig = eda.plot_through_response_curves(simulation_indices=[0], show=False)
+
+        assert fig is not None
+        assert [axis.get_title() for axis in fig.axes] == ["S7_1_DB", "S8_2_DB"]
+        assert len(fig.axes[0].lines) == 2
+        assert [line.get_label() for line in fig.axes[0].lines] == [
+            "Median",
+            "SIMU_INDEX 0",
+        ]
+        show.assert_not_called()
+        plt.close(fig)
