@@ -23,7 +23,9 @@ Analytical exploration of dataset linkOn8CavityStackBetween10x10Array_19_08_2021
 """
 from pathlib import Path
 
-from sparam_surrogate.config import load_config
+from IPython.display import Image, display
+
+from sparam_surrogate.config import load_config, notebook_resource_path
 from sparam_surrogate.utils.filesystem import directory_tree
 from sparam_surrogate.data import (
     PcbDatasetEDA,
@@ -776,16 +778,174 @@ _ = eda.plot_ratio_relationships()
 # ## 3. Touchstone files
 
 # %% [markdown]
-# Each response file is a 12-port Touchstone network in real/imaginary form:
+# Each response file is a 12-port Touchstone network. Touchstone is a plain-text
+# RF/microwave file format for storing network parameters over frequency; the
+# extension `.s12p` means that each file describes a 12-port network.
 #
-# - Format header: `# GHz S RI R 50.0`
+# In this dataset each file starts with the format header:
+#
+# ```text
+# # GHz S RI R 50.0
+# ```
+#
+# The tokens in this header define how the remaining numeric data should be
+# interpreted:
+#
+# - `#` marks the option line, or format header.
+# - `GHz` means the first value in each data block is frequency in gigahertz.
+# - `S` says the file stores scattering parameters.
+# - `RI` says each complex value is written as real and imaginary parts.
+# - `R 50.0` sets the reference impedance to `50 ohm`.
+#
+# The dataset files then use:
+#
 # - Frequency grid: 200 values, from `0.5 GHz` to `100.0 GHz` in `0.5 GHz`
-#   increments
-# - First response target: the six through paths declared in configuration,
-#   `(7,1)` through `(12,6)`
+#   increments.
+# - Response matrix at each frequency: a full complex scattering-parameter
+#   matrix, $\mathbf{S}(f) \in \mathbb{C}^{12 \times 12}$.
+# - First response targets for modelling: the six through paths declared in
+#   configuration, `(7,1)` through `(12,6)`.
 #
 # Since the raw response directory is large, only these response curves are
 # extracted and cached for subsequent notebook runs.
+
+# %% [markdown]
+# ### 3.1 Touchstone matrix structure
+#
+# At each frequency, a 12-port Touchstone file stores a scattering matrix:
+#
+# $$
+# \mathbf{S}(f) =
+# \begin{bmatrix}
+# S_{11}(f) & S_{12}(f) & \cdots & S_{1,12}(f) \\
+# S_{21}(f) & S_{22}(f) & \cdots & S_{2,12}(f) \\
+# \vdots & \vdots & \ddots & \vdots \\
+# S_{12,1}(f) & S_{12,2}(f) & \cdots & S_{12,12}(f)
+# \end{bmatrix}
+# $$
+#
+# Each element $S_{ij}(f)$ is the complex ratio between the outgoing wave at
+# port $i$ and the incoming wave at port $j$ at frequency $f$. Diagonal terms
+# such as $S_{11}$ are reflection responses, while off-diagonal terms such as
+# $S_{7,1}$ are transmission or coupling responses between two different ports.
+#
+# The port configuration is shown in the dataset documentation [2] and is
+# collected into `sparam-surrogate/configs/default.json`:
+
+# %%
+print("ports: ", cfg["dataset"]["ports"])
+
+# %% [markdown]
+# The top view of the PCB helps connect these port numbers to the physical
+# structure [2]. Ports 1-6 are on one side of the interconnect, and ports 7-12
+# are the corresponding ports on the opposite side.
+
+# %% tags=["remove-input"]
+pcb_top_view_img = notebook_resource_path("pcb_top_view.png")
+display(Image(filename=str(pcb_top_view_img), width=520))
+
+# %% [markdown]
+# The configured response listed above selects the six main through paths from the
+# first group of ports to the second group of ports. In each pair `(i, j)`, `i` is
+# the receiver/output port and `j` is the source/input port. For example, `(7, 1)`
+# selects $S_{7,1}$: the response at port 7 due to excitation at port 1.
+#
+# Conceptually, the full 12-by-12 matrix can be grouped into reflections,
+# insertion-loss paths, and crosstalk paths:
+#
+# - `R`: reflection, where input and output are the same port.
+# - `IL`: insertion-loss or through path between corresponding ports on
+#   opposite sides of the structure.
+# - `XT`: crosstalk between non-corresponding ports.
+#
+# $$
+# \scriptsize
+# \begin{bmatrix}
+# R & XT & XT & XT & XT & XT & \mathbf{IL} & XT & XT & XT & XT & XT \\
+# XT & R & XT & XT & XT & XT & XT & \mathbf{IL} & XT & XT & XT & XT \\
+# XT & XT & R & XT & XT & XT & XT & XT & \mathbf{IL} & XT & XT & XT \\
+# XT & XT & XT & R & XT & XT & XT & XT & XT & \mathbf{IL} & XT & XT \\
+# XT & XT & XT & XT & R & XT & XT & XT & XT & XT & \mathbf{IL} & XT \\
+# XT & XT & XT & XT & XT & R & XT & XT & XT & XT & XT & \mathbf{IL} \\
+# \mathbf{IL} & XT & XT & XT & XT & XT & R & XT & XT & XT & XT & XT \\
+# XT & \mathbf{IL} & XT & XT & XT & XT & XT & R & XT & XT & XT & XT \\
+# XT & XT & \mathbf{IL} & XT & XT & XT & XT & XT & R & XT & XT & XT \\
+# XT & XT & XT & \mathbf{IL} & XT & XT & XT & XT & XT & R & XT & XT \\
+# XT & XT & XT & XT & \mathbf{IL} & XT & XT & XT & XT & XT & R & XT \\
+# XT & XT & XT & XT & XT & \mathbf{IL} & XT & XT & XT & XT & XT & R
+# \end{bmatrix}
+# $$
+#
+# The matrix above shows both directions of the corresponding through paths.
+# The project configuration extracts one direction, `(7,1)` through `(12,6)`,
+# which corresponds to the lower-left `IL` entries in this conceptual map.
+#
+# Because the file uses `RI` format, each complex value is stored as two
+# numbers:
+#
+# $$
+# S_{ij}(f) = \operatorname{Re}(S_{ij}) + j\operatorname{Im}(S_{ij})
+# $$
+#
+# The resulting response tensor can be thought of as one 12-by-12 matrix for
+# every frequency point [1]:
+
+# %% tags=["remove-input"]
+smatrix_img = notebook_resource_path("arrays_s_vs_f.png")
+display(Image(filename=str(smatrix_img), width=280))
+
+# %% [markdown]
+# ### 3.2 Demonstrate `network.s_db`
+#
+# `skrf.Network.s_db` returns the complex S-parameter network converted to
+# magnitude in decibels:
+#
+# $$
+# S_{ij,\mathrm{dB}} = 20 \log_{10} |S_{ij}|
+# $$
+#
+# For this 12-port dataset, `network.s_db` has three dimensions:
+#
+# 1. frequency point,
+# 2. receiver/output port, and
+# 3. source/input port.
+#
+# Therefore, `response_db[:, 6, 0]` means all frequency samples for
+# $S_{7,1}$, because the physical Touchstone port pair `(7, 1)` becomes NumPy
+# indices `(6, 0)`. This is the same indexing convention used later by
+# `class SParameterDataset` when it extracts selected through paths.
+#
+# The dB values are usually negative for through paths because they represent
+# attenuation: values closer to `0 dB` mean less loss, while more negative
+# values mean stronger attenuation.
+
+# %%
+import skrf as rf
+
+example_touchstone = rawdata.touchstones()[0]
+network = rf.Network(str(example_touchstone))
+response_db = network.s_db
+
+print(f"Loaded example network: {example_touchstone.name}")
+print(f"Number of ports: {network.nports}")
+print(f"`network.s_db` shape: {response_db.shape}")
+print("Shape meaning: (frequency point, receiver port, source port)")
+print(
+    "Frequency span: "
+    f"{network.f[0] / 1e9:g} GHz to {network.f[-1] / 1e9:g} GHz"
+)
+
+# Touchstone port labels are one-based, while NumPy arrays are zero-based.
+demo_pair = (7, 1)
+demo_curve_db = response_db[:, demo_pair[0] - 1, demo_pair[1] - 1]
+print(f"S{demo_pair[0]}{demo_pair[1]} first 5 dB values:", *demo_curve_db[:5])
+
+# %% [markdown]
+# ### 3.3 Extract selected response paths
+#
+# The project wraps this `network.s_db` indexing in `SParameterDataset` so the
+# selected response paths can be aligned with `parameter.csv`, validated, and
+# cached.
 
 # %%
 port_pairs = [tuple(pair) for pair in cfg["dataset"]["ports"]]
@@ -799,7 +959,7 @@ responses = SParameterDataset.from_touchstones(
 response_eda = PcbDatasetEDA(parameters, responses)
 
 # %% [markdown]
-# ### 3.1 Inspect through-path response curves
+# ### 3.4 Inspect through-path response curves
 #
 # The magnitude in dB is named directly as `S*_DB`, rather than using an
 # insertion-loss label with ambiguous sign. For example, `S7_1_DB` is
@@ -812,7 +972,7 @@ _ = response_eda.plot_through_response_curves(
 )
 
 # %% [markdown]
-# ### 3.2 Relate parameters to response at 10 GHz
+# ### 3.5 Relate parameters to response at 10 GHz
 #
 # `10 GHz` is present exactly in the frequency grid, so scalar targets can be
 # extracted without interpolation and joined only to matched simulations.
@@ -847,7 +1007,7 @@ _ = response_eda.plot_parameter_response_relationships(
 )
 
 # %% [markdown]
-# ### 3.3 Move from scalar targets to curve targets
+# ### 3.6 Move from scalar targets to curve targets
 #
 # Plot population summaries for each selected through path. Median curves and
 # percentile bands show the response spread without rendering thousands of
@@ -856,4 +1016,13 @@ _ = response_eda.plot_parameter_response_relationships(
 # %%
 _ = response_eda.plot_through_response_curves()
 
-# %%
+# %% [markdown]
+# ## References
+#
+# [1] scikit-rf, "`skrf.network.Network.s`," scikit-rf Documentation.
+# [Online]. Available:
+# https://scikit-rf.readthedocs.io/en/latest/api/generated/skrf.network.Network.s.html.
+# [Accessed: May 28, 2026].
+#
+# [2] M. Schierholz et al., "SI/PI-Database of PCB-Based Interconnects for Machine
+# Learning Applications," in IEEE Access, vol. 9, pp. 34423-34432, 2021, doi: 10.1109/ACCESS.2021.3061788.
