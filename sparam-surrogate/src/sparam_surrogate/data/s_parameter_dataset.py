@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import skrf as rf
 
 from .pcb_parameters import PcbParameters
 from .raw_data import IndexConsistencyReport, RawData
@@ -106,13 +107,6 @@ class SParameterDataset:
                 alignment_report,
             )
 
-        try:
-            import skrf as rf
-        except ImportError as exc:
-            raise ImportError(
-                "Reading Touchstone files requires the project dependency 'scikit-rf'."
-            ) from exc
-
         frequencies_ghz: np.ndarray | None = None
         responses: list[np.ndarray] = []
         for simulation_index in simulation_indices:
@@ -138,13 +132,12 @@ class SParameterDataset:
                 )
 
             with np.errstate(divide="ignore"):
-                response_db = network.s_db
-                selected = np.column_stack(
-                    [
-                        response_db[:, receiver - 1, source - 1]
-                        for receiver, source in normalized_pairs
-                    ]
-                )
+                response_db = np.asarray(network.s_db, dtype=float)
+                selected_columns: list[np.ndarray] = [
+                    response_db[:, receiver - 1, source - 1]
+                    for receiver, source in normalized_pairs
+                ]
+                selected = np.column_stack(tuple(selected_columns))
             if not np.isfinite(selected).all():
                 raise ValueError(
                     "Non-finite dB response found for "
@@ -241,6 +234,13 @@ class SParameterDataset:
     def _normalize_port_pairs(
         port_pairs: Sequence[tuple[int, int]],
     ) -> tuple[tuple[int, int], ...]:
+        """
+        Return validated one-based response port pairs as immutable integer tuples.
+
+        Pair order is preserved because it defines the final response-path axis.
+        The selection must contain at least one unique ``(receiver, source)``
+        pair, and both port numbers must be positive one-based indices.
+        """
         normalized = tuple(
             (int(receiver), int(source)) for receiver, source in port_pairs
         )
@@ -256,6 +256,9 @@ class SParameterDataset:
     def _validate_pairs_for_network(
         port_pairs: tuple[tuple[int, int], ...], nports: int
     ) -> None:
+        """
+        Ensure each response port pair fits within a network's port count.
+        """
         if any(receiver > nports or source > nports for receiver, source in port_pairs):
             raise ValueError(
                 f"Response port pairs must reference ports between 1 and {nports}."
@@ -265,6 +268,9 @@ class SParameterDataset:
     def _aligned_simulation_indices(
         parameters: PcbParameters, raw_data: RawData
     ) -> list[int]:
+        """
+        Return parameter simulation indices that have matching Touchstone files.
+        """
         if "SIMU_INDEX" not in parameters.dataframe.columns:
             raise ValueError("PCB parameters must include a SIMU_INDEX column.")
 

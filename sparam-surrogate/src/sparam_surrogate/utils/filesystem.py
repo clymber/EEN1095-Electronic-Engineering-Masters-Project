@@ -2,6 +2,8 @@
 Utilities related to filesystems.
 """
 
+from __future__ import annotations
+
 import re
 from pathlib import Path
 
@@ -87,3 +89,4 @@ def directory_tree(
 
     add_children(root, "", 0)
     return "\n".join(lines)
+

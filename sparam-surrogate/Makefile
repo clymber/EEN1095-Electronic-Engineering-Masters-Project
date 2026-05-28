@@ -38,6 +38,8 @@ $(REPORT_DIR)/%.pdf: $(NOTEBOOK_DIR)/%.ipynb $(TEMPLATE_FILES) | $(REPORT_DIR)
 		--to webpdf \
 		$(WEBPDF_FLAGS) \
 		$(EXECUTE) \
+		--TagRemovePreprocessor.enabled=True \
+		--TagRemovePreprocessor.remove_input_tags=remove-input \
 		--template tight \
 		--TemplateExporter.extra_template_basedirs=./$(TEMPLATE_DIR) \
 		--output-dir $(REPORT_DIR) \
