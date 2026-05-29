@@ -173,11 +173,11 @@ class SParameterDataset:
         values = self._through_s_db[:, int(matches[0]), :]
         response_frame = pd.DataFrame({"SIMU_INDEX": self._simulation_indices})
         for pair_index, pair in enumerate(self._port_pairs):
-            response_frame[self.response_column(pair)] = values[:, pair_index]
+            response_frame[self.response_column_name(pair)] = values[:, pair_index]
         return response_frame
 
     @staticmethod
-    def response_column(pair: tuple[int, int]) -> str:
+    def response_column_name(pair: tuple[int, int]) -> str:
         """
         Return the dataframe column name for one response port pair.
         """

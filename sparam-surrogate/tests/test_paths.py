@@ -4,9 +4,16 @@
 Tests for the find_project_root function in sparam_surrogate.config.
 """
 
-import pytest
 from pathlib import Path
-from sparam_surrogate.config import find_project_root, notebook_resource_path
+
+import pytest
+
+from sparam_surrogate.config import (
+    find_project_root,
+    notebook_resource_path,
+    relative_to_project_root,
+)
+
 
 def test_find_project_root_from_project_root(tmp_path: Path):
     """
@@ -91,6 +98,58 @@ def test_find_project_root_uses_current_working_directory(
     monkeypatch.chdir(notebook_dir)
     result = find_project_root()
     assert result == project_root.resolve()
+
+
+class TestRelativeToProjectRoot:
+    """
+    Tests for stable project-relative path rendering.
+    """
+
+    def test_absolute_path_under_project_root(self, tmp_path: Path) -> None:
+        """
+        Shorten absolute project paths for machine-independent output.
+        """
+        project_root = tmp_path / "project"
+        cache_path = (
+            project_root
+            / "data"
+            / "interim"
+            / "linkOn8CavityStackBetween10x10Array_19_08_2021_through_s_db.npz"
+        )
+
+        result = relative_to_project_root(cache_path, project_root=project_root)
+
+        assert (
+            result
+            == "data/interim/"
+            "linkOn8CavityStackBetween10x10Array_19_08_2021_through_s_db.npz"
+        )
+
+    def test_relative_path_is_interpreted_from_project_root(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """
+        Keep relative project paths stable.
+        """
+        project_root = tmp_path / "project"
+
+        result = relative_to_project_root(
+            "data/interim/cache.npz",
+            project_root=project_root,
+        )
+
+        assert result == "data/interim/cache.npz"
+
+    def test_rejects_paths_outside_project_root(self, tmp_path: Path) -> None:
+        """
+        Reject paths that cannot be displayed as project-relative paths.
+        """
+        project_root = tmp_path / "project"
+        outside_path = tmp_path / "other" / "cache.npz"
+
+        with pytest.raises(ValueError, match="Path is not inside project root"):
+            relative_to_project_root(outside_path, project_root=project_root)
 
 
 class TestNotebookResourcePath:

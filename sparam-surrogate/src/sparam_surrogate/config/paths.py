@@ -38,6 +38,33 @@ def find_project_root(start: Path | None = None) -> Path:
     raise RuntimeError("Project root not found")
 
 
+def relative_to_project_root(
+    path: Path | str,
+    *,
+    project_root: Path | str | None = None,
+) -> str:
+    """
+    Return a stable POSIX-style path relative to the project root.
+
+    Absolute paths under the project root are shortened for reproducible
+    notebook and log output. Relative paths are interpreted from the project
+    root. Paths outside the project root are rejected because they cannot be
+    represented portably as project-relative paths.
+    """
+    root = Path(project_root).resolve() if project_root is not None else PROJECT_ROOT
+    candidate = Path(path)
+    if not candidate.is_absolute():
+        candidate = root / candidate
+
+    resolved = candidate.resolve()
+    try:
+        return resolved.relative_to(root).as_posix()
+    except ValueError as exc:
+        raise ValueError(
+            f"Path is not inside project root: {resolved}"
+        ) from exc
+
+
 # %% [markdown]
 # Basic runtime directory configuration:
 

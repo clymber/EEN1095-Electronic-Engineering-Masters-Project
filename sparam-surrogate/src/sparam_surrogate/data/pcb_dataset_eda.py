@@ -441,7 +441,7 @@ class PcbDatasetEDA:
         """
         frame = self.response_frame_at_frequency(frequency_ghz)
         response_columns = [
-            SParameterDataset.response_column(pair)
+            SParameterDataset.response_column_name(pair)
             for pair in self._require_responses().port_pairs
         ]
         if features is None:
@@ -524,7 +524,7 @@ class PcbDatasetEDA:
         responses = self._require_responses()
         if pair not in responses.port_pairs:
             raise ValueError(f"Response port pair {pair} was not extracted.")
-        target = SParameterDataset.response_column(pair)
+        target = SParameterDataset.response_column_name(pair)
         frame = self.response_frame_at_frequency(frequency_ghz)
         if features is None:
             features = [
@@ -629,7 +629,7 @@ class PcbDatasetEDA:
                     alpha=0.8,
                     label=f"SIMU_INDEX {simulation_index}",
                 )
-            response = SParameterDataset.response_column(pair)
+            response = SParameterDataset.response_column_name(pair)
             ax.set_xlabel("Frequency (GHz)")
             ax.set_ylabel(f"{response} (dB)")
             ax.set_title(response)
