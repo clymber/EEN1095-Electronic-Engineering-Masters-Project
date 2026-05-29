@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 # ---
 # jupyter:
 #   jupytext:
@@ -16,67 +15,72 @@
 
 # %% [markdown]
 # # Exploratory Data Analysis
+#
+# Here in this notebook, the dataset ["Link on 8 Cavity PCB with two 10×10
+# Via-Arrays"](https://www.tet.tuhh.de/en/si-pi-database/) is chosen for exploration.
 
 # %%
 """
 Analytical exploration of dataset linkOn8CavityStackBetween10x10Array_19_08_2021
 """
+
 from pathlib import Path
 
+import numpy as np
+import skrf as rf
 from IPython.display import Image, display
 
-from sparam_surrogate.config import load_config, notebook_resource_path
-from sparam_surrogate.utils.filesystem import directory_tree
+from sparam_surrogate.config import (
+    load_config,
+    notebook_resource_path,
+    relative_to_project_root,
+)
 from sparam_surrogate.data import (
     PcbDatasetEDA,
     PcbParameters,
     RawData,
     SParameterDataset,
 )
+from sparam_surrogate.utils.filesystem import directory_tree
 
 DS_NAME = "linkOn8CavityStackBetween10x10Array_19_08_2021"
 
-# %% [markdown]
-# Here in this notebook, the dataset ["Link on 8 Cavity PCB with two 10×10
-#  Via-Arrays"](https://www.tet.tuhh.de/en/si-pi-database/) is chosen for
-#  exploration.
-
 # %%
-cfg = load_config()                                 # Runtime configuration
+cfg = load_config()  # Runtime configuration
 dataset = Path(cfg["paths"]["raw_data"]) / DS_NAME  # Target dataset
-interim_dir = Path(cfg["paths"]["interim_data"])    # Intermediate data
-nports = cfg["dataset"]["nports"]                   # Number of ports
+interim_dir = Path(cfg["paths"]["interim_data"])  # Intermediate data
+nports = cfg["dataset"]["nports"]  # Number of ports
 
 # %% [markdown]
 # ## 1. Dataset Structure
 #
-# All datasets from [SI/PI-Database](https://www.tet.tuhh.de/en/si-pi-database/)
-#  have uniform archive structure, shown by the following procedure:
+# All datasets from [SI/PI-Database](https://www.tet.tuhh.de/en/si-pi-database/) have
+# uniform archive structure, shown by the following procedure:
 
 # %%
 print(directory_tree(dataset, max_depth=2, max_children=5))
 
 
 # %% [markdown]
-# - `description.pdf`: Documentation for the dataset, describing the PCB
-#     structure, simulation setup, parameters, and intended use.
+# - `description.pdf`: Documentation for the dataset, describing the PCB structure,
+# simulation setup, parameters, and intended use.
 #
-# - `parameter.csv`: Table of design or simulation parameters. Each row
-#     typically corresponds to one simulation case, often linked by a simulation
-#     index such as `SIMU_INDEX`.
+# - `parameter.csv`: Table of design or simulation parameters. Each row typically
+#   corresponds to one simulation case, often linked by a simulation index such as
+#   `SIMU_INDEX`.
 #
-# - `variation`: Directory containing the simulated S-parameter files for each
-#     parameter variation.
+# - `variation`: Directory containing the simulated S-parameter files for each parameter
+#   variation.
 #
-# - - `simu_0.s12p`, `simu_1.s12p`, etc.: Touchstone files containing
-#   S-parameter data for individual simulation cases. The number before .s12p
-#   identifies the simulation index.
+# - - `simu_0.s12p`, `simu_1.s12p`, etc.: Touchstone files containing S-parameter data
+#   for individual simulation cases. The number before .s12p identifies the simulation
+#   index.
 #
 # - - `.s12p`: Touchstone format for a 12-port network, so each file stores
-#     frequency-dependent S-parameters for 12 ports.  
+#   frequency-dependent S-parameters for 12 ports.
 #
-# `class RawData` was developed to embody the fixed structure of the dataset,
-#   and to provide convenience for further operation:
+# `class RawData` was developed to embody the fixed structure of the dataset, and to
+# provide convenience for further operation:
 
 # %%
 rawdata = RawData(dataset, nports)
@@ -89,7 +93,7 @@ print(f"{len(rawdata.touchstones())} touchstone files found in the dataset.")
 # and material parameters describing PCB interconnect structures and their
 # corresponding electromagnetic simulations. The parameters primarily influence
 # impedance matching, insertion loss, reflections, coupling, resonance behavior,
-# and signal propagation characteristics in the high-speed interconnect.  
+# and signal propagation characteristics in the high-speed interconnect.
 #
 # All parameter variations are stored in the file `parameter.csv`. It is a
 # tabular file with multiple columns and rows. The first row has all the
@@ -191,7 +195,9 @@ print(parameters.preview())
 # <tr>
 # <td><code>ANTIPADR</code></td>
 # <td>mil</td>
-# <td>Antipad Radius - Radius of the clearance hole around the via in reference planes</td>
+# <td>
+#   Antipad Radius - Radius of the clearance hole around the via in reference planes
+# </td>
 # <td>Strongly affects parasitic capacitance and impedance discontinuity</td>
 # </tr>
 #
@@ -207,7 +213,9 @@ print(parameters.preview())
 # <tr>
 # <td><code>DISTTL</code></td>
 # <td>mil</td>
-# <td>Distance between Transmission Lines - Spacing between neighboring traces/links</td>
+# <td>
+#   Distance between Transmission Lines - Spacing between neighboring traces/links
+# </td>
 # <td>Larger spacing reduces coupling and crosstalk</td>
 # </tr>
 #
@@ -231,38 +239,35 @@ print(parameters.preview())
 # </table>
 
 # %% [markdown]
-# #### 2.1.1 EPS — Relative Permittivity  
+# #### 2.1.1 EPS — Relative Permittivity
 #
-# This parameter represents the substrate dielectric constant: 
+# This parameter represents the substrate dielectric constant:
 # $\varepsilon_r = \frac{\varepsilon}{\varepsilon_0}$, where $\varepsilon$ is
 # material permittivity and $\varepsilon_0$ is vacuum permittivity.
 #
-# **Physical effect:**
-#
 # Signal propagation velocity approximately follows:
-# $v \approx \frac{c}{\sqrt{\varepsilon_r}}$, so higher EPS:
-# - reduces propagation speed,  
-# - increases delay,  
-# - shifts resonant frequencies downward, and  
-# - changes transmission line impedance  
+# $v \approx \frac{c}{\sqrt{\varepsilon_r}}$, so higher EPS typically has
+# following physical effect:
+# - reduces propagation speed,
+# - increases delay,
+# - shifts resonant frequencies downward, and
+# - changes transmission line impedance.
 #
-# **ML Significance:**
-#
-# EPS is often one of the dominant parameters affecting phase response, delay,
-# resonance location and insertion loss profile.
+# ML (Machine Learning) significance: EPS is often one of the dominant
+# parameters affecting phase response, delay, resonance location and insertion
+# loss profile.
 
 # %% [markdown]
-# #### 2.1.2 TAND — Loss Tangent  
+# #### 2.1.2 TAND — Loss Tangent
 #
 # Loss tangent describes dielectric energy dissipation:
 # $\tan\delta = \frac{\varepsilon''}{\varepsilon'}$, where $\varepsilon''$ is
 # imaginary permittivity (loss) and $\varepsilon'$ is real permittivity.
 #
-# **Physical effect:**
-#
-# Higher TAND (1) increases dielectric attenuation, (2) degrades insertion loss,
-# (3) worsens eye diagrams and (4) becomes more significant at high frequencies.
-# This parameter is directly related to IL target.
+# Higher TAND has the following physical effect: (1) increases dielectric
+# attenuation, (2) degrades insertion loss, (3) worsens eye diagrams and
+# (4) becomes more significant at high frequencies. This parameter is directly
+# related to IL target.
 
 # %% [markdown]
 # #### 2.1.3 PITCH — Via Pitch
@@ -270,7 +275,7 @@ print(parameters.preview())
 # Via pitch is the center-to-center spacing between vias.
 #
 # Smaller pitch (1) increases electromagnetic coupling, (2) changes parasitic
-# capacitance and (4) can increase crosstalk. Larger pitch reduces coupling and
+# capacitance and (3) can increase crosstalk. Larger pitch reduces coupling and
 # alters current return paths.
 #
 # This parameter strongly influences (1) near-end crosstalk (NEXT), (2) far-end
@@ -299,11 +304,11 @@ print(parameters.preview())
 # edges.
 #
 # Changing START may influence:
-# - PCB cavity dimensions  
-# - electromagnetic boundary conditions  
-# - resonance behavior  
-# - return-current spreading  
-# - coupling to board edges  
+# - PCB cavity dimensions
+# - electromagnetic boundary conditions
+# - resonance behavior
+# - return-current spreading
+# - coupling to board edges
 
 # %% [markdown]
 # #### 2.1.6 VIAR — Via Radius
@@ -348,13 +353,13 @@ print(parameters.preview())
 #
 # Width of PCB traces.
 # - Wider traces result to lower impedance, lower conductor resistance and
-#   reduced conductor loss.  
+#   reduced conductor loss.
 #
 # - Narrow traces lead to higher impedance, higher current density and more
-#   loss.  
+#   loss.
 #
 # - This parameter strongly affects characteristic impedance, insertion loss and
-# matching quality.  
+# matching quality.
 
 # %% [markdown]
 # ### 2.2 Data inspection
@@ -367,7 +372,8 @@ parameters.structural_summary()
 
 # %% [markdown]
 # The the structural summary reveals several important things about the
-# dataset quality, ML readiness and even hidden problems.
+# dataset quality, ML readiness and even hidden problems. Details are explored
+# in the following subsections:
 #
 # #### 2.2.1 The dataset is numerically clean
 #
@@ -413,9 +419,9 @@ parameters.structural_summary()
 # | Very deep NN             | Risk of overfitting |
 # | Transformer-scale models | Overkill            |
 #
-# This may implicate the **risk of overfitting** for complex modelling like
-# full S-matrix prediction. So the staged approach of "starting simple, and
-# gradually increase model complexity" is helpful.
+# This may implicate the **risk of overfitting** for complex modelling like full
+# S-matrix prediction. So the staged approach of "starting simple, and gradually
+# increase model complexity" is helpful.
 
 # %% [markdown]
 # #### 2.2.5 Memory footprint challenge
@@ -498,9 +504,9 @@ parameters.statistical_summary()
 # For many columns, the median is close to the mean, and the 25% / 75% values
 # are fairly symmetric. Examples:
 #
-# EPS: mean ≈ 4.0009, median ≈ 4.0015  
-# PITCH: mean ≈ 60.08, median ≈ 60.12  
-# START: mean ≈ 120.16, median ≈ 120.24  
+# EPS: mean ≈ 4.0009, median ≈ 4.0015
+# PITCH: mean ≈ 60.08, median ≈ 60.12
+# START: mean ≈ 120.16, median ≈ 120.24
 #
 # This suggests the design space may have been sampled deliberately, likely to
 # cover the parameter range evenly.
@@ -527,7 +533,8 @@ parameters.statistical_summary()
 # %% [markdown]
 # #### 2.3.4 `TAND` includes zero
 # The minimum of `TAND` is 0.000000. Physically, this means some simulations
-# assume almost lossless dielectric material. These cases may produce noticeably lower insertion loss.
+# assume almost lossless dielectric material. These cases may produce noticeably
+# lower insertion loss.
 #
 # For insertion loss prediction, this is important because:
 #
@@ -545,9 +552,9 @@ parameters.statistical_summary()
 #
 # The feature magnitudes are very different:
 #
-# * `TAND`: around 0.00–0.02  
-# * `TRACE_LEN`: around 500–2000  
-# * `EPS`: around 3.6–4.4  
+# * `TAND`: around 0.00–0.02
+# * `TRACE_LEN`: around 500–2000
+# * `EPS`: around 3.6–4.4
 #
 # This suggests that `TRACE_LEN` may easily dominate the prediction. A neural
 # network would be poorly conditioned without normalization or standardization.
@@ -637,21 +644,19 @@ eda.statistical_summary(["BOARD_HEIGHT", "BOARD_WIDTH", "BOARD_AREA"])
 #
 # This gives a rough indication of:
 #
-# * electrical path elongation,  
-# * routing scale,  
-# * resonance opportunity,  
-# * and accumulated attenuation.  
+# * electrical path elongation,
+# * routing scale,
+# * resonance opportunity,
+# * and accumulated attenuation.
 #
 # Large values may imply:
 #
-# * more insertion loss,  
-# * more distributed transmission-line effects,  
-# * and stronger frequency-dependent behavior.  
+# * more insertion loss,
+# * more distributed transmission-line effects,
+# * and stronger frequency-dependent behavior.
 
 # %%
-ratio_features = [
-    "ANTIPAD_TO_VIA_RATIO", "TLWIDTH_TO_DIEL_RATIO", "TRACE_ASPECT_RATIO"
-]
+ratio_features = ["ANTIPAD_TO_VIA_RATIO", "TLWIDTH_TO_DIEL_RATIO", "TRACE_ASPECT_RATIO"]
 eda.statistical_summary(ratio_features)
 
 # %% [markdown]
@@ -666,8 +671,16 @@ eda.statistical_summary(ratio_features)
 
 # %%
 physical_features = [
-    "EPS", "TAND", "PITCH", "TRACE_LEN", "START",
-    "VIAR", "ANTIPADR", "TDIEL", "DISTTL", "TLWIDTH",
+    "EPS",
+    "TAND",
+    "PITCH",
+    "TRACE_LEN",
+    "START",
+    "VIAR",
+    "ANTIPADR",
+    "TDIEL",
+    "DISTTL",
+    "TLWIDTH",
 ]
 _ = eda.plot_distribution_histograms(physical_features)
 
@@ -706,13 +719,17 @@ _ = eda.plot_distribution_histograms(physical_features)
 #
 # This section uses:
 #
-# - a correlation heatmap to summarize linear relationships;  
-# - scatter plots for selected engineering-relevant parameter pairs.  
+# - a correlation heatmap to summarize linear relationships;
+# - scatter plots for selected engineering-relevant parameter pairs.
 
 # %%
 correlation_features = physical_features + [
-    "BOARD_HEIGHT", "BOARD_WIDTH", "BOARD_AREA",
-    "ANTIPAD_TO_VIA_RATIO", "TLWIDTH_TO_DIEL_RATIO", "TRACE_ASPECT_RATIO"
+    "BOARD_HEIGHT",
+    "BOARD_WIDTH",
+    "BOARD_AREA",
+    "ANTIPAD_TO_VIA_RATIO",
+    "TLWIDTH_TO_DIEL_RATIO",
+    "TRACE_ASPECT_RATIO",
 ]
 
 _ = eda.plot_correlation_heatmap(correlation_features)
@@ -732,8 +749,10 @@ corr_pairs.head(15)
 
 # %%
 physical_constraint_pairs = [
-    ("VIAR", "ANTIPADR"), ("TLWIDTH", "TDIEL"),
-    ("PITCH", "TRACE_LEN"), ("DISTTL", "TLWIDTH"),
+    ("VIAR", "ANTIPADR"),
+    ("TLWIDTH", "TDIEL"),
+    ("PITCH", "TRACE_LEN"),
+    ("DISTTL", "TLWIDTH"),
 ]
 
 _ = eda.plot_physical_relationships(physical_constraint_pairs)
@@ -746,18 +765,18 @@ _ = eda.plot_board_geometry_verification()
 #
 # The first group focuses on physical parameter relationships:
 #
-# - `ANTIPADR` versus `VIAR` - checks the clearance relationship around vias.  
+# - `ANTIPADR` versus `VIAR` - checks the clearance relationship around vias.
 # - `TLWIDTH` versus `TDIEL` - relates trace width to dielectric thickness, which
-#   is important for characteristic impedance.  
+#   is important for characteristic impedance.
 # - `PITCH` versus `TRACE_LEN` - checks whether via-array spacing and trace
-#   length were sampled independently.  
+#   length were sampled independently.
 # - `DISTTL` versus `TLWIDTH` - checks whether line spacing remains larger than
-#   trace width.  
+#   trace width.
 #
 # The second group focuses on derived board-geometry verification:
 #
-# - `BOARD_HEIGHT` versus `PITCH` - verifies the deterministic board-height definition.  
-# - `BOARD_WIDTH` versus `TRACE_LEN` - verifies the deterministic board-width definition.  
+# - `BOARD_HEIGHT` VS `PITCH` - verifies the deterministic board-height definition.
+# - `BOARD_WIDTH` VS `TRACE_LEN` - verifies the deterministic board-width definition.
 #
 # Separating these plots avoids mixing physical feature analysis with derived
 # geometry checks. The dashed reference lines mark simple geometric boundary
@@ -859,6 +878,7 @@ display(Image(filename=str(pcb_top_view_img), width=520))
 # - `XT`: crosstalk between non-corresponding ports.
 #
 # $$
+# \mathbf{S} =
 # \scriptsize
 # \begin{bmatrix}
 # R & XT & XT & XT & XT & XT & \mathbf{IL} & XT & XT & XT & XT & XT \\
@@ -887,7 +907,7 @@ display(Image(filename=str(pcb_top_view_img), width=520))
 # S_{ij}(f) = \operatorname{Re}(S_{ij}) + j\operatorname{Im}(S_{ij})
 # $$
 #
-# The resulting response tensor can be thought of as one 12-by-12 matrix for
+# The resulting response tensor can be thought of as one $12 \times 12$ matrix for
 # every frequency point [1]:
 
 # %% tags=["remove-input"]
@@ -920,8 +940,6 @@ display(Image(filename=str(smatrix_img), width=280))
 # values mean stronger attenuation.
 
 # %%
-import skrf as rf
-
 example_touchstone = rawdata.touchstones()[0]
 network = rf.Network(str(example_touchstone))
 response_db = network.s_db
@@ -930,10 +948,7 @@ print(f"Loaded example network: {example_touchstone.name}")
 print(f"Number of ports: {network.nports}")
 print(f"`network.s_db` shape: {response_db.shape}")
 print("Shape meaning: (frequency point, receiver port, source port)")
-print(
-    "Frequency span: "
-    f"{network.f[0] / 1e9:g} GHz to {network.f[-1] / 1e9:g} GHz"
-)
+print(f"Frequency span: {network.f[0] / 1e9:g} GHz to {network.f[-1] / 1e9:g} GHz")
 
 # Touchstone port labels are one-based, while NumPy arrays are zero-based.
 demo_pair = (7, 1)
@@ -946,6 +961,11 @@ print(f"S{demo_pair[0]}{demo_pair[1]} first 5 dB values:", *demo_curve_db[:5])
 # The project wraps this `network.s_db` indexing in `SParameterDataset` so the
 # selected response paths can be aligned with `parameter.csv`, validated, and
 # cached.
+#
+# `SParameterDataset.from_touchstones()` returns the in-memory dataset and, when
+# `cache_path` is supplied, stores the same compact arrays in a compressed NumPy
+# archive. The cache avoids reparsing every Touchstone file during later notebook
+# runs.
 
 # %%
 port_pairs = [tuple(pair) for pair in cfg["dataset"]["ports"]]
@@ -959,6 +979,54 @@ responses = SParameterDataset.from_touchstones(
 response_eda = PcbDatasetEDA(parameters, responses)
 
 # %% [markdown]
+# The response cache has one scalar schema version and four arrays:
+#
+# - `simulation_indices`: `SIMU_INDEX` values with both parameter rows and
+#   Touchstone files.
+# - `frequencies_ghz`: the common frequency grid.
+# - `port_pairs`: selected one-based `(receiver, source)` paths, in column
+#   order.
+# - `through_s_db`: the extracted response tensor with shape
+#   `(simulation, frequency, path)`.
+#
+# Therefore, `through_s_db[i, :, j]` is one full frequency response curve for
+# simulation row `i` and port-pair column `j`.
+
+# %%
+with np.load(response_cache, allow_pickle=False) as cache:
+    print("Cache file:", relative_to_project_root(response_cache))
+    print("Cache keys:", cache.files)
+    for key in cache.files:
+        value = cache[key]
+        print(f"{key}: shape={value.shape}, dtype={value.dtype}")
+
+    cached_indices = cache["simulation_indices"]
+    cached_frequencies = cache["frequencies_ghz"]
+    cached_pairs = cache["port_pairs"]
+    cached_responses = cache["through_s_db"]
+
+demo_simu_row = 0
+demo_ports_col = 0
+demo_freq_row = int(
+    np.flatnonzero(np.isclose(cached_frequencies, 10.0, rtol=0.0, atol=1e-9))[0]
+)
+
+
+demo_column = SParameterDataset.response_column_name(cached_pairs[demo_ports_col])
+demo_curve = cached_responses[demo_simu_row, :, demo_ports_col]
+demo_value = cached_responses[demo_simu_row, demo_freq_row, demo_ports_col]
+
+print(
+    f"\nthrough_s_db[{demo_simu_row}, :, {demo_ports_col}] is the full "
+    f"{demo_column} curve for SIMU_INDEX {cached_indices[demo_simu_row]}."
+)
+print("First 5 curve values:", *demo_curve[:5])
+print(
+    f"At {cached_frequencies[demo_freq_row]:g} GHz, "
+    f"{demo_column} = {demo_value:g} dB."
+)
+
+# %% [markdown]
 # ### 3.4 Inspect through-path response curves
 #
 # The magnitude in dB is named directly as `S*_DB`, rather than using an
@@ -967,9 +1035,7 @@ response_eda = PcbDatasetEDA(parameters, responses)
 
 # %%
 representative_index = int(responses.simulation_indices[0])
-_ = response_eda.plot_through_response_curves(
-    simulation_indices=[representative_index]
-)
+_ = response_eda.plot_through_response_curves(simulation_indices=[representative_index])
 
 # %% [markdown]
 # ### 3.5 Relate parameters to response at 10 GHz
@@ -980,7 +1046,7 @@ _ = response_eda.plot_through_response_curves(
 # %%
 response_at_10ghz = response_eda.response_frame_at_frequency(10.0)
 response_columns = [
-    SParameterDataset.response_column(pair) for pair in responses.port_pairs
+    SParameterDataset.response_column_name(pair) for pair in responses.port_pairs
 ]
 response_at_10ghz[response_columns].describe()
 
@@ -1025,4 +1091,5 @@ _ = response_eda.plot_through_response_curves()
 # [Accessed: May 28, 2026].
 #
 # [2] M. Schierholz et al., "SI/PI-Database of PCB-Based Interconnects for Machine
-# Learning Applications," in IEEE Access, vol. 9, pp. 34423-34432, 2021, doi: 10.1109/ACCESS.2021.3061788.
+# Learning Applications," in IEEE Access, vol. 9, pp. 34423-34432, 2021,
+# doi: 10.1109/ACCESS.2021.3061788.
