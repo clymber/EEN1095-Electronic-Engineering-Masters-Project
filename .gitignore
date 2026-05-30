@@ -1,12 +1,17 @@
 # Jupyter Notebooks that paired with .py files are not ignored by default.
 sparam-surrogate/**/*.ipynb
 sparam-surrogate/data/
+
+# Local configuration is only needed during development and debugging
 sparam-surrogate/configs/local.json
+
+# Local logging and temporary files.
 sparam-surrogate/outputs/logs
 sparam-surrogate/reports/pdf/
 sparam-surrogate/reports/html/
 sparam-surrogate/PLAN.md
 sparam-surrogate/memorandum.md
+Documents/ProjectPlan_ChunyuLong_A00049113_v3.0.pdf
 
 # File systems specific and temporary files
 .DS_Store
