@@ -1,5 +1,9 @@
 """
 Aligned, compact S-parameter responses extracted from Touchstone files.
+
+This module parses Touchstone networks, aligns them to PCB simulation parameters, and
+stores both selected dB response paths and complete complex S-matrices for downstream
+modelling.
 """
 
 from collections.abc import Sequence
@@ -15,14 +19,21 @@ from .raw_data import IndexConsistencyReport, RawData
 
 class SParameterDataset:
     """
-    Frequency-dependent transmission responses aligned to PCB simulations.
+    Frequency-dependent S-parameter responses aligned to PCB simulations.
 
     Selected S-parameter paths are stored as magnitude in dB with shape
-    ``(simulation, frequency, path)``. Port-pair tuples use Touchstone's
-    one-based ``(receiver, source)`` convention.
+    ``(simulation, frequency, path)``. The complete complex S-matrix is stored
+    with shape ``(simulation, frequency, receiver, source)``. Port-pair tuples
+    use Touchstone's one-based ``(receiver, source)`` convention.
+
+    Attributes
+    ----------
+    CACHE_SCHEMA_VERSION:
+        Integer schema identifier written into response cache files so stale
+        or incompatible cache formats can be rejected explicitly.
     """
 
-    CACHE_SCHEMA_VERSION = 1
+    CACHE_SCHEMA_VERSION = 2
 
     def __init__(
         self,
@@ -31,18 +42,62 @@ class SParameterDataset:
         port_pairs: Sequence[tuple[int, int]],
         through_s_db: np.ndarray,
         alignment_report: IndexConsistencyReport | None = None,
+        full_s_matrix: np.ndarray | None = None,
     ) -> None:
+        """
+        Create an aligned S-parameter response dataset.
+
+        Parameters
+        ----------
+        simulation_indices:
+            One-dimensional simulation identifiers for parameter rows that have
+            matching Touchstone responses. The order defines the first axis of
+            all response arrays.
+        frequencies_ghz:
+            Common one-dimensional frequency grid in GHz. The order defines the
+            second axis of all response arrays.
+        port_pairs:
+            Selected one-based Touchstone ``(receiver, source)`` port pairs
+            represented in ``through_s_db``. Pair order defines the final axis
+            of ``through_s_db`` and is preserved in dataframe column output.
+        through_s_db:
+            Selected S-parameter magnitudes in dB with shape
+            ``(n_simulations, n_frequencies, n_port_pairs)``.
+        alignment_report:
+            Optional report from :class:`RawData` describing mismatches between
+            `parameter.csv` records and Touchstone files.
+        full_s_matrix:
+            Optional complete complex S-matrix values with shape
+            ``(n_simulations, n_frequencies, n_ports, n_ports)``. The port axes
+            use zero-based NumPy indexing internally, corresponding to
+            Touchstone's one-based port labels.
+
+        Raises
+        ------
+        ValueError
+            If indices are duplicated, the frequency grid is invalid, response
+            shapes do not match the metadata, or response values are non-finite.
+        """
         self._simulation_indices = np.asarray(simulation_indices, dtype=np.int64)
         self._frequencies_ghz = np.asarray(frequencies_ghz, dtype=float)
         self._port_pairs = self._normalize_port_pairs(port_pairs)
         self._through_s_db = np.asarray(through_s_db, dtype=float)
         self._alignment_report = alignment_report
+        self._full_s_matrix = (
+            None if full_s_matrix is None else np.asarray(full_s_matrix, dtype=complex)
+        )
         self._validate_arrays()
 
     @property
     def simulation_indices(self) -> np.ndarray:
         """
         Return simulation indices with both parameter and response records.
+
+        Returns
+        -------
+        np.ndarray
+            One-dimensional integer array whose order matches the simulation
+            axis of ``through_s_db`` and ``full_s_matrix``.
         """
         return self._simulation_indices
 
@@ -50,6 +105,12 @@ class SParameterDataset:
     def frequencies_ghz(self) -> np.ndarray:
         """
         Return the common Touchstone frequency grid in GHz.
+
+        Returns
+        -------
+        np.ndarray
+            One-dimensional, strictly increasing frequency grid shared by all
+            aligned Touchstone responses.
         """
         return self._frequencies_ghz
 
@@ -57,6 +118,12 @@ class SParameterDataset:
     def port_pairs(self) -> tuple[tuple[int, int], ...]:
         """
         Return selected one-based ``(receiver, source)`` port paths.
+
+        Returns
+        -------
+        tuple[tuple[int, int], ...]
+            Immutable port-pair selection. Tuple order matches the final axis of
+            ``through_s_db`` and the order of response dataframe columns.
         """
         return self._port_pairs
 
@@ -64,13 +131,60 @@ class SParameterDataset:
     def through_s_db(self) -> np.ndarray:
         """
         Return selected response curves in dB.
+
+        Returns
+        -------
+        np.ndarray
+            Finite response magnitudes in dB with shape
+            ``(n_simulations, n_frequencies, n_port_pairs)``.
         """
         return self._through_s_db
+
+    @property
+    def full_s_matrix(self) -> np.ndarray:
+        """
+        Return complete complex S-matrices for all aligned simulations.
+
+        Returns
+        -------
+        np.ndarray
+            Complex S-parameter matrices with shape
+            ``(n_simulations, n_frequencies, n_ports, n_ports)``.
+
+        Raises
+        ------
+        ValueError
+            If the dataset was constructed without full complex matrix data.
+        """
+        if self._full_s_matrix is None:
+            raise ValueError("Full complex S-matrix data is not available.")
+        return self._full_s_matrix
+
+    @property
+    def nports(self) -> int:
+        """
+        Return the number of network ports represented by the response data.
+
+        Returns
+        -------
+        int
+            Number of ports inferred from ``full_s_matrix`` when available, or
+            from the largest selected port number otherwise.
+        """
+        if self._full_s_matrix is not None:
+            return int(self._full_s_matrix.shape[2])
+        return max(max(pair) for pair in self._port_pairs)
 
     @property
     def alignment_report(self) -> IndexConsistencyReport | None:
         """
         Return the raw parameter/Touchstone consistency report, when available.
+
+        Returns
+        -------
+        IndexConsistencyReport | None
+            Consistency report from :class:`RawData`, or ``None`` when the
+            dataset was built without one.
         """
         return self._alignment_report
 
@@ -85,11 +199,44 @@ class SParameterDataset:
         rebuild_cache: bool = False,
     ) -> "SParameterDataset":
         """
-        Parse aligned Touchstone files and extract selected S-parameters in dB.
+        Parse aligned Touchstone files and extract S-parameter responses.
 
         When ``cache_path`` exists and ``rebuild_cache`` is false, the compact
         extracted response array is loaded from cache after checking that its
         simulation alignment and selected paths still match this request.
+
+        Parameters
+        ----------
+        parameters:
+            PCB parameter table wrapper containing the ``SIMU_INDEX`` column
+            used to align rows to Touchstone filenames.
+        raw_data:
+            Raw-data locator that provides the Touchstone directory, expected
+            network port count, and index consistency checks.
+        port_pairs:
+            One-based Touchstone ``(receiver, source)`` paths to extract as dB
+            response columns.
+        cache_path:
+            Optional ``.npz`` path used to load or store the parsed response
+            arrays.
+        rebuild_cache:
+            If ``True``, ignore any existing cache at ``cache_path`` and parse
+            Touchstone files again.
+
+        Returns
+        -------
+        SParameterDataset
+            Dataset containing aligned simulation indices, the common frequency
+            grid, selected dB paths, the full complex S-matrix, and any
+            alignment report.
+
+        Raises
+        ------
+        ValueError
+            If port pairs are invalid, no parameter rows have matching
+            Touchstone files, the cache is incompatible with the request,
+            Touchstone port counts differ from ``raw_data.nports``, frequency
+            grids are inconsistent, or response values are non-finite.
         """
         normalized_pairs = cls._normalize_port_pairs(port_pairs)
         cls._validate_pairs_for_network(normalized_pairs, raw_data.nports)
@@ -109,6 +256,7 @@ class SParameterDataset:
 
         frequencies_ghz: np.ndarray | None = None
         responses: list[np.ndarray] = []
+        full_matrices: list[np.ndarray] = []
         for simulation_index in simulation_indices:
             network = rf.Network(str(raw_data.touchstone(simulation_index)))
             if network.nports != raw_data.nports:
@@ -131,6 +279,13 @@ class SParameterDataset:
                     f"mismatch found at SIMU_INDEX {simulation_index}."
                 )
 
+            full_matrix = np.asarray(network.s, dtype=complex)
+            if not np.isfinite(full_matrix).all():
+                raise ValueError(
+                    "Non-finite complex response found for "
+                    f"SIMU_INDEX {simulation_index}."
+                )
+
             with np.errstate(divide="ignore"):
                 response_db = np.asarray(network.s_db, dtype=float)
                 selected_columns: list[np.ndarray] = [
@@ -144,6 +299,7 @@ class SParameterDataset:
                     f"SIMU_INDEX {simulation_index}."
                 )
             responses.append(selected)
+            full_matrices.append(full_matrix)
 
         assert frequencies_ghz is not None
         dataset = cls(
@@ -152,6 +308,7 @@ class SParameterDataset:
             normalized_pairs,
             np.stack(responses, axis=0),
             alignment_report,
+            np.stack(full_matrices, axis=0),
         )
         if cache_path is not None:
             dataset._write_cache(cache_path)
@@ -160,6 +317,24 @@ class SParameterDataset:
     def at_frequency(self, frequency_ghz: float) -> pd.DataFrame:
         """
         Return selected dB responses at one frequency that exists in the grid.
+
+        Parameters
+        ----------
+        frequency_ghz:
+            Frequency in GHz to select from the dataset's common Touchstone
+            grid. Matching uses a small absolute tolerance to avoid floating
+            point representation noise.
+
+        Returns
+        -------
+        pd.DataFrame
+            Dataframe with ``SIMU_INDEX`` and one ``S<receiver>_<source>_DB``
+            column for each selected port pair.
+
+        Raises
+        ------
+        ValueError
+            If ``frequency_ghz`` is not present in the dataset frequency grid.
         """
         matches = np.flatnonzero(
             np.isclose(self._frequencies_ghz, frequency_ghz, rtol=0.0, atol=1e-9)
@@ -180,6 +355,17 @@ class SParameterDataset:
     def response_column_name(pair: tuple[int, int]) -> str:
         """
         Return the dataframe column name for one response port pair.
+
+        Parameters
+        ----------
+        pair:
+            One-based Touchstone ``(receiver, source)`` path that identifies the
+            response column.
+
+        Returns
+        -------
+        str
+            Column name in ``S<receiver>_<source>_DB`` format.
         """
         receiver, source = pair
         return f"S{receiver}_{source}_DB"
@@ -192,6 +378,34 @@ class SParameterDataset:
         expected_pairs: tuple[tuple[int, int], ...],
         alignment_report: IndexConsistencyReport,
     ) -> "SParameterDataset":
+        """
+        Load a cached response dataset and verify it matches the request.
+
+        Parameters
+        ----------
+        cache_path:
+            Path to the compressed ``.npz`` response cache.
+        expected_indices:
+            Simulation indices that the current parameter and raw-data inputs
+            expect after alignment.
+        expected_pairs:
+            Normalized one-based port pairs requested by the caller.
+        alignment_report:
+            Current raw parameter/Touchstone consistency report to attach to
+            the loaded dataset.
+
+        Returns
+        -------
+        SParameterDataset
+            Cached dataset after schema, alignment, and port-pair validation.
+
+        Raises
+        ------
+        ValueError
+            If the cache schema version is unsupported, cached simulation
+            alignment differs from ``expected_indices``, or cached port pairs do
+            not match ``expected_pairs``.
+        """
         with np.load(cache_path, allow_pickle=False) as cache:
             schema_version = int(np.asarray(cache["schema_version"]).item())
             if schema_version != cls.CACHE_SCHEMA_VERSION:
@@ -204,6 +418,7 @@ class SParameterDataset:
                 [tuple(pair) for pair in cache["port_pairs"].tolist()],
                 cache["through_s_db"],
                 alignment_report,
+                cache["full_s_matrix"],
             )
 
         if not np.array_equal(dataset.simulation_indices, expected_indices):
@@ -219,6 +434,20 @@ class SParameterDataset:
         return dataset
 
     def _write_cache(self, cache_path: Path) -> None:
+        """
+        Write this dataset to a compressed NumPy response cache.
+
+        Parameters
+        ----------
+        cache_path:
+            Destination ``.npz`` file. Parent directories are created as needed.
+
+        Raises
+        ------
+        ValueError
+            If full complex S-matrix data is unavailable and therefore cannot
+            be written to the cache.
+        """
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         with cache_path.open("wb") as cache_file:
             np.savez_compressed(
@@ -228,6 +457,7 @@ class SParameterDataset:
                 frequencies_ghz=self._frequencies_ghz,
                 port_pairs=np.asarray(self._port_pairs, dtype=np.int64),
                 through_s_db=self._through_s_db,
+                full_s_matrix=self.full_s_matrix,
             )
 
     @staticmethod
@@ -240,6 +470,23 @@ class SParameterDataset:
         Pair order is preserved because it defines the final response-path axis.
         The selection must contain at least one unique ``(receiver, source)``
         pair, and both port numbers must be positive one-based indices.
+
+        Parameters
+        ----------
+        port_pairs:
+            Candidate Touchstone ``(receiver, source)`` port pairs. Values are
+            converted to integers and returned as immutable tuples.
+
+        Returns
+        -------
+        tuple[tuple[int, int], ...]
+            Normalized, unique, positive one-based response port pairs.
+
+        Raises
+        ------
+        ValueError
+            If no pairs are provided, pairs are duplicated, or any port number
+            is less than one.
         """
         normalized = tuple(
             (int(receiver), int(source)) for receiver, source in port_pairs
@@ -258,6 +505,18 @@ class SParameterDataset:
     ) -> None:
         """
         Ensure each response port pair fits within a network's port count.
+
+        Parameters
+        ----------
+        port_pairs:
+            Normalized one-based ``(receiver, source)`` pairs to validate.
+        nports:
+            Number of ports available in the Touchstone network.
+
+        Raises
+        ------
+        ValueError
+            If any requested receiver or source port exceeds ``nports``.
         """
         if any(receiver > nports or source > nports for receiver, source in port_pairs):
             raise ValueError(
@@ -270,6 +529,26 @@ class SParameterDataset:
     ) -> list[int]:
         """
         Return parameter simulation indices that have matching Touchstone files.
+
+        Parameters
+        ----------
+        parameters:
+            PCB parameter wrapper whose dataframe must include an integer-valued
+            ``SIMU_INDEX`` column.
+        raw_data:
+            Raw-data locator used to test whether each ``simu_<index>.sNp``
+            Touchstone file exists.
+
+        Returns
+        -------
+        list[int]
+            Simulation indices from ``parameters`` that have matching
+            Touchstone files, preserving parameter-row order.
+
+        Raises
+        ------
+        ValueError
+            If ``SIMU_INDEX`` is missing, non-integer, or duplicated.
         """
         if "SIMU_INDEX" not in parameters.dataframe.columns:
             raise ValueError("PCB parameters must include a SIMU_INDEX column.")
@@ -288,6 +567,17 @@ class SParameterDataset:
         ]
 
     def _validate_arrays(self) -> None:
+        """
+        Validate internal metadata and response array invariants.
+
+        Raises
+        ------
+        ValueError
+            If simulation indices are not one-dimensional and unique, the
+            frequency grid is not finite and strictly increasing, selected dB
+            responses have the wrong shape or non-finite values, or the full
+            S-matrix has incompatible dimensions or non-finite values.
+        """
         if self._simulation_indices.ndim != 1:
             raise ValueError("Simulation indices must be one-dimensional.")
         if len(np.unique(self._simulation_indices)) != len(self._simulation_indices):
@@ -312,3 +602,18 @@ class SParameterDataset:
             )
         if not np.isfinite(self._through_s_db).all():
             raise ValueError("Response array contains non-finite dB values.")
+        if self._full_s_matrix is not None:
+            full_shape = self._full_s_matrix.shape
+            expected_prefix = (
+                len(self._simulation_indices),
+                len(self._frequencies_ghz),
+            )
+            if len(full_shape) != 4 or full_shape[:2] != expected_prefix:
+                raise ValueError(
+                    "Full S-matrix array has shape "
+                    f"{full_shape}; expected prefix {expected_prefix}."
+                )
+            if full_shape[2] != full_shape[3]:
+                raise ValueError("Full S-matrix port axes must be square.")
+            if not np.isfinite(self._full_s_matrix).all():
+                raise ValueError("Full S-matrix array contains non-finite values.")

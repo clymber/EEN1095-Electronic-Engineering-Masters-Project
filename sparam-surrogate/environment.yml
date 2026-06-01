@@ -43,6 +43,7 @@ dependencies:
   - tqdm
   - rich
   - notebook
+  - pdftotext
 
 
   # Tensorflow for macOS M1 GPU
