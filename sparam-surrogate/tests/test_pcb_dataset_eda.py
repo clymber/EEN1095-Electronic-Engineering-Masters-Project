@@ -11,7 +11,6 @@ from pandas.testing import assert_frame_equal
 
 from sparam_surrogate.data.pcb_dataset_eda import PcbDatasetEDA
 from sparam_surrogate.data.pcb_parameters import PcbParameters
-from sparam_surrogate.data.s_parameter_dataset import SParameterDataset
 
 
 def _make_parameters() -> PcbParameters:
@@ -33,6 +32,14 @@ def _make_parameters() -> PcbParameters:
 
 
 def _make_response_eda() -> PcbDatasetEDA:
+    """
+    Return EDA data with a lightweight aligned response fixture.
+
+    Returns
+    -------
+    PcbDatasetEDA
+        EDA object configured with parameter rows and selected dB responses.
+    """
     parameters = PcbParameters(
         pd.DataFrame(
             {
@@ -50,7 +57,7 @@ def _make_response_eda() -> PcbDatasetEDA:
             }
         )
     )
-    responses = SParameterDataset(
+    responses = ResponseFixture(
         simulation_indices=[0, 2],
         frequencies_ghz=[1.0, 10.0],
         port_pairs=[(7, 1), (8, 2)],
@@ -62,6 +69,69 @@ def _make_response_eda() -> PcbDatasetEDA:
         ),
     )
     return PcbDatasetEDA(parameters, responses)
+
+
+class ResponseFixture:
+    """
+    Minimal aligned response object for ``PcbDatasetEDA`` tests.
+    """
+
+    def __init__(
+        self,
+        simulation_indices: list[int],
+        frequencies_ghz: list[float],
+        port_pairs: list[tuple[int, int]],
+        through_s_db: np.ndarray,
+    ) -> None:
+        """
+        Store synthetic response arrays in the EDA response protocol shape.
+
+        Parameters
+        ----------
+        simulation_indices:
+            Source ``SIMU_INDEX`` values aligned to the first response axis.
+        frequencies_ghz:
+            Frequency grid aligned to the second response axis.
+        port_pairs:
+            One-based selected response port pairs.
+        through_s_db:
+            Response tensor with shape ``(simulation, frequency, pair)``.
+        """
+        self.simulation_indices = np.asarray(simulation_indices, dtype=np.int64)
+        self.frequencies_ghz = np.asarray(frequencies_ghz, dtype=float)
+        self.port_pairs = tuple(port_pairs)
+        self.through_s_db = np.asarray(through_s_db, dtype=float)
+
+    def at_frequency(self, frequency_ghz: float) -> pd.DataFrame:
+        """
+        Return selected dB response columns at one frequency.
+
+        Parameters
+        ----------
+        frequency_ghz:
+            Frequency in GHz to select from the synthetic grid.
+
+        Returns
+        -------
+        pd.DataFrame
+            Dataframe with ``SIMU_INDEX`` and selected response columns.
+
+        Raises
+        ------
+        ValueError
+            If the requested frequency is absent.
+        """
+        matches = np.flatnonzero(
+            np.isclose(self.frequencies_ghz, frequency_ghz, rtol=0.0, atol=1e-9)
+        )
+        if len(matches) == 0:
+            raise ValueError(f"Frequency {frequency_ghz:g} GHz is absent.")
+        frame = pd.DataFrame({"SIMU_INDEX": self.simulation_indices})
+        for pair_index, pair in enumerate(self.port_pairs):
+            frame[PcbDatasetEDA.response_column_name(pair)] = self.through_s_db[
+                :, int(matches[0]), pair_index
+            ]
+        return frame
 
 
 class TestPcbDatasetEDA:

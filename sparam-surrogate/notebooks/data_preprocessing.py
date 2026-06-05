@@ -13,321 +13,177 @@
 # ---
 
 # %% [markdown]
-# # Data Preprocessing Pipeline
+# # Lazy Data Preprocessing Pipeline
 #
-# This notebook turns one selected SI/PI-Database topology into two
-# machine-learning-ready datasets:
-#
-# | Dataset | Input `X` | Target |
-# | --- | --- | --- |
-# | Scalar baseline | geometric/material parameters + frequency | one selected scalar S-parameter path |
-# | Full S-matrix | geometric/material parameters + frequency | complete complex S-matrix at that frequency |
-#
-# The important design decision is that both datasets share the same input
-# matrix:
+# This report builds the lightweight preprocessing artifact used by both the
+# scalar baseline model and the full S-matrix model:
 #
 # ```text
-# X(n, k) = [u(n), f(k)]
+# data/processed/sipi_dataset_cleaned.csv
 # ```
 #
-# where `u(n)` is the PCB design parameter vector and `f(k)` is one Touchstone
-# frequency point. The target changes between the scalar baseline and the full
-# S-matrix dataset, but the rows, split labels, simulation indices, and
-# frequency metadata must stay aligned.
+# The CSV stores design features, frequency, split labels, simulation indices,
+# and `TOUCHSTONE_REL_PATH`. It deliberately does not store S-parameter targets.
+# During training, targets are loaded lazily from Touchstone files through
+# `tf.data.Dataset.map(...)`.
 
 # %% [markdown]
 # ## 1. Setup
 #
-# The notebook uses production code from `src/sparam_surrogate/data`. It does
-# not implement parsing, splitting, scaling, or target construction inside
-# notebook cells. This keeps the workflow reproducible and testable.
-#
-# The constants below make the run explicit:
-#
-# - `DS_NAME` chooses the SI/PI-Database topology.
-# - `REBUILD_RESPONSE_CACHE=False` reuses the compact parsed-response cache when
-#   available.
-# - `SCALAR_PAIR` chooses the first scalar baseline target. The default comes
-#   from `configs/default.json`.
+# The notebook uses production code from `src/sparam_surrogate/data`. The
+# selected topology is fixed here so the rendered report records exactly which
+# raw dataset was processed.
 
 # %%
-import json
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
-from sparam_surrogate.config import (
-    load_config,
-    relative_to_project_root,
-)
-from sparam_surrogate.data import (
-    DesignFrequencySplitter,
-    MLDataset,
-    MLDatasetBuilder,
-    PcbFeatureTransformer,
-    PcbParameters,
-    RawData,
-    SParameterDataset,
-)
+from sparam_surrogate.config import load_config, relative_to_project_root
+from sparam_surrogate.data import MLDatasetBuilder, RawData, TouchstoneLoader
 
 DS_NAME = "linkOn8CavityStackBetween10x10Array_19_08_2021"
-REBUILD_RESPONSE_CACHE = False
+REBUILD_CLEANED_CSV = False
 
 # %%
 cfg = load_config()
 
 raw_data_dir = Path(cfg["paths"]["raw_data"]) / DS_NAME
-interim_dir = Path(cfg["paths"]["interim_data"])
 processed_dir = Path(cfg["paths"]["processed_data"])
 processed_dir.mkdir(parents=True, exist_ok=True)
 
 nports = int(cfg["dataset"]["nports"])
-port_pairs = [tuple(pair) for pair in cfg["dataset"]["ports"]]
-scalar_pair = port_pairs[0]
-
-response_cache_path = interim_dir / f"{DS_NAME}_sparameters_full.npz"
+val_fraction = float(cfg["training"]["val_fraction"])
+test_fraction = float(cfg["training"]["test_fraction"])
+seed = int(cfg["project"]["seed"])
 
 print(f"Dataset: {DS_NAME}")
 print(f"Raw data directory: {relative_to_project_root(raw_data_dir)}")
-print(f"Response cache: {relative_to_project_root(response_cache_path)}")
-print(f"Processed output directory: {relative_to_project_root(processed_dir)}")
-print(f"Scalar baseline target: S{scalar_pair[0]}_{scalar_pair[1]}_DB")
+print(f"Processed directory: {relative_to_project_root(processed_dir)}")
+print("Preprocessing artifact: sipi_dataset_cleaned.csv")
 
 # %% [markdown]
-# ## 2. Load Raw Parameters And Align Touchstones
+# ## 2. Raw Data Consistency
 #
-# `RawData` knows the raw folder structure. `PcbParameters` loads
-# `parameter.csv`. `SParameterDataset` performs the expensive Touchstone
-# parsing once, aligns files to `SIMU_INDEX`, validates the common frequency
-# grid, and caches:
-#
-# - selected dB paths such as `S7_1_DB`
-# - the complete complex S-matrix for each design and frequency
-#
-# The cache is intentionally stored in `data/interim`, because it is an
-# intermediate representation derived from raw data. Reusing it avoids reparsing
-# thousands of Touchstone files on every notebook run.
+# `RawData` reports mismatches between `parameter.csv` records and Touchstone
+# files. Parameter rows without Touchstone files are dropped during cleaning,
+# while orphan Touchstone files are ignored.
 
 # %%
 raw_data = RawData(raw_data_dir, nports=nports)
-parameters = PcbParameters(raw_data.parameter_csv)
+report = raw_data.check_index_consistency()
 
-responses = SParameterDataset.from_touchstones(
-    parameters,
-    raw_data,
-    port_pairs,
-    cache_path=response_cache_path,
-    rebuild_cache=REBUILD_RESPONSE_CACHE,
-)
-
-print(f"Parameter rows: {len(parameters.dataframe):,}")
-print(f"Aligned response designs: {len(responses.simulation_indices):,}")
-print(f"Frequency points: {len(responses.frequencies_ghz):,}")
-print(f"Selected scalar paths: {responses.port_pairs}")
-print(f"Full S-matrix shape: {responses.full_s_matrix.shape}")
-
-# if responses.alignment_report is not None:
-#     print("Alignment report:")
-#     print(json.dumps(responses.alignment_report, indent=2))
+print(f"Parameter rows: {report['parameter_count']:,}")
+print(f"Touchstone files: {report['touchstone_count']:,}")
+print(f"Parameter rows without Touchstones: {len(report['missing_touchstones']):,}")
+print(f"Touchstones without parameter rows: {len(report['missing_parameter_records']):,}")
 
 # %% [markdown]
-# ## 3. Define Split And Feature Rules
+# ## 3. Build The Cleaned CSV
 #
-# Splitting must happen by design, not by design-frequency row. Otherwise the
-# same physical PCB design could appear in both train and test sets at different
-# frequencies, which would leak information and overstate model performance.
-#
-# The pipeline therefore:
-#
-# 1. splits `SIMU_INDEX` into train, validation, and test sets;
-# 2. expands each design across the full frequency grid;
-# 3. repeats the design-level split label for every frequency row;
-# 4. fits feature scaling statistics using train rows only.
+# `MLDatasetBuilder.data_cleaning()` loads `parameter.csv`, keeps only designs
+# with matching Touchstone files, reads a representative frequency grid, expands
+# each design over frequency, and writes one cleaned CSV. Feature values remain
+# unscaled; train-only scaling belongs in the training pipeline.
 
 # %%
-splitter = DesignFrequencySplitter(
-    test_size=float(cfg["training"]["test_size"]),
-    val_size=float(cfg["training"]["val_size"]),
-    random_state=int(cfg["project"]["seed"]),
-)
+builder = MLDatasetBuilder(raw_data, processed_dir)
+cleaned_before_split = builder.data_cleaning(force=REBUILD_CLEANED_CSV)
 
-feature_transformer = PcbFeatureTransformer()
-
-builder = MLDatasetBuilder(
-    splitter=splitter,
-    feature_transformer=feature_transformer,
-    output_dir=processed_dir,
-    metadata={
-        "dataset_name": DS_NAME,
-        "response_cache": str(response_cache_path),
-        "random_seed": int(cfg["project"]["seed"]),
-    },
-)
-
-split = splitter.split(responses.simulation_indices)
-print(f"Train designs: {len(split.train_indices):,}")
-print(f"Validation designs: {len(split.val_indices):,}")
-print(f"Test designs: {len(split.test_indices):,}")
+print(f"Cleaned rows before split: {len(cleaned_before_split):,}")
+print(f"Cleaned CSV: {relative_to_project_root(builder.cleaned_path)}")
+print("Columns:")
+print(list(cleaned_before_split.columns))
 
 # %% [markdown]
-# ## 4. Build The Scalar Baseline Dataset
+# ## 4. Assign Train/Validation/Test Splits
 #
-# The scalar baseline is the smallest useful supervised-learning target. It
-# checks that parsing, split handling, scaling, row ordering, and metrics work
-# before training a high-dimensional S-matrix model.
-#
-# The generated dataset is saved as:
-#
-# ```text
-# data/processed/scalar_baseline_dataset.npz
-# ```
+# Splitting is performed by `SIMU_INDEX` before frequency expansion labels are
+# applied to rows. This prevents the same physical design from appearing in more
+# than one split.
 
 # %%
-scalar_dataset = builder.build_scalar_dataset(
-    parameters,
-    responses,
-    pair=scalar_pair,
-    representation="db",
+train_set, val_set, test_set = builder.split(
+    val_fraction=val_fraction,
+    test_fraction=test_fraction,
+    seed=seed,
+    force=False,
 )
+cleaned = pd.read_csv(builder.cleaned_path)
 
-print("Scalar baseline dataset")
-print(f"  X shape: {scalar_dataset.X.shape}")
-print(f"  target shape: {scalar_dataset.target.shape}")
-print(f"  feature names: {scalar_dataset.feature_names}")
-print(f"  target names: {scalar_dataset.target_names}")
-print(f"  split labels: {dict(zip(*np.unique(scalar_dataset.split_labels, return_counts=True)))}")
+row_counts = cleaned["SPLIT_TYPE"].value_counts().sort_index()
+design_counts = cleaned.groupby("SPLIT_TYPE")["SIMU_INDEX"].nunique().sort_index()
+
+print("Row counts by split:")
+print(row_counts)
+print("\nDesign counts by split:")
+print(design_counts)
 
 # %% [markdown]
-# ## 5. Build The Full S-Matrix Dataset
+# ## 5. Sanity Checks
 #
-# The full S-matrix dataset keeps the same `X` rows and replaces the scalar
-# target with the complete complex S-matrix at each frequency.
-#
-# `TargetBuilder` flattens each parsed matrix in row-major order and keeps real
-# and imaginary parts adjacent:
-#
-# ```text
-# REAL_S1_1, IMAG_S1_1, REAL_S1_2, IMAG_S1_2, ...
-# ```
-#
-# The generated dataset is saved as:
-#
-# ```text
-# data/processed/full_smatrix_dataset.npz
-# ```
+# These checks are intentionally lightweight. They validate the CSV contract and
+# split behavior without reloading any large eager target arrays.
 
 # %%
-full_smatrix_dataset = builder.build_full_smatrix_dataset(parameters, responses)
+expected_columns = list(MLDatasetBuilder.CLEANED_COLUMNS)
+assert list(cleaned.columns) == expected_columns
+assert not cleaned.empty
+assert cleaned["TOUCHSTONE_REL_PATH"].astype(str).str.len().gt(0).all()
+assert not cleaned["TOUCHSTONE_REL_PATH"].map(lambda value: Path(value).is_absolute()).any()
 
-print("Full S-matrix dataset")
-print(f"  X shape: {full_smatrix_dataset.X.shape}")
-print(f"  target shape: {full_smatrix_dataset.target.shape}")
-print(f"  first target names: {full_smatrix_dataset.target_names[:8]}")
-print(f"  split labels: {dict(zip(*np.unique(full_smatrix_dataset.split_labels, return_counts=True)))}")
-
-# %% [markdown]
-# ## 6. Sanity Checks
-#
-# Both datasets must share exactly the same inputs and row metadata. This is the
-# central guarantee that makes scalar baseline results comparable to the later
-# full-S-matrix model.
-
-# %%
-np.testing.assert_allclose(scalar_dataset.X, full_smatrix_dataset.X)
-np.testing.assert_array_equal(
-    scalar_dataset.split_labels,
-    full_smatrix_dataset.split_labels,
-)
-np.testing.assert_array_equal(
-    scalar_dataset.simulation_indices,
-    full_smatrix_dataset.simulation_indices,
-)
-np.testing.assert_allclose(
-    scalar_dataset.frequencies_ghz,
-    full_smatrix_dataset.frequencies_ghz,
-)
-
-for simulation_index in np.unique(scalar_dataset.simulation_indices):
-    labels = set(
-        scalar_dataset.split_labels[
-            scalar_dataset.simulation_indices == simulation_index
-        ].tolist()
-    )
+for simulation_index, group in cleaned.groupby("SIMU_INDEX"):
+    labels = set(group["SPLIT_TYPE"].astype(str))
     assert len(labels) == 1, f"SIMU_INDEX {simulation_index} appears in {labels}"
 
-print("Sanity checks passed: shared X, shared metadata, and no split leakage.")
+feature_values = cleaned.loc[:, MLDatasetBuilder.PARAMETER_COLUMNS]
+assert np.isfinite(feature_values.to_numpy(dtype=float)).all()
+assert set(cleaned["SPLIT_TYPE"]) == {"train", "val", "test"}
+
+print("Sanity checks passed: schema, paths, finite features, and no split leakage.")
 
 # %% [markdown]
-# ## 7. Save Human-Readable Metadata
+# ## 6. Lazy Target Loading Smoke Test
 #
-# Each `.npz` file already contains its own arrays and JSON metadata. The files
-# below are lightweight sidecars for quick inspection and reporting:
-#
-# - `splits.json`: design-level train/validation/test `SIMU_INDEX` membership
-# - `preprocessing_metadata.json`: feature names, target names, shapes, scaling
-#   metadata, and output paths
+# The scalar baseline and full S-matrix model now differ by the map callable
+# used during training. This smoke test loads one row from the train split, then
+# extracts scalar and full S-matrix targets from the row's Touchstone file.
 
 # %%
-splits_json = {
-    "train": split.train_indices.astype(int).tolist(),
-    "val": split.val_indices.astype(int).tolist(),
-    "test": split.test_indices.astype(int).tolist(),
-}
+sample_features = train_set.features[0]
+sample_metadata = train_set.row_metadata.iloc[0].to_dict()
 
-preprocessing_metadata = {
-    "dataset_name": DS_NAME,
-    "scalar_dataset": str(processed_dir / MLDatasetBuilder.SCALAR_FILENAME),
-    "full_smatrix_dataset": str(processed_dir / MLDatasetBuilder.FULL_SMATRIX_FILENAME),
-    "response_cache": str(response_cache_path),
-    "feature_names": list(scalar_dataset.feature_names),
-    "scalar_target_names": list(scalar_dataset.target_names),
-    "full_smatrix_target_names": list(full_smatrix_dataset.target_names),
-    "scalar_shape": {
-        "X": list(scalar_dataset.X.shape),
-        "target": list(scalar_dataset.target.shape),
-    },
-    "full_smatrix_shape": {
-        "X": list(full_smatrix_dataset.X.shape),
-        "target": list(full_smatrix_dataset.target.shape),
-    },
-    "frequency_unit": "GHz",
-    "frequencies_ghz": responses.frequencies_ghz.tolist(),
-    "split_counts_designs": {
-        "train": len(split.train_indices),
-        "val": len(split.val_indices),
-        "test": len(split.test_indices),
-    },
-    "feature_scaling": scalar_dataset.metadata.get("feature_scaling"),
-    "feature_mean": scalar_dataset.metadata.get("feature_mean"),
-    "feature_scale": scalar_dataset.metadata.get("feature_scale"),
-}
-
-(processed_dir / "splits.json").write_text(
-    json.dumps(splits_json, indent=2),
-    encoding="utf-8",
+scalar_loader = TouchstoneLoader(
+    mode="scalar",
+    config=cfg,
+    representation="db",
 )
-(processed_dir / "preprocessing_metadata.json").write_text(
-    json.dumps(preprocessing_metadata, indent=2),
-    encoding="utf-8",
+full_loader = TouchstoneLoader(
+    mode="full_smatrix",
+    config=cfg,
+    representation="real_imag",
 )
 
-print(f"Wrote {relative_to_project_root(processed_dir/'splits.json')}")
-print(f"Wrote {relative_to_project_root(processed_dir/'preprocessing_metadata.json')}")
+scalar_target = scalar_loader(sample_features, sample_metadata)
+full_target = full_loader(sample_features, sample_metadata)
+
+print("Sample metadata:")
+print(sample_metadata)
+print(f"Scalar target shape: {scalar_target.shape}")
+print(f"Scalar target names: {scalar_loader.target_names}")
+print(f"Full S-matrix target shape: {full_target.shape}")
+print(f"First full target names: {full_loader.target_names[:8]}")
 
 # %% [markdown]
-# ## 8. Reload Check
+# ## 7. Output Summary
 #
-# Finally, reload both saved `.npz` datasets through `MLDataset.load`. This
-# checks that the saved artifacts are usable by future training notebooks and
-# scripts without carrying notebook state.
+# The preprocessing output is now a compact CSV index plus raw Touchstone files.
+# The previous eager array artifacts are no longer part of the normal pipeline.
 
 # %%
-loaded_scalar = MLDataset.load(processed_dir / MLDatasetBuilder.SCALAR_FILENAME)
-loaded_full = MLDataset.load(processed_dir / MLDatasetBuilder.FULL_SMATRIX_FILENAME)
-
-np.testing.assert_allclose(loaded_scalar.X, scalar_dataset.X)
-np.testing.assert_allclose(loaded_scalar.target, scalar_dataset.target)
-np.testing.assert_allclose(loaded_full.X, full_smatrix_dataset.X)
-np.testing.assert_allclose(loaded_full.target, full_smatrix_dataset.target)
-
-print("Reload checks passed.")
+print(f"Final cleaned CSV: {relative_to_project_root(builder.cleaned_path)}")
+print(f"Total cleaned rows: {len(cleaned):,}")
+print(f"Unique designs: {cleaned['SIMU_INDEX'].nunique():,}")
+print(f"Unique frequencies: {cleaned['FREQ_GHZ'].nunique():,}")
+print("Feature scaling: deferred to training with train-only statistics")

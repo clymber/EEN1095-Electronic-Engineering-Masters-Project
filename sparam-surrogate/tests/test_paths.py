@@ -110,20 +110,16 @@ class TestRelativeToProjectRoot:
         Shorten absolute project paths for machine-independent output.
         """
         project_root = tmp_path / "project"
-        cache_path = (
+        cleaned_path = (
             project_root
             / "data"
-            / "interim"
-            / "linkOn8CavityStackBetween10x10Array_19_08_2021_through_s_db.npz"
+            / "processed"
+            / "sipi_dataset_cleaned.csv"
         )
 
-        result = relative_to_project_root(cache_path, project_root=project_root)
+        result = relative_to_project_root(cleaned_path, project_root=project_root)
 
-        assert (
-            result
-            == "data/interim/"
-            "linkOn8CavityStackBetween10x10Array_19_08_2021_through_s_db.npz"
-        )
+        assert result == "data/processed/sipi_dataset_cleaned.csv"
 
     def test_relative_path_is_interpreted_from_project_root(
         self,
