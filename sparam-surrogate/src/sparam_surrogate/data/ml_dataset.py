@@ -1,221 +1,150 @@
 """
-Model-ready arrays and metadata for surrogate training.
+Lazy deep-learning dataset views backed by the cleaned preprocessing CSV.
 """
 
-import json
-from collections.abc import Mapping, Sequence
-from pathlib import Path
+from collections.abc import Callable, Sequence
 from typing import Any
 
 import numpy as np
+import pandas as pd
+import tensorflow as tf
 
 
-class MLDataset:
+class DLDataset:
     """
-    Container for model-ready features, targets, splits, and row metadata.
+    Represent one train, validation, or test split from the cleaned CSV.
+
+    The dataset stores feature rows and source metadata only. S-parameter
+    targets are intentionally loaded later by a callable map function so that
+    training does not need the full Touchstone database in memory.
     """
+
+    REQUIRED_METADATA_COLUMNS = (
+        "SIMU_INDEX",
+        "FREQ_GHZ",
+        "TOUCHSTONE_REL_PATH",
+        "SPLIT_TYPE",
+    )
 
     def __init__(
         self,
-        X: Sequence[Sequence[float]] | np.ndarray,
-        target: Sequence[float] | Sequence[Sequence[float]] | np.ndarray,
-        split_labels: Sequence[str] | np.ndarray,
-        simulation_indices: Sequence[int] | np.ndarray,
-        frequencies_ghz: Sequence[float] | np.ndarray,
-        feature_names: Sequence[str],
-        target_names: Sequence[str],
-        metadata: Mapping[str, Any] | None = None,
+        dataframe: pd.DataFrame,
+        feature_columns: Sequence[str],
+        split_type: str,
     ) -> None:
-        """
-        Create a model-ready dataset.
-
-        Parameters
-        ----------
-        X:
-            Two-dimensional feature matrix with shape
-            ``(n_rows, n_features)``. In this project each row is expected to
-            represent one design-frequency sample, for example
-            ``[geometric/material parameters, frequency]``.
-        target:
-            Target values aligned row-for-row with ``X``. Scalar targets may be
-            passed as a one-dimensional sequence with shape ``(n_rows,)`` and
-            are stored internally as ``(n_rows, 1)``. Multi-output targets, such
-            as flattened full S-matrices, should use shape
-            ``(n_rows, n_targets)``.
-        split_labels:
-            One-dimensional split label for each row of ``X``, usually values
-            such as ``"train"``, ``"val"``, or ``"test"``. These labels must be
-            produced from a split by ``SIMU_INDEX`` before frequency expansion.
-        simulation_indices:
-            One-dimensional source ``SIMU_INDEX`` metadata for each row of
-            ``X``. Repeated values are expected after a design is expanded over
-            multiple frequencies.
-        frequencies_ghz:
-            One-dimensional frequency metadata for each row of ``X``, in GHz.
-            Its order must match the row order of ``X`` and ``target``.
-        feature_names:
-            Feature names in the same order as the columns of ``X``. The number
-            of names must equal ``n_features``.
-        target_names:
-            Target names in the same order as the columns of ``target``. The
-            number of names must equal ``n_targets`` after scalar targets are
-            reshaped to two dimensions.
-        metadata:
-            Optional JSON-serializable dataset-level metadata, such as target
-            mode, scaling information, source dataset name, or preprocessing
-            settings.
-
-        Raises
-        ------
-        ValueError
-            If array dimensions are invalid, row metadata does not match
-            ``X`` row count, feature/target names do not match column counts,
-            numeric arrays contain non-finite values, or metadata is not
-            JSON-serializable.
-        """
-        self._X = np.asarray(X, dtype=float)
-        self._target = np.asarray(target, dtype=float)
-        if self._target.ndim == 1:
-            self._target = self._target.reshape(-1, 1)
-        self._split_labels = np.asarray(split_labels, dtype=str)
-        self._simulation_indices = np.asarray(simulation_indices, dtype=np.int64)
-        self._frequencies_ghz = np.asarray(frequencies_ghz, dtype=float)
-        self._feature_names = tuple(str(name) for name in feature_names)
-        self._target_names = tuple(str(name) for name in target_names)
-        self._metadata = dict(metadata or {})
-        self._validate()
+        """Create a split-specific lazy dataset view."""
+        self._feature_columns = tuple(str(column) for column in feature_columns)
+        self._split_type = str(split_type)
+        self._dataframe = self._filtered_dataframe(dataframe)
 
     @property
-    def X(self) -> np.ndarray:
-        """
-        Return the feature matrix.
-        """
-        return self._X
+    def dataframe(self) -> pd.DataFrame:
+        """Return a copy of the split-specific cleaned dataframe."""
+        return self._dataframe.copy()
 
     @property
-    def target(self) -> np.ndarray:
-        """
-        Return the target matrix.
-        """
-        return self._target
+    def feature_columns(self) -> tuple[str, ...]:
+        """Return feature columns in tensor order."""
+        return self._feature_columns
 
     @property
-    def split_labels(self) -> np.ndarray:
-        """
-        Return train/validation/test labels for each row.
-        """
-        return self._split_labels
+    def split_type(self) -> str:
+        """Return the split label represented by this dataset."""
+        return self._split_type
 
     @property
-    def simulation_indices(self) -> np.ndarray:
-        """
-        Return the source simulation index for each row.
-        """
-        return self._simulation_indices
+    def features(self) -> np.ndarray:
+        """Return feature values as a two-dimensional float array."""
+        return self._dataframe.loc[:, self._feature_columns].to_numpy(dtype=float)
 
     @property
-    def frequencies_ghz(self) -> np.ndarray:
-        """
-        Return the frequency value for each row.
-        """
-        return self._frequencies_ghz
+    def row_metadata(self) -> pd.DataFrame:
+        """Return metadata columns aligned with :attr:`features`."""
+        return self._dataframe.loc[
+            :, ["SIMU_INDEX", "FREQ_GHZ", "TOUCHSTONE_REL_PATH"]
+        ].copy()
 
-    @property
-    def feature_names(self) -> tuple[str, ...]:
-        """
-        Return feature names in feature-matrix column order.
-        """
-        return self._feature_names
+    def __len__(self) -> int:
+        """Return the number of design-frequency rows in this split."""
+        return len(self._dataframe)
 
-    @property
-    def target_names(self) -> tuple[str, ...]:
-        """
-        Return target names in target-matrix column order.
-        """
-        return self._target_names
+    def to_tf_dataset(
+        self,
+        map_func: Callable[[np.ndarray, dict[str, Any]], np.ndarray],
+        batch_size: int,
+        shuffle: bool = False,
+        prefetch: bool = True,
+    ) -> "tf.data.Dataset":
+        """Build a ``tf.data.Dataset`` with lazy Touchstone targets."""
+        features = self.features.astype(np.float32)
+        metadata = self.row_metadata
+        simulation_indices = metadata["SIMU_INDEX"].to_numpy(dtype=np.int64)
+        frequencies_ghz = metadata["FREQ_GHZ"].to_numpy(dtype=np.float32)
+        touchstone_paths = metadata["TOUCHSTONE_REL_PATH"].astype(str).to_numpy(
+            dtype=np.bytes_
+        )
 
-    @property
-    def metadata(self) -> dict[str, Any]:
-        """
-        Return additional JSON-serializable dataset metadata.
-        """
-        return dict(self._metadata)
+        dataset = tf.data.Dataset.from_tensor_slices(
+            (features, simulation_indices, frequencies_ghz, touchstone_paths)
+        )
+        if shuffle:
+            dataset = dataset.shuffle(buffer_size=len(self))
 
-    def save(self, path: Path | str) -> None:
-        """
-        Save arrays and metadata to a compressed NumPy archive.
-        """
-        path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("wb") as dataset_file:
-            np.savez_compressed(
-                dataset_file,
-                X=self._X,
-                target=self._target,
-                split_labels=self._split_labels,
-                simulation_indices=self._simulation_indices,
-                frequencies_ghz=self._frequencies_ghz,
-                feature_names=np.asarray(self._feature_names, dtype=str),
-                target_names=np.asarray(self._target_names, dtype=str),
-                metadata_json=np.asarray(self._metadata_json()),
+        feature_width = len(self._feature_columns)
+        target_shape = getattr(map_func, "target_shape", None)
+
+        def mapper(feature_row, simulation_index, frequency_ghz, touchstone_path):
+            def python_target(
+                feature_value,
+                simulation_value,
+                frequency_value,
+                path_value,
+            ):
+                def to_numpy(value):
+                    return value.numpy() if hasattr(value, "numpy") else value
+
+                raw_path_value = to_numpy(path_value)
+                if isinstance(raw_path_value, np.ndarray):
+                    raw_path_value = raw_path_value.item()
+                raw_path = raw_path_value.decode("utf-8")
+                row_metadata = {
+                    "SIMU_INDEX": int(to_numpy(simulation_value)),
+                    "FREQ_GHZ": float(to_numpy(frequency_value)),
+                    "TOUCHSTONE_REL_PATH": raw_path,
+                }
+                target = map_func(np.asarray(to_numpy(feature_value)), row_metadata)
+                return np.asarray(target, dtype=np.float32)
+
+            target = tf.py_function(
+                python_target,
+                [feature_row, simulation_index, frequency_ghz, touchstone_path],
+                Tout=tf.float32,
             )
+            feature_row.set_shape((feature_width,))
+            if target_shape is not None:
+                target.set_shape(tuple(target_shape))
+            return feature_row, target
 
-    @classmethod
-    def load(cls, path: Path | str) -> "MLDataset":
-        """
-        Load a dataset saved by :meth:`save`.
-        """
-        with np.load(path, allow_pickle=False) as archive:
-            metadata_json = str(np.asarray(archive["metadata_json"]).item())
-            return cls(
-                X=archive["X"],
-                target=archive["target"],
-                split_labels=archive["split_labels"],
-                simulation_indices=archive["simulation_indices"],
-                frequencies_ghz=archive["frequencies_ghz"],
-                feature_names=archive["feature_names"].tolist(),
-                target_names=archive["target_names"].tolist(),
-                metadata=json.loads(metadata_json),
-            )
+        dataset = dataset.map(mapper)
+        dataset = dataset.batch(int(batch_size))
+        if prefetch:
+            dataset = dataset.prefetch(tf.data.AUTOTUNE)
+        return dataset
 
-    def _metadata_json(self) -> str:
-        try:
-            return json.dumps(self._metadata, sort_keys=True)
-        except TypeError as exc:
-            raise ValueError("Metadata must be JSON-serializable.") from exc
+    def _filtered_dataframe(self, dataframe: pd.DataFrame) -> pd.DataFrame:
+        """Select this dataset's split rows from a cleaned dataframe."""
+        if not isinstance(dataframe, pd.DataFrame):
+            raise TypeError("dataframe must be a pandas DataFrame.")
 
-    def _validate(self) -> None:
-        if self._X.ndim != 2:
-            raise ValueError("X must be a two-dimensional feature matrix.")
-        if self._target.ndim != 2:
-            raise ValueError("Target must be a one- or two-dimensional array.")
-        if len(self._X) == 0:
-            raise ValueError("MLDataset must contain at least one row.")
-        if not np.isfinite(self._X).all():
-            raise ValueError("X contains non-finite values.")
-        if not np.isfinite(self._target).all():
-            raise ValueError("Target contains non-finite values.")
+        required = [*self._feature_columns, *self.REQUIRED_METADATA_COLUMNS]
+        missing = [column for column in required if column not in dataframe.columns]
+        if missing:
+            raise ValueError("Required columns missing: " + ", ".join(missing))
 
-        row_count = self._X.shape[0]
-        if self._target.shape[0] != row_count:
-            raise ValueError(
-                f"target rows ({self._target.shape[0]}) do not match "
-                f"X rows ({row_count})."
-            )
-        if self._split_labels.shape != (row_count,):
-            raise ValueError("Number of split labels must match X rows.")
-        if self._simulation_indices.shape != (row_count,):
-            raise ValueError("Number of simulation indices must match X rows.")
-        if self._frequencies_ghz.shape != (row_count,):
-            raise ValueError("Number of frequency metadata values must match X rows.")
-        if not np.isfinite(self._frequencies_ghz).all():
-            raise ValueError("Frequency metadata contains non-finite values.")
-        if len(self._feature_names) != self._X.shape[1]:
-            raise ValueError("Number of feature names must match X columns.")
-        if len(self._target_names) != self._target.shape[1]:
-            raise ValueError("Number of target names must match target columns.")
-        if any(not name for name in self._feature_names):
-            raise ValueError("Feature names must be non-empty.")
-        if any(not name for name in self._target_names):
-            raise ValueError("Target names must be non-empty.")
-        self._metadata_json()
+        filtered = dataframe.loc[
+            dataframe["SPLIT_TYPE"].astype(str) == self._split_type
+        ].copy()
+        if filtered.empty:
+            raise ValueError(f"No rows found for split_type={self._split_type!r}.")
+
+        return filtered.reset_index(drop=True)

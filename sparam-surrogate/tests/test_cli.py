@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Tests for class CLI in sparam_surrogate.cli.
 """
 
-import pytest
 from pathlib import Path
-from sparam_surrogate.cli import CLI
+
+import pytest
+
 from sparam_surrogate import __app_name__, __version__
+from sparam_surrogate.cli import CLI
+
 
 class TestCLI:
     """
@@ -31,7 +33,7 @@ class TestCLI:
         Version argument is correctly set up in the CLI parser.
         """
         with pytest.raises(SystemExit) as exc_info:
-            CLI().parse_cli(["--version"]) # or ["-v"]
+            CLI().parse_cli(["--version"])  # or ["-v"]
         assert exc_info.value.code == 0
 
         captured = capsys.readouterr()
@@ -56,36 +58,36 @@ class TestCLI:
         Test adding preprocess subcommand.
 
         Usage:
-            sparam-surrogate preprocess -m|--model <model type> \
-                                        -i|--input <input dir> \
-                                        -o|--output <output dir>
+            sparam-surrogate preprocess -i|--input <input dir> \
+                                        -o|--output <output dir> \
+                                        --nports <port count>
         """
         cli = CLI()
         cli.add_subcommand_preprocess()
-        args = cli.parse_cli([
-            "preprocess",
-            "-m", "scalar_nn",
-            "-i", "input/",
-            "-o", "output/"
-        ])
+        args = cli.parse_cli(
+            [
+                "preprocess",
+                "-i",
+                "input/",
+                "-o",
+                "output/",
+                "--nports",
+                "2",
+                "--val-fraction",
+                "0.2",
+                "--test-fraction",
+                "0.2",
+                "--seed",
+                "123",
+            ]
+        )
         assert args.command == "preprocess"
-        assert args.model == "scalar_nn"
         assert args.input_dir == Path("input/")
         assert args.output_dir == Path("output/")
-
-    def test_add_subcommand_preprocess_invalid_model(self):
-        """
-        Test preprocess with invalid model choice.
-        """
-        cli = CLI()
-        cli.add_subcommand_preprocess()
-        with pytest.raises(SystemExit):
-            cli.parse_cli([
-                "preprocess",
-                "-m", "invalid_model",
-                "-i", "input/",
-                "-o", "output/"
-            ])
+        assert args.nports == 2
+        assert args.val_fraction == 0.2
+        assert args.test_fraction == 0.2
+        assert args.seed == 123
 
     def test_add_subcommand_train(self):
         """
@@ -97,12 +99,9 @@ class TestCLI:
         """
         cli = CLI()
         cli.add_subcommand_train()
-        args = cli.parse_cli([
-            "train",
-            "-m", "vector_nn",
-            "-i", "input/",
-            "-o", "output/"
-        ])
+        args = cli.parse_cli(
+            ["train", "-m", "vector_nn", "-i", "input/", "-o", "output/"]
+        )
         assert args.command == "train"
         assert args.model == "vector_nn"
         assert args.input_dir == Path("input/")
@@ -117,11 +116,7 @@ class TestCLI:
         """
         cli = CLI()
         cli.add_subcommand_predict()
-        args = cli.parse_cli([
-            "predict",
-            "-m", "smatrix_nn",
-            '{"param": "value"}'
-        ])
+        args = cli.parse_cli(["predict", "-m", "smatrix_nn", '{"param": "value"}'])
         assert args.command == "predict"
         assert args.model == "smatrix_nn"
         assert args.input == '{"param": "value"}'
@@ -137,12 +132,9 @@ class TestCLI:
         """
         cli = CLI()
         cli.add_subcommand_predict()
-        args = cli.parse_cli([
-            "predict",
-            "-m", "decision_tree",
-            "--from-file",
-            "/path/to/file.json"
-        ])
+        args = cli.parse_cli(
+            ["predict", "-m", "decision_tree", "--from-file", "/path/to/file.json"]
+        )
         assert args.command == "predict"
         assert args.from_file is True
         assert args.input == "/path/to/file.json"

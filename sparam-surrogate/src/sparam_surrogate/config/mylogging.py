@@ -112,11 +112,7 @@ def set_logging_cfg(
     log_dir: Path|None = None, log_cfg_path: Path|None = None
 ) -> None:
     """
-    Setup logging configuration from a JSON file
-
-    - class MarkdownLogger is uesed as the logger class
-    - log_dir: Directory where log files will be saved, default is LOGGING_DIR
-    - log_cfg_path: Path to the logging configuration JSON file
+    Set up Markdown logging from the configured JSON file.
     """
     # Only set up logging if it hasn't been configured yet
     if logging.root.handlers:
@@ -148,11 +144,7 @@ def set_logging_cfg(
 
 
 def get_md_logger(name: str = "sparam_surrogate") -> MarkdownLogger:
-    """
-    Get a MarkdownLogger instance by name.
-
-    - name: Logger name, default is "sparam_surrogate"
-    """
+    """Return a Markdown logger by name."""
     return logging.getLogger(name)  # type: ignore
 
 

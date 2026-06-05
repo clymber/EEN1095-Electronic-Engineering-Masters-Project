@@ -48,9 +48,7 @@ class PcbParameters:
 
     @property
     def dataframe(self) -> pd.DataFrame:
-        """
-        Return the underlying data frame of parameter table.
-        """
+        """Return the underlying parameter table."""
         return self._parameters
 
     @overload
@@ -60,25 +58,18 @@ class PcbParameters:
     def __getitem__(self, key: list[str] | pd.Index) -> pd.DataFrame: ...
 
     def __getitem__(self, key: str | list[str] | pd.Index) -> pd.Series | pd.DataFrame:
-        """
-        Select one or more parameter columns using DataFrame-style syntax.
-        """
+        """Select parameter columns using DataFrame-style syntax."""
         return self._parameters[key]
 
     def assign_columns(self, **kw_args) -> "PcbParameters":
-        """
-        Assign new columns.
-        Existing columns that are re-assigned will be overwritten.
-        """
+        """Assign or overwrite parameter columns."""
         self._parameters = self._parameters.assign(**kw_args)
         return self
 
     def _select_columns(
         self, columns: str | list[str] | pd.Index | None = None
     ) -> pd.DataFrame:
-        """
-        Return the full parameter table or a requested subset of columns.
-        """
+        """Return the full table or a requested column subset."""
         if columns is None:
             return self._parameters
         if isinstance(columns, str):
@@ -107,11 +98,7 @@ class PcbParameters:
     def structural_summary(
         self, columns: str | list[str] | pd.Index | None = None
     ) -> None:
-        """
-        Print a structural summary of selected PCB parameter columns.
-
-        By default, all columns are included.
-        """
+        """Print a structural summary of selected parameter columns."""
         self._select_columns(columns).info()
 
     def statistical_summary(
@@ -120,11 +107,8 @@ class PcbParameters:
         """
         Print a statistical summary of selected PCB design parameters.
 
-        Summary of statistics: mean, median, standard deviation, and range...
-        The SIMU_INDEX column is excluded because it is an identifier rather
-        than a physical design parameter. Remaining columns are described in
-        groups of five to keep the printed output readable. By default, all
-        columns are considered.
+        ``SIMU_INDEX`` is excluded because it is an identifier, and columns are
+        described in groups of five to keep output readable.
         """
         # Exclude SIMU_INDEX column since it's semantically not numerical
         df = self._select_columns(columns).drop(
@@ -175,10 +159,7 @@ class PcbParameters:
         return fail_count
 
     def check_physical_range(self) -> int:
-        """
-        Check that each parameter is within its physical range.
-        Returns number of failures.
-        """
+        """Check physical ranges and return the number of failures."""
         fail_count = 0
         params = self._parameters
         constraints = {

@@ -17,7 +17,7 @@
 Exploratory Data Analysis for PCB Dataset.
 """
 
-from typing import overload
+from typing import Protocol, overload
 
 import numpy as np
 import pandas as pd
@@ -25,7 +25,25 @@ from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 
 from .pcb_parameters import PcbParameters
-from .s_parameter_dataset import SParameterDataset
+
+
+class ResponseDatasetLike(Protocol):
+    """
+    Minimal response interface needed by optional response EDA methods.
+
+    Implementations can be old cached response objects, lightweight fixtures,
+    or future lazy/sample response adapters. The EDA class only assumes this
+    narrow protocol and does not own Touchstone parsing.
+    """
+
+    simulation_indices: np.ndarray
+    frequencies_ghz: np.ndarray
+    port_pairs: tuple[tuple[int, int], ...]
+    through_s_db: np.ndarray
+
+    def at_frequency(self, frequency_ghz: float) -> pd.DataFrame:
+        """Return selected response columns at one frequency."""
+        ...
 
 
 # %%
@@ -37,8 +55,9 @@ class PcbDatasetEDA:
     def __init__(
         self,
         parameters: PcbParameters,
-        responses: SParameterDataset | None = None,
+        responses: ResponseDatasetLike | None = None,
     ) -> None:
+        """Create an exploratory dataset from parameters and optional responses."""
         features = parameters.dataframe.copy()
         features = features.assign(
             BOARD_HEIGHT=2 * features["START"] + 9 * features["PITCH"],
@@ -56,16 +75,12 @@ class PcbDatasetEDA:
 
     @property
     def dataframe(self) -> pd.DataFrame:
-        """
-        Return the underlying data frame of parameter table.
-        """
+        """Return the derived feature table."""
         return self._features
 
     @property
-    def responses(self) -> SParameterDataset | None:
-        """
-        Return the optional aligned frequency-response dataset.
-        """
+    def responses(self) -> ResponseDatasetLike | None:
+        """Return the optional aligned frequency-response dataset."""
         return self._responses
 
     @overload
@@ -75,9 +90,7 @@ class PcbDatasetEDA:
     def __getitem__(self, key: list[str] | pd.Index) -> pd.DataFrame: ...
 
     def __getitem__(self, key: str | list[str] | pd.Index) -> pd.Series | pd.DataFrame:
-        """
-        Select one or more parameter columns using DataFrame-style syntax.
-        """
+        """Select feature columns using DataFrame-style syntax."""
         return self._features[key]
 
     def plot_board_geometry_verification(
@@ -174,9 +187,7 @@ class PcbDatasetEDA:
     def _select_columns(
         self, columns: str | list[str] | pd.Index | None = None
     ) -> pd.DataFrame:
-        """
-        Return the full parameter table or a requested subset of columns.
-        """
+        """Return the full feature table or a requested column subset."""
         if columns is None:
             return self._features
         if isinstance(columns, str):
@@ -441,7 +452,7 @@ class PcbDatasetEDA:
         """
         frame = self.response_frame_at_frequency(frequency_ghz)
         response_columns = [
-            SParameterDataset.response_column_name(pair)
+            self.response_column_name(pair)
             for pair in self._require_responses().port_pairs
         ]
         if features is None:
@@ -524,7 +535,7 @@ class PcbDatasetEDA:
         responses = self._require_responses()
         if pair not in responses.port_pairs:
             raise ValueError(f"Response port pair {pair} was not extracted.")
-        target = SParameterDataset.response_column_name(pair)
+        target = self.response_column_name(pair)
         frame = self.response_frame_at_frequency(frequency_ghz)
         if features is None:
             features = [
@@ -629,7 +640,7 @@ class PcbDatasetEDA:
                     alpha=0.8,
                     label=f"SIMU_INDEX {simulation_index}",
                 )
-            response = SParameterDataset.response_column_name(pair)
+            response = self.response_column_name(pair)
             ax.set_xlabel("Frequency (GHz)")
             ax.set_ylabel(f"{response} (dB)")
             ax.set_title(response)
@@ -643,10 +654,17 @@ class PcbDatasetEDA:
             plt.show()
         return fig
 
-    def _require_responses(self) -> SParameterDataset:
+    @staticmethod
+    def response_column_name(pair: tuple[int, int]) -> str:
+        """Return the standard dB response column name for one port pair."""
+        receiver, source = pair
+        return f"S{receiver}_{source}_DB"
+
+    def _require_responses(self) -> ResponseDatasetLike:
+        """Return the response object or raise a clear analysis error."""
         if self._responses is None:
             raise RuntimeError(
-                "Response analysis requires an SParameterDataset instance."
+                "Response analysis requires an aligned response dataset."
             )
         return self._responses
 

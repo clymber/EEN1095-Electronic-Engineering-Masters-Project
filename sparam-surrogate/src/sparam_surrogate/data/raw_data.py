@@ -48,43 +48,39 @@ class RawData:
         self._nports = nports
 
     @property
+    def path(self) -> Path:
+        """Return the root directory for one unzipped raw dataset."""
+        return self._path
+
+    @property
     def parameter_csv(self) -> Path:
-        """
-        Returns the path to the parameter CSV file.
-        """
+        """Return the path to ``parameter.csv``."""
         return self._path / "parameter.csv"
 
     @property
     def nports(self) -> int:
-        """
-        Return the number of ports expected in each Touchstone file.
-        """
+        """Return the expected Touchstone port count."""
         return self._nports
 
     @property
     def variation_path(self) -> Path:
-        """
-        Returns the path to the directory containing the touchstone files.
-        """
+        """Return the directory containing Touchstone files."""
         return self._path / "variation"
 
     def touchstone(self, idx: int) -> Path:
-        """
-        Returns the path to the touchstone file for a given index.
-        - idx: Index of the touchstone file (0-based).
-        """
+        """Return the Touchstone path for a simulation index."""
         return self.variation_path / f"simu_{idx}.s{self._nports}p"
 
     def touchstones(self) -> list[Path]:
-        """
-        Returns a list of paths to all touchstone files in the variation directory.
-        """
+        """Return all Touchstone paths in the variation directory."""
         return sorted(self.variation_path.glob(f"simu_*.s{self._nports}p"))
 
+    def touchstone_indices(self) -> list[int]:
+        """Return sorted simulation indices with matching Touchstone files."""
+        return sorted(self._get_touchstone_indices())
+
     def _get_touchstone_indices(self) -> dict[int, list[str]]:
-        """
-        Returns a dictionary that maps indices to Touchstone file names.
-        """
+        """Map simulation indices to Touchstone file names."""
         touchstone_paths = self.touchstones()
         regex = re.compile(r"simu_(\d+)\.s\d+p$", re.IGNORECASE)
 
@@ -139,9 +135,7 @@ class RawData:
         }
 
     def report_index_consistency(self) -> None:
-        """
-        Print index consistency report to stdout.
-        """
+        """Print an index consistency report to stdout."""
         report = self.check_index_consistency()
         print(f"Total parameter record: {report['parameter_count']}")
         print(f"Total touchstone files: {report['touchstone_count']}")

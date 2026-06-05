@@ -1,88 +1,124 @@
 # sparam-surrogate
 
-Machine learning surrogate models for predicting PCB interconnect S-parameters and signal integrity metrics.
+Machine learning surrogate models for predicting PCB interconnect
+S-parameters and signal-integrity metrics.
+
+## Current Preprocessing Design
+
+The project now uses a lazy preprocessing pipeline. Preprocessing writes one
+compact CSV index:
+
+```text
+data/processed/sipi_dataset_cleaned.csv
+```
+
+The CSV is shared by scalar baseline models and full S-matrix models. It stores
+features and metadata only:
+
+```csv
+EPS,TAND,PITCH,TRACE_LEN,START,VIAR,ANTIPADR,TDIEL,DISTTL,TLWIDTH,FREQ_GHZ,SIMU_INDEX,TOUCHSTONE_REL_PATH,SPLIT_TYPE
+```
+
+S-parameter targets are not precomputed into large arrays. During training, a
+lazy map callable loads the required Touchstone file for each row.
 
 ## Class Architecture
-
-The project separates source-data representation, exploratory analysis, and
-ML-ready preprocessing. The central rule is that preprocessing should create
-one shared design-frequency input and then attach different targets for
-different modelling stages.
-
-### Class Relationship
 
 ```text
 RawData
   |
   +--> PcbParameters
   |
-  +--> SParameterDataset
-           ^
-           |
-      uses PcbParameters for aligned SIMU_INDEX records
-
-PcbParameters + SParameterDataset
-  |
   +--> PcbDatasetEDA
-  |      exploration, plots, sanity checks
   |
   +--> MLDatasetBuilder
          |
-         +--> DesignFrequencySplitter
-         |      split by SIMU_INDEX before frequency expansion
+         +--> sipi_dataset_cleaned.csv
          |
-         +--> PcbFeatureTransformer
-         |      build and scale X = [design parameters, frequency]
-         |
-         +--> TargetBuilder
-         |      build scalar targets or full S-matrix targets
-         |
-         +--> MLDataset
-                final training-ready arrays and metadata
+         +--> DLDataset(train)
+         +--> DLDataset(val)
+         +--> DLDataset(test)
+                |
+                +--> tf.data.Dataset.map(TouchstoneLoader(...))
 ```
 
-`PcbDatasetEDA` is a side branch. It consumes the same data sources, but it
-does not write the final model-training arrays.
+| Component | Responsibility |
+| --------- | -------------- |
+| `RawData` | Locates one unzipped raw dataset, including `parameter.csv` and `variation/simu_<index>.sNp` files. |
+| `PcbParameters` | Loads and validates PCB design/material parameters. |
+| `PcbDatasetEDA` | Provides parameter and optional response exploration for reports. |
+| `MLDatasetBuilder` | Builds `sipi_dataset_cleaned.csv` and assigns split labels by `SIMU_INDEX`. |
+| `DLDataset` | Represents one split from the cleaned CSV and builds `tf.data.Dataset` objects. |
+| `TouchstoneLoader` | Lazily loads scalar or full S-matrix targets from `TOUCHSTONE_REL_PATH` using `dataset.nports` from configuration. |
 
-### Existing Source And EDA Classes
+## Basic Usage
 
-| Class | Status | Responsibility |
-| ----- | ------ | -------------- |
-| `RawData` | Implemented | Locates the unzipped SI/PI dataset files, exposes `parameter.csv` and Touchstone paths, and reports index mismatches between parameter rows and response files. |
-| `PcbParameters` | Implemented | Loads and validates the PCB geometric/material parameter table for the selected topology. |
-| `SParameterDataset` | Implemented, to be extended | Aligns parameter records with Touchstone files and caches frequency-dependent S-parameter responses. The current implementation extracts selected through paths in dB; the full pipeline should extend this layer to preserve the complete complex S-matrix. It should not own train/validation/test splitting or feature scaling. |
-| `PcbDatasetEDA` | Implemented | Provides exploratory summaries and plots for parameters and aligned response data. This class is for analysis, not for writing final training arrays. |
+```python
+from pathlib import Path
 
-### Planned Preprocessing Classes
+from sparam_surrogate.config import load_config
+from sparam_surrogate.data import MLDatasetBuilder, RawData, TouchstoneLoader
 
-| Class | Responsibility |
-| ----- | -------------- |
-| `DesignFrequencySplitter` | Creates reproducible train/validation/test splits by `SIMU_INDEX`, before frequency expansion, so the same physical design cannot leak across splits. |
-| `PcbFeatureTransformer` | Builds, expands, and scales the shared input matrix `X = [geometric/material parameters, frequency]` using train-split statistics only. Derived features can live here once they are needed for modelling rather than only EDA. |
-| `TargetBuilder` | Builds the target array from `SParameterDataset`. It should support at least a scalar baseline target and a full S-matrix target, but both modes reuse the same `X`. |
-| `MLDatasetBuilder` | Orchestrates splitting, feature transformation, target construction, metadata assembly, and saving processed datasets. |
-| `MLDataset` | Stores model-ready `X`, target arrays, split labels, feature names, target names, frequency metadata, and simulation-index metadata. |
+cfg = load_config()
+dataset_name = "linkOn8CavityStackBetween10x10Array_19_08_2021"
 
-The two training datasets should therefore share the same input definition:
+raw_data = RawData(
+    Path(cfg["paths"]["raw_data"]) / dataset_name,
+    nports=int(cfg["dataset"]["nports"]),
+)
+builder = MLDatasetBuilder(raw_data, cfg["paths"]["processed_data"])
 
-```text
-X(n, k) = [u(n), f(k)]
+builder.data_cleaning()
+train_set, val_set, test_set = builder.split(
+    val_fraction=float(cfg["training"]["val_fraction"]),
+    test_fraction=float(cfg["training"]["test_fraction"]),
+    seed=int(cfg["project"]["seed"]),
+)
+
+scalar_loader = TouchstoneLoader(
+    mode="scalar",
+    config=cfg,
+    representation="db",
+)
+full_loader = TouchstoneLoader(
+    mode="full_smatrix",
+    config=cfg,
+    representation="real_imag",
+)
 ```
 
-where `u(n)` is the geometric/material parameter vector for design sample `n`
-and `f(k)` is one Touchstone frequency point. The datasets differ in the target:
+`TouchstoneLoader` requires `cfg["dataset"]["nports"]`. Scalar mode also
+requires `cfg["dataset"]["ports"]` so selected one-based port pairs stay in the
+configuration file.
 
-| Dataset | Input | Target |
-| ------- | ----- | ------ |
-| Scalar baseline dataset | `X = design + frequency` | One scalar S-parameter or insertion-loss value. |
-| Full S-matrix dataset | `X = design + frequency` | Complete complex S-matrix at that frequency. |
+Feature scaling is intentionally not written into the cleaned CSV. Training
+code should fit scaling statistics on train rows only, then apply those
+statistics to validation and test rows.
 
-### Notebook Roles
+## TensorFlow Dataset Mapping
 
-| Notebook | Purpose |
-| -------- | ------- |
-| `notebooks/dataset_exploration.ipynb` | Explore and sanity-check the selected topology, parameters, Touchstone structure, response distributions, and correlations. |
-| `notebooks/data_preprocessing.ipynb` | Run the reproducible preprocessing pipeline that writes aligned caches, split metadata, and ML-ready scalar/full-S-matrix datasets. |
+```python
+train_ds = train_set.to_tf_dataset(
+    map_func=scalar_loader,
+    batch_size=int(cfg["training"]["batch_size"]),
+    shuffle=True,
+)
+```
+
+For full S-matrix training, use `full_loader` as the map function. Full matrix
+targets are flattened as all real components followed by all imaginary
+components in row-major S-matrix order.
+
+## Command Line
+
+```bash
+sparam-surrogate preprocess \
+  --input-dir data/raw/linkOn8CavityStackBetween10x10Array_19_08_2021 \
+  --output-dir data/processed \
+  --nports 12
+```
+
+When split options are omitted, the command uses `configs/default.json`.
 
 ## Setup
 
@@ -92,7 +128,13 @@ conda activate meng
 pip install -e .
 ```
 
-## PDF reports
+Install the optional ML dependencies before using TensorFlow dataset mapping:
+
+```bash
+pip install -e ".[ml]"
+```
+
+## Reports
 
 Build the executed notebook reports with:
 
@@ -100,6 +142,9 @@ Build the executed notebook reports with:
 make webpdf
 ```
 
-The first WebPDF build may download Playwright's Chromium runtime into its
-user cache for `nbconvert`; later builds reuse it. In an offline environment,
-install it in advance with `playwright install chromium`.
+`notebooks/data_preprocessing.py` is the reproducible preprocessing report. It
+builds the cleaned CSV, checks split leakage, and performs a small lazy-loading
+smoke test for scalar and full S-matrix targets.
+
+`notebooks/dataset_exploration.py` remains the broader exploratory report for
+raw parameters, geometry relationships, and small Touchstone inspections.

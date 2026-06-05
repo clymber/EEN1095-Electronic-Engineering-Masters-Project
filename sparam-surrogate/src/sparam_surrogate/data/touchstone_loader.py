@@ -1,0 +1,251 @@
+"""
+Lazy Touchstone target loading for TensorFlow dataset mapping.
+"""
+
+import json
+from collections.abc import Mapping
+from functools import lru_cache
+from pathlib import Path
+from typing import Any, Literal
+
+import numpy as np
+import skrf as rf
+
+from sparam_surrogate.config import PROJECT_ROOT, load_config
+
+
+class TouchstoneLoader:
+    """
+    Callable map function that loads S-parameter targets from Touchstone files.
+
+    Instances are suitable for use from ``DLDataset.to_tf_dataset(...)`` and
+    can also be called directly in tests or small smoke checks.
+    """
+
+    FREQUENCY_TOLERANCE_GHZ = 1e-9
+
+    def __init__(
+        self,
+        mode: Literal["scalar", "full_smatrix"],
+        config: Mapping[str, Any] | Path | str | None = None,
+        representation: Literal["db", "real_imag", "complex"] = "db",
+        cache_size: int = 256,
+    ) -> None:
+        """
+        Configure lazy S-parameter target extraction.
+
+        Scalar mode reads one-based port pairs from configuration. Full
+        S-matrix mode returns flattened real/imag targets.
+        """
+        self.mode = str(mode)
+        self.config = self._load_config(config)
+        self.project_root = PROJECT_ROOT.resolve()
+        self.representation = str(representation)
+        self.cache_size = int(cache_size)
+        if self.cache_size <= 0:
+            raise ValueError("cache_size must be positive.")
+        if self.mode not in {"scalar", "full_smatrix"}:
+            raise ValueError("mode must be either 'scalar' or 'full_smatrix'.")
+        if self.representation not in {"db", "real_imag", "complex"}:
+            raise ValueError("representation must be 'db', 'real_imag', or 'complex'.")
+        if self.mode == "full_smatrix" and self.representation != "real_imag":
+            raise ValueError("full_smatrix mode requires representation='real_imag'.")
+
+        self.nports = self._configured_nports()
+        self.port_pairs = self._configured_port_pairs()
+        self._cached_network = lru_cache(maxsize=self.cache_size)(self._read_network)
+
+    @property
+    def target_names(self) -> tuple[str, ...]:
+        """Return target names in the same order as loader outputs."""
+        if self.mode == "scalar":
+            if self.representation == "db":
+                return tuple(self.response_column_name(pair) for pair in self.port_pairs)
+            if self.representation == "complex":
+                return tuple(f"S{receiver}_{source}" for receiver, source in self.port_pairs)
+            real_names = [
+                f"REAL_S{receiver}_{source}" for receiver, source in self.port_pairs
+            ]
+            imag_names = [
+                f"IMAG_S{receiver}_{source}" for receiver, source in self.port_pairs
+            ]
+            return tuple([*real_names, *imag_names])
+
+        real_names = [
+            f"REAL_S{receiver}_{source}"
+            for receiver in range(1, self.nports + 1)
+            for source in range(1, self.nports + 1)
+        ]
+        imag_names = [
+            f"IMAG_S{receiver}_{source}"
+            for receiver in range(1, self.nports + 1)
+            for source in range(1, self.nports + 1)
+        ]
+        return tuple([*real_names, *imag_names])
+
+    @property
+    def target_shape(self) -> tuple[int, ...]:
+        """Return the one-sample target shape."""
+        return (len(self.target_names),)
+
+    def __call__(
+        self,
+        features: np.ndarray,
+        row_metadata: Mapping[str, Any],
+    ) -> np.ndarray:
+        """
+        Load the target for one design-frequency row.
+
+        ``features`` is accepted to match ``DLDataset`` map callables; target
+        lookup uses ``FREQ_GHZ`` and ``TOUCHSTONE_REL_PATH`` metadata.
+        """
+        _ = features
+        path = self._resolve_path(row_metadata)
+        network = self._network(path)
+        if network.nports != self.nports:
+            raise ValueError(
+                f"Touchstone {path} has {network.nports} ports; expected {self.nports}."
+            )
+        frequency_ghz = self._metadata_frequency(row_metadata)
+        frequency_index = self._target_frequency_index(network, frequency_ghz)
+        if self.mode == "scalar":
+            return self._scalar_target(network, frequency_index)
+        return self._full_smatrix_target(network, frequency_index)
+
+    def cache_info(self) -> object:
+        """Return current Touchstone file cache statistics."""
+        return self._cached_network.cache_info()
+
+    @staticmethod
+    def response_column_name(pair: tuple[int, int]) -> str:
+        """Return the scalar dB column name for one port pair."""
+        receiver, source = pair
+        return f"S{receiver}_{source}_DB"
+
+    def _load_config(self, config: Mapping[str, Any] | Path | str | None) -> dict[str, Any]:
+        """Load configuration from a mapping, JSON path, or project defaults."""
+        if config is None:
+            return load_config()
+        if isinstance(config, Mapping):
+            return dict(config)
+        path = Path(config)
+        with path.open("r", encoding="utf-8") as config_file:
+            return json.load(config_file)
+
+    def _configured_port_pairs(self) -> tuple[tuple[int, int], ...]:
+        """Validate and return scalar port pairs from configuration."""
+        raw_pairs = self.config.get("dataset", {}).get("ports", [])
+        pairs: list[tuple[int, int]] = []
+        for raw_pair in raw_pairs:
+            if len(raw_pair) != 2:
+                raise ValueError("Each configured port pair must contain two values.")
+            receiver, source = int(raw_pair[0]), int(raw_pair[1])
+            if receiver <= 0 or source <= 0:
+                raise ValueError("Configured port pairs must use one-based indices.")
+            if receiver > self.nports or source > self.nports:
+                raise ValueError(
+                    f"Configured port pair {(receiver, source)} exceeds "
+                    f"dataset.nports={self.nports}."
+                )
+            pairs.append((receiver, source))
+        if self.mode == "scalar" and not pairs:
+            raise ValueError("Scalar mode requires dataset.ports in configuration.")
+        return tuple(pairs)
+
+    def _configured_nports(self) -> int:
+        """Return the configured Touchstone port count."""
+        raw_nports = self.config.get("dataset", {}).get("nports")
+        if raw_nports is None:
+            raise ValueError("dataset.nports must be configured.")
+        nports = int(raw_nports)
+        if nports <= 0:
+            raise ValueError("dataset.nports must be positive.")
+        return nports
+
+    def _resolve_path(self, row_metadata: Mapping[str, Any]) -> Path:
+        """Resolve a metadata Touchstone path against the project root."""
+        try:
+            raw_path = str(row_metadata["TOUCHSTONE_REL_PATH"])
+        except KeyError as exc:
+            raise ValueError("row_metadata must contain TOUCHSTONE_REL_PATH.") from exc
+        if not raw_path:
+            raise ValueError("TOUCHSTONE_REL_PATH must be non-empty.")
+        path = Path(raw_path)
+        if not path.is_absolute():
+            path = self.project_root / path
+        resolved = path.resolve()
+        if not resolved.is_file():
+            raise FileNotFoundError(f"Touchstone file not found: {resolved}")
+        return resolved
+
+    def _metadata_frequency(self, row_metadata: Mapping[str, Any]) -> float:
+        """Return the requested frequency from row metadata."""
+        try:
+            frequency_ghz = float(row_metadata["FREQ_GHZ"])
+        except KeyError as exc:
+            raise ValueError("row_metadata must contain FREQ_GHZ.") from exc
+        return frequency_ghz
+
+    def _network(self, path: Path) -> rf.Network:
+        """Return a cached scikit-rf network for a Touchstone path."""
+        return self._cached_network(path.as_posix())
+
+    def _read_network(self, path: str) -> rf.Network:
+        """Parse one Touchstone file from disk."""
+        return rf.Network(path)
+
+    def _target_frequency_index(self, network: rf.Network, frequency_ghz: float) -> int:
+        """Locate the requested frequency in a Touchstone network."""
+        frequencies_ghz = np.asarray(network.f, dtype=float) / 1e9
+        if frequencies_ghz.ndim != 1 or not np.isfinite(frequencies_ghz).all():
+            raise ValueError("Touchstone frequency grid is invalid.")
+        matches = np.flatnonzero(
+            np.isclose(
+                frequencies_ghz,
+                frequency_ghz,
+                rtol=0.0,
+                atol=self.FREQUENCY_TOLERANCE_GHZ,
+            )
+        )
+        if len(matches) == 0:
+            raise ValueError(
+                f"Frequency {frequency_ghz:g} GHz is not present in the "
+                "Touchstone frequency grid."
+            )
+        return int(matches[0])
+
+    def _scalar_target(self, network: rf.Network, frequency_index: int) -> np.ndarray:
+        """Extract configured scalar targets at one frequency."""
+        values: list[complex] = []
+        for receiver, source in self.port_pairs:
+            if receiver > network.nports or source > network.nports:
+                raise ValueError(
+                    f"Configured port pair {(receiver, source)} is unavailable "
+                    f"for a {network.nports}-port network."
+                )
+            values.append(network.s[frequency_index, receiver - 1, source - 1])
+        complex_values = np.asarray(values, dtype=complex)
+        if self.representation == "complex":
+            if not np.isfinite(complex_values).all():
+                raise ValueError("Scalar complex target contains non-finite values.")
+            return complex_values
+        if self.representation == "real_imag":
+            target = np.concatenate([complex_values.real, complex_values.imag])
+        else:
+            with np.errstate(divide="ignore"):
+                target = 20.0 * np.log10(np.abs(complex_values))
+        if not np.isfinite(target).all():
+            raise ValueError("Scalar target contains non-finite values.")
+        return np.asarray(target, dtype=float)
+
+    def _full_smatrix_target(
+        self,
+        network: rf.Network,
+        frequency_index: int,
+    ) -> np.ndarray:
+        """Extract and flatten the complete S-matrix at one frequency."""
+        matrix = np.asarray(network.s[frequency_index], dtype=complex)
+        if not np.isfinite(matrix).all():
+            raise ValueError("Full S-matrix target contains non-finite values.")
+        flattened = matrix.reshape(-1)
+        return np.concatenate([flattened.real, flattened.imag]).astype(float)

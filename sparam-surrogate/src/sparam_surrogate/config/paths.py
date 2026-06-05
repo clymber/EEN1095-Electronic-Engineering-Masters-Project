@@ -23,9 +23,7 @@ from pathlib import Path
 
 # %%
 def find_project_root(start: Path | None = None) -> Path:
-    """
-    Find project root by looking for pyproject.toml file.
-    """
+    """Find the project root by looking for pyproject.toml."""
     current = (start or Path.cwd()).resolve()
 
     for path in [current, *current.parents]:

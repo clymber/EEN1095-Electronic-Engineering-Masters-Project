@@ -29,26 +29,22 @@ from pathlib import Path
 import numpy as np
 import skrf as rf
 from IPython.display import Image, display
+from matplotlib import pyplot as plt
 
 from sparam_surrogate.config import (
     load_config,
     notebook_resource_path,
-    relative_to_project_root,
 )
 from sparam_surrogate.data import (
     PcbDatasetEDA,
     PcbParameters,
     RawData,
-    SParameterDataset,
 )
 from sparam_surrogate.utils.filesystem import directory_tree
 
 DS_NAME = "linkOn8CavityStackBetween10x10Array_19_08_2021"
-
-# %%
 cfg = load_config()  # Runtime configuration
 dataset = Path(cfg["paths"]["raw_data"]) / DS_NAME  # Target dataset
-interim_dir = Path(cfg["paths"]["interim_data"])  # Intermediate data
 nports = cfg["dataset"]["nports"]  # Number of ports
 
 # %% [markdown]
@@ -825,8 +821,9 @@ _ = eda.plot_ratio_relationships()
 # - First response targets for modelling: the six through paths declared in
 #   configuration, `(7,1)` through `(12,6)`.
 #
-# Since the raw response directory is large, only these response curves are
-# extracted and cached for subsequent notebook runs.
+# Since the raw response directory is large, response targets are no longer
+# extracted into a notebook cache. The preprocessing pipeline records
+# `TOUCHSTONE_REL_PATH`, and training loads targets lazily from Touchstone files.
 
 # %% [markdown]
 # ### 3.1 Touchstone matrix structure
@@ -930,10 +927,9 @@ display(Image(filename=str(smatrix_img), width=280))
 # 2. receiver/output port, and
 # 3. source/input port.
 #
-# Therefore, `response_db[:, 6, 0]` means all frequency samples for
-# $S_{7,1}$, because the physical Touchstone port pair `(7, 1)` becomes NumPy
-# indices `(6, 0)`. This is the same indexing convention used later by
-# `class SParameterDataset` when it extracts selected through paths.
+# Therefore, `response_db[:, 6, 0]` means all frequency samples for $S_{7,1}$,
+# because the physical Touchstone port pair `(7, 1)` becomes NumPy indices
+# `(6, 0)`.
 #
 # The dB values are usually negative for through paths because they represent
 # attenuation: values closer to `0 dB` mean less loss, while more negative
@@ -956,131 +952,36 @@ demo_curve_db = response_db[:, demo_pair[0] - 1, demo_pair[1] - 1]
 print(f"S{demo_pair[0]}{demo_pair[1]} first 5 dB values:", *demo_curve_db[:5])
 
 # %% [markdown]
-# ### 3.3 Extract selected response paths
-#
-# The project wraps this `network.s_db` indexing in `SParameterDataset` so the
-# selected response paths can be aligned with `parameter.csv`, validated, and
-# cached.
-#
-# `SParameterDataset.from_touchstones()` returns the in-memory dataset and, when
-# `cache_path` is supplied, stores the same compact arrays in a compressed NumPy
-# archive. The cache avoids reparsing every Touchstone file during later notebook
-# runs.
-
-# %%
-port_pairs = [tuple(pair) for pair in cfg["dataset"]["ports"]]
-response_cache = interim_dir / f"{DS_NAME}_through_s_db.npz"
-responses = SParameterDataset.from_touchstones(
-    parameters,
-    rawdata,
-    port_pairs,
-    cache_path=response_cache,
-)
-response_eda = PcbDatasetEDA(parameters, responses)
-
-# %% [markdown]
-# The response cache has one scalar schema version and four arrays:
-#
-# - `simulation_indices`: `SIMU_INDEX` values with both parameter rows and
-#   Touchstone files.
-# - `frequencies_ghz`: the common frequency grid.
-# - `port_pairs`: selected one-based `(receiver, source)` paths, in column
-#   order.
-# - `through_s_db`: the extracted response tensor with shape
-#   `(simulation, frequency, path)`.
-#
-# Therefore, `through_s_db[i, :, j]` is one full frequency response curve for
-# simulation row `i` and port-pair column `j`.
-
-# %%
-with np.load(response_cache, allow_pickle=False) as cache:
-    print("Cache file:", relative_to_project_root(response_cache))
-    print("Cache keys:", cache.files)
-    for key in cache.files:
-        value = cache[key]
-        print(f"{key}: shape={value.shape}, dtype={value.dtype}")
-
-    cached_indices = cache["simulation_indices"]
-    cached_frequencies = cache["frequencies_ghz"]
-    cached_pairs = cache["port_pairs"]
-    cached_responses = cache["through_s_db"]
-
-demo_simu_row = 0
-demo_ports_col = 0
-demo_freq_row = int(
-    np.flatnonzero(np.isclose(cached_frequencies, 10.0, rtol=0.0, atol=1e-9))[0]
-)
-
-
-demo_column = SParameterDataset.response_column_name(cached_pairs[demo_ports_col])
-demo_curve = cached_responses[demo_simu_row, :, demo_ports_col]
-demo_value = cached_responses[demo_simu_row, demo_freq_row, demo_ports_col]
-
-print(
-    f"\nthrough_s_db[{demo_simu_row}, :, {demo_ports_col}] is the full "
-    f"{demo_column} curve for SIMU_INDEX {cached_indices[demo_simu_row]}."
-)
-print("First 5 curve values:", *demo_curve[:5])
-print(
-    f"At {cached_frequencies[demo_freq_row]:g} GHz, "
-    f"{demo_column} = {demo_value:g} dB."
-)
-
-# %% [markdown]
-# ### 3.4 Inspect through-path response curves
+# ### 3.3 Inspect configured through-path response curves
 #
 # The magnitude in dB is named directly as `S*_DB`, rather than using an
 # insertion-loss label with ambiguous sign. For example, `S7_1_DB` is
-# $20 \log_{10} |S_{71}|$.
+# $20 \log_{10} |S_{71}|$. The cell below inspects one example Touchstone file
+# only; full training targets are loaded lazily later.
 
 # %%
-representative_index = int(responses.simulation_indices[0])
-_ = response_eda.plot_through_response_curves(simulation_indices=[representative_index])
+port_pairs = [tuple(pair) for pair in cfg["dataset"]["ports"]]
+frequency_ghz = network.f / 1e9
 
-# %% [markdown]
-# ### 3.5 Relate parameters to response at 10 GHz
-#
-# `10 GHz` is present exactly in the frequency grid, so scalar targets can be
-# extracted without interpolation and joined only to matched simulations.
-
-# %%
-response_at_10ghz = response_eda.response_frame_at_frequency(10.0)
-response_columns = [
-    SParameterDataset.response_column_name(pair) for pair in responses.port_pairs
-]
-response_at_10ghz[response_columns].describe()
+for pair in port_pairs:
+    curve = response_db[:, pair[0] - 1, pair[1] - 1]
+    print(
+        f"S{pair[0]}_{pair[1]}_DB: "
+        f"min={curve.min():.3f} dB, "
+        f"median={np.median(curve):.3f} dB, "
+        f"max={curve.max():.3f} dB"
+    )
 
 # %%
-_ = response_eda.plot_response_distributions(10.0)
-
-# %%
-response_correlations = response_eda.response_correlation_pairs(
-    frequency_ghz=10.0,
-    features=[
-        "EPS",
-        "TAND",
-        "TRACE_LEN",
-        "BOARD_AREA",
-        "TRACE_ASPECT_RATIO",
-    ],
-)
-response_correlations.head(20)
-
-# %%
-_ = response_eda.plot_parameter_response_relationships(
-    pair=(7, 1),
-    frequency_ghz=10.0,
-)
-
-# %% [markdown]
-# ### 3.6 Move from scalar targets to curve targets
-#
-# Plot population summaries for each selected through path. Median curves and
-# percentile bands show the response spread without rendering thousands of
-# individual simulations.
-
-# %%
-_ = response_eda.plot_through_response_curves()
+fig, ax = plt.subplots(figsize=(8, 4), constrained_layout=True)
+for pair in port_pairs:
+    curve = response_db[:, pair[0] - 1, pair[1] - 1]
+    ax.plot(frequency_ghz, curve, label=f"S{pair[0]}_{pair[1]}_DB")
+ax.set_xlabel("Frequency (GHz)")
+ax.set_ylabel("Magnitude (dB)")
+ax.set_title(f"Configured through paths for {example_touchstone.name}")
+ax.legend(fontsize=8)
+plt.show()
 
 # %% [markdown]
 # ## References

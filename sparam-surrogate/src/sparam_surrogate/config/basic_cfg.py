@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.1
+#       jupytext_version: 1.19.3
 #   kernelspec:
 #     display_name: meng
 #     language: python
@@ -24,7 +24,7 @@ from .paths import PROJECT_ROOT
 # %%
 def load_config(extra_cfg_path: str | Path | None = None) -> dict:
     """
-    Load basic configuration from a JSON file.
+    Load configuration from default, local, and optional extra JSON files.
 
     The configuration is loaded in the following order of precedence:
     1. Default configuration from "configs/default.json" in the project root.
