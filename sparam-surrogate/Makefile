@@ -17,8 +17,8 @@ TEMPLATE_FILES := \
 	$(TEMPLATE_DIR)/tight/conf.json \
 	$(TEMPLATE_DIR)/tight/index.html.j2
 
-EXECUTE ?= --execute
-# WebPDF uses Playwright. Permit its browser runtime to be installed on first use.
+# EXECUTE=--execute to execute the notebooks
+EXECUTE ?=
 WEBPDF_FLAGS ?= --allow-chromium-download
 
 .PHONY: webpdf sync-notebooks clean-pdf list-pdf-targets

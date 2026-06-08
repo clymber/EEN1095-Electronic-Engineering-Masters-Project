@@ -175,3 +175,31 @@ class TestTouchstoneLoader:
         assert info.misses == 1
         assert info.hits == 1
         assert info.maxsize == 4
+
+    def test_clear_cache_releases_loaded_networks(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """
+        Cached Touchstone networks can be released after eager materialization.
+        """
+        rel_path = "raw/variation/simu_0.s2p"
+        matrix = np.array([[0.1 + 0j, 0.2 + 0j], [0.5 + 0j, 0.3 + 0j]])
+        _write_s2p(tmp_path / rel_path, [matrix])
+        monkeypatch.setattr(touchstone_loader_module, "PROJECT_ROOT", tmp_path)
+        loader = TouchstoneLoader(
+            "scalar",
+            _config(),
+            cache_size=4,
+        )
+
+        loader(np.zeros(2), _metadata(rel_path))
+        assert loader.cache_info().currsize == 1
+
+        loader.clear_cache()
+
+        info = loader.cache_info()
+        assert info.currsize == 0
+        assert info.hits == 0
+        assert info.misses == 0
