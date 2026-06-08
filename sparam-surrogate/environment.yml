@@ -25,7 +25,7 @@ dependencies:
   # Jupyter and related tools
   - jupyterlab
   - ipykernel
-  - jupytext
+  - jupytext=1.19.3
   - ipynbname
 
   # Development tools
@@ -36,7 +36,15 @@ dependencies:
 
   # PDF generation
   - nbconvert
+  - nbconvert-webpdf
   - pandoc
+  - pyppeteer
+  - playwright
+  - tqdm
+  - rich
+  - notebook
+  - pdftotext
+
 
   # Tensorflow for macOS M1 GPU
   - pip:

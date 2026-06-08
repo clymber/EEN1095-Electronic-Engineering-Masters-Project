@@ -29,8 +29,8 @@
         ]
     },
     "training": {
-        "test_size": 0.2,
-        "val_size": 0.2,
+        "test_fraction": 0.2,
+        "val_fraction": 0.2,
         "batch_size": 32,
         "epochs": 100
   }

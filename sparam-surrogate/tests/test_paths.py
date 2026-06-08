@@ -4,9 +4,16 @@
 Tests for the find_project_root function in sparam_surrogate.config.
 """
 
-import pytest
 from pathlib import Path
-from sparam_surrogate.config import find_project_root
+
+import pytest
+
+from sparam_surrogate.config import (
+    find_project_root,
+    notebook_resource_path,
+    relative_to_project_root,
+)
+
 
 def test_find_project_root_from_project_root(tmp_path: Path):
     """
@@ -38,6 +45,23 @@ def test_find_project_root_from_nested_directory(tmp_path: Path):
     pyproject.write_text("[project]\nname = 'fake-project'\n", encoding="utf-8")
 
     result = find_project_root(nested_dir)
+    assert result == project_root.resolve()
+
+
+def test_find_project_root_from_outer_workspace(tmp_path: Path):
+    """
+    Test that find_project_root recognises the repository when the current
+    workspace is one directory above it.
+    """
+
+    workspace_root = tmp_path / "workspace"
+    project_root = workspace_root / "sparam-surrogate"
+    pyproject = project_root / "pyproject.toml"
+
+    project_root.mkdir(parents=True)
+    pyproject.write_text("[project]\nname = 'sparam-surrogate'\n", encoding="utf-8")
+
+    result = find_project_root(workspace_root)
     assert result == project_root.resolve()
 
 
@@ -74,3 +98,91 @@ def test_find_project_root_uses_current_working_directory(
     monkeypatch.chdir(notebook_dir)
     result = find_project_root()
     assert result == project_root.resolve()
+
+
+class TestRelativeToProjectRoot:
+    """
+    Tests for stable project-relative path rendering.
+    """
+
+    def test_absolute_path_under_project_root(self, tmp_path: Path) -> None:
+        """
+        Shorten absolute project paths for machine-independent output.
+        """
+        project_root = tmp_path / "project"
+        cleaned_path = (
+            project_root
+            / "data"
+            / "processed"
+            / "sipi_dataset_cleaned.csv"
+        )
+
+        result = relative_to_project_root(cleaned_path, project_root=project_root)
+
+        assert result == "data/processed/sipi_dataset_cleaned.csv"
+
+    def test_relative_path_is_interpreted_from_project_root(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """
+        Keep relative project paths stable.
+        """
+        project_root = tmp_path / "project"
+
+        result = relative_to_project_root(
+            "data/interim/cache.npz",
+            project_root=project_root,
+        )
+
+        assert result == "data/interim/cache.npz"
+
+    def test_rejects_paths_outside_project_root(self, tmp_path: Path) -> None:
+        """
+        Reject paths that cannot be displayed as project-relative paths.
+        """
+        project_root = tmp_path / "project"
+        outside_path = tmp_path / "other" / "cache.npz"
+
+        with pytest.raises(ValueError, match="Path is not inside project root"):
+            relative_to_project_root(outside_path, project_root=project_root)
+
+
+class TestNotebookResourcePath:
+    """
+    Tests for resolving notebook resources from the resource directory.
+    """
+
+    def test_relative_to_search_path(self, tmp_path: Path) -> None:
+        """
+        Resolve resource paths independently of the current working directory.
+        """
+        search_path = tmp_path / "resources"
+        resource = search_path / "figure.png"
+        search_path.mkdir()
+        resource.touch()
+
+        result = notebook_resource_path(
+            "figure.png",
+            search_path=search_path,
+        )
+
+        assert result == resource
+
+    def test_absolute_resource_path(self, tmp_path: Path) -> None:
+        """
+        Leave absolute paths independent of the project root.
+        """
+        resource = tmp_path / "figure.png"
+        resource.touch()
+
+        result = notebook_resource_path(resource, search_path=tmp_path / "resources")
+
+        assert result == resource
+
+    def test_raises_when_resource_is_missing(self, tmp_path: Path) -> None:
+        """
+        Report missing resources with the requested path.
+        """
+        with pytest.raises(FileNotFoundError, match="missing.png"):
+            notebook_resource_path("missing.png", search_path=tmp_path)

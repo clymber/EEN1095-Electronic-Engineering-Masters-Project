@@ -23,14 +23,9 @@ from zipfile import ZipFile
 # %%
 def extract_zip(srcfile: Path, outdir: Path, keep_zipname: bool = True) -> Path:
     """
-    Extract a ZIP archive to the output directory.
+    Extract a ZIP archive and return the extraction directory.
 
-    - srcfile: Path to the ZIP file to extract.
-    - outdir: Directory where the contents will be extracted.
-    - keep_zipname: If True, creates a subdirectory named after the ZIP file
-                    (without extension) inside the output directory. If False,
-                    extracts directly into the output directory.
-    Returns the path to the directory where the contents were extracted.
+    Set ``keep_zipname=False`` to extract directly into ``outdir``.
     """
     srcfile = srcfile.expanduser().resolve()
     outdir = outdir.expanduser().resolve()
