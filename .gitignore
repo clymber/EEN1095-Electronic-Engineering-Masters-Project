@@ -9,9 +9,10 @@ sparam-surrogate/configs/local.json
 sparam-surrogate/outputs/logs
 sparam-surrogate/reports/pdf/
 sparam-surrogate/reports/html/
+
 sparam-surrogate/PLAN.md
 sparam-surrogate/memorandum.md
-Documents/ProjectPlan_ChunyuLong_A00049113_v3.0.pdf
+sparam-surrogate/whiteboard.md
 
 # File systems specific and temporary files
 .DS_Store
