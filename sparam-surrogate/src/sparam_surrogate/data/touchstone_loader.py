@@ -116,6 +116,10 @@ class TouchstoneLoader:
         """Return current Touchstone file cache statistics."""
         return self._cached_network.cache_info()
 
+    def clear_cache(self) -> None:
+        """Release cached Touchstone networks held by this loader."""
+        self._cached_network.cache_clear()
+
     @staticmethod
     def response_column_name(pair: tuple[int, int]) -> str:
         """Return the scalar dB column name for one port pair."""
