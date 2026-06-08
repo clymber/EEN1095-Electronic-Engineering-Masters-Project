@@ -1,0 +1,72 @@
+{% extends 'lab/index.html.j2' %}
+
+{% block html_head %}
+{{ super() }}
+
+<style>
+/* PDF page layout */
+@page {
+  size: A4 portrait;
+  margin: 8mm 8mm 8mm 8mm;
+}
+
+/* General notebook font size */
+body {
+  font-size: 10pt;
+}
+
+/* Reduce notebook side padding */
+.jp-Notebook {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* Reduce cell padding */
+.jp-Cell {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* Reduce input/output wrapper padding */
+.jp-Cell-inputWrapper,
+.jp-Cell-outputWrapper {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* Code cell font size */
+.jp-CodeCell pre,
+.jp-CodeCell code,
+.jp-CodeMirrorEditor,
+.highlight pre,
+pre {
+  font-size: 8pt !important;
+  line-height: 1.25 !important;
+}
+
+/* Make code wrap instead of being clipped */
+pre,
+.highlight pre,
+.jp-CodeCell pre {
+  white-space: pre-wrap !important;
+  word-break: normal !important;
+  overflow-wrap: anywhere !important;
+}
+
+/* Hide execution prompts: In [12], Out [12] */
+.jp-InputPrompt,
+.jp-OutputPrompt {
+  display: none !important;
+}
+
+/* Avoid horizontal clipping */
+.jp-InputArea,
+.jp-OutputArea,
+.jp-CodeCell,
+.jp-Cell-inputArea {
+  max-width: 100% !important;
+  overflow-x: visible !important;
+}
+</style>
+
+{% endblock html_head %}
