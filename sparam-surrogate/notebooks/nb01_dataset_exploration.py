@@ -938,7 +938,8 @@ display(Image(filename=str(smatrix_img), width=280))
 # %%
 example_touchstone = rawdata.touchstones()[0]
 network = rf.Network(str(example_touchstone))
-response_db = network.s_db
+# `s_db` is actually a numpy array, the conversion is just for Pylance type consistency.
+response_db = np.asarray(network.s_db)
 
 print(f"Loaded example network: {example_touchstone.name}")
 print(f"Number of ports: {network.nports}")
@@ -961,7 +962,7 @@ print(f"S{demo_pair[0]}{demo_pair[1]} first 5 dB values:", *demo_curve_db[:5])
 
 # %%
 port_pairs = [tuple(pair) for pair in cfg["dataset"]["ports"]]
-frequency_ghz = network.f / 1e9
+frequency_ghz = np.asarray(network.f) / 1e9
 
 for pair in port_pairs:
     curve = response_db[:, pair[0] - 1, pair[1] - 1]
