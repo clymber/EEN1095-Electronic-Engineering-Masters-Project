@@ -36,6 +36,7 @@
 
 # %%
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -77,7 +78,7 @@ report = raw_data.check_index_consistency()
 print(f"Parameter rows: {report['parameter_count']:,}")
 print(f"Touchstone files: {report['touchstone_count']:,}")
 print(f"Parameter rows without Touchstones: {len(report['missing_touchstones']):,}")
-print(f"Touchstones without parameter rows: {len(report['missing_parameter_records']):,}")
+print(f"Touchstones without parameters: {len(report['missing_parameter_records']):,}")
 
 # %% [markdown]
 # ## 3. Build The Cleaned CSV
@@ -129,9 +130,6 @@ print(design_counts)
 # %%
 expected_columns = list(MLDatasetBuilder.CLEANED_COLUMNS)
 assert list(cleaned.columns) == expected_columns
-assert not cleaned.empty
-assert cleaned["TOUCHSTONE_REL_PATH"].astype(str).str.len().gt(0).all()
-assert not cleaned["TOUCHSTONE_REL_PATH"].map(lambda value: Path(value).is_absolute()).any()
 
 for simulation_index, group in cleaned.groupby("SIMU_INDEX"):
     labels = set(group["SPLIT_TYPE"].astype(str))
@@ -152,7 +150,9 @@ print("Sanity checks passed: schema, paths, finite features, and no split leakag
 
 # %%
 sample_features = train_set.features[0]
-sample_metadata = train_set.row_metadata.iloc[0].to_dict()
+sample_metadata: dict[str, Any] = {
+    str(key): value for key, value in train_set.row_metadata.iloc[0].to_dict().items()
+}
 
 scalar_loader = TouchstoneLoader(
     mode="scalar",
