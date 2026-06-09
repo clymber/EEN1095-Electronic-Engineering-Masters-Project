@@ -3,6 +3,8 @@
 NOTEBOOK_DIR := notebooks
 REPORT_DIR := reports/pdf
 TEMPLATE_DIR := nbconvert_templates
+NOTEBOOK_STAMP_DIR := .notebook-stamps
+THIS_MAKEFILE := $(lastword $(MAKEFILE_LIST))
 
 PY_NOTEBOOKS := $(wildcard $(NOTEBOOK_DIR)/*.py)
 IPYNB_NOTEBOOKS := $(wildcard $(NOTEBOOK_DIR)/*.ipynb)
@@ -12,32 +14,48 @@ IPYNB_STEMS := $(basename $(notdir $(IPYNB_NOTEBOOKS)))
 NOTEBOOK_STEMS := $(sort $(PY_STEMS) $(IPYNB_STEMS))
 
 PDF_TARGETS := $(addprefix $(REPORT_DIR)/,$(addsuffix .pdf,$(NOTEBOOK_STEMS)))
+GENERATED_NOTEBOOKS := $(addprefix $(NOTEBOOK_DIR)/,$(addsuffix .ipynb,$(PY_STEMS)))
+NOTEBOOK_RUN_STAMPS := $(addprefix $(NOTEBOOK_STAMP_DIR)/,$(addsuffix .executed,$(NOTEBOOK_STEMS)))
 
 TEMPLATE_FILES := \
 	$(TEMPLATE_DIR)/tight/conf.json \
 	$(TEMPLATE_DIR)/tight/index.html.j2
 
-# EXECUTE=--execute to execute the notebooks
-EXECUTE ?=
 WEBPDF_FLAGS ?= --allow-chromium-download
+NOTEBOOK_EXECUTE_FLAGS ?= --ExecutePreprocessor.timeout=-1
+NOTEBOOK_STREAM_FLAGS ?= --CoalesceStreamsPreprocessor.enabled=True
 
-.PHONY: webpdf sync-notebooks clean-pdf list-pdf-targets
+.PHONY: webpdf sync-notebooks run-notebooks clean distclean list-pdf-targets
 
-webpdf: $(PDF_TARGETS)
+webpdf: run-notebooks $(PDF_TARGETS)
 
 sync-notebooks: $(addprefix $(NOTEBOOK_DIR)/,$(addsuffix .ipynb,$(PY_STEMS)))
 
+run-notebooks: $(NOTEBOOK_RUN_STAMPS)
+
 $(REPORT_DIR):
+	mkdir -p $@
+
+$(NOTEBOOK_STAMP_DIR):
 	mkdir -p $@
 
 $(NOTEBOOK_DIR)/%.ipynb: $(NOTEBOOK_DIR)/%.py
 	jupytext --sync $<
 
-$(REPORT_DIR)/%.pdf: $(NOTEBOOK_DIR)/%.ipynb $(TEMPLATE_FILES) | $(REPORT_DIR)
+$(NOTEBOOK_STAMP_DIR)/%.executed: $(NOTEBOOK_DIR)/%.ipynb | $(NOTEBOOK_STAMP_DIR)
+	jupyter nbconvert $< \
+		--to notebook \
+		--execute \
+		--inplace \
+		$(NOTEBOOK_EXECUTE_FLAGS) \
+		$(NOTEBOOK_STREAM_FLAGS)
+	touch $@
+
+$(REPORT_DIR)/%.pdf: $(NOTEBOOK_DIR)/%.ipynb $(NOTEBOOK_STAMP_DIR)/%.executed $(TEMPLATE_FILES) $(THIS_MAKEFILE) | $(REPORT_DIR)
 	jupyter nbconvert $< \
 		--to webpdf \
 		$(WEBPDF_FLAGS) \
-		$(EXECUTE) \
+		$(NOTEBOOK_STREAM_FLAGS) \
 		--TagRemovePreprocessor.enabled=True \
 		--TagRemovePreprocessor.remove_input_tags=remove-input \
 		--template tight \
@@ -45,8 +63,12 @@ $(REPORT_DIR)/%.pdf: $(NOTEBOOK_DIR)/%.ipynb $(TEMPLATE_FILES) | $(REPORT_DIR)
 		--output-dir $(REPORT_DIR) \
 		--output $*
 
-clean-pdf:
+clean:
 	rm -rf $(REPORT_DIR)/*
+
+distclean: clean
+	rm -rf $(NOTEBOOK_STAMP_DIR)
+	rm -f $(GENERATED_NOTEBOOKS)
 
 list-pdf-targets:
 	@printf '%s\n' $(PDF_TARGETS)
