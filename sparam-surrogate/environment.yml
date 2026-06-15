@@ -39,7 +39,6 @@ dependencies:
   - nbconvert-webpdf
   - pandoc
   - pyppeteer
-  - playwright
   - tqdm
   - rich
   - notebook
