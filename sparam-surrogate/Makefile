@@ -27,7 +27,7 @@ NOTEBOOK_STREAM_FLAGS ?= --CoalesceStreamsPreprocessor.enabled=True
 
 .PHONY: webpdf sync-notebooks run-notebooks clean distclean list-pdf-targets
 
-webpdf: run-notebooks $(PDF_TARGETS)
+webpdf: $(PDF_TARGETS)
 
 sync-notebooks: $(addprefix $(NOTEBOOK_DIR)/,$(addsuffix .ipynb,$(PY_STEMS)))
 
@@ -43,7 +43,7 @@ $(NOTEBOOK_DIR)/%.ipynb: $(NOTEBOOK_DIR)/%.py
 	jupytext --sync $<
 
 $(NOTEBOOK_STAMP_DIR)/%.executed: $(NOTEBOOK_DIR)/%.ipynb | $(NOTEBOOK_STAMP_DIR)
-	jupyter nbconvert $< \
+	SPARAM_SURROGATE_PROGRESS=final jupyter nbconvert $< \
 		--to notebook \
 		--execute \
 		--inplace \
@@ -51,8 +51,8 @@ $(NOTEBOOK_STAMP_DIR)/%.executed: $(NOTEBOOK_DIR)/%.ipynb | $(NOTEBOOK_STAMP_DIR
 		$(NOTEBOOK_STREAM_FLAGS)
 	touch $@
 
-$(REPORT_DIR)/%.pdf: $(NOTEBOOK_DIR)/%.ipynb $(NOTEBOOK_STAMP_DIR)/%.executed $(TEMPLATE_FILES) $(THIS_MAKEFILE) | $(REPORT_DIR)
-	jupyter nbconvert $< \
+$(REPORT_DIR)/%.pdf: $(NOTEBOOK_STAMP_DIR)/%.executed $(TEMPLATE_FILES) $(THIS_MAKEFILE) | $(REPORT_DIR)
+	jupyter nbconvert $(NOTEBOOK_DIR)/$*.ipynb \
 		--to webpdf \
 		$(WEBPDF_FLAGS) \
 		$(NOTEBOOK_STREAM_FLAGS) \

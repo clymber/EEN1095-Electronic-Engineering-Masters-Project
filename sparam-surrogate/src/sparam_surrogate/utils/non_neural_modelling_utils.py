@@ -4,7 +4,9 @@ Utilities for non-neural S-parameter baseline modelling notebooks.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
+from time import perf_counter
 from typing import Any, cast
 
 import matplotlib.pyplot as plt
@@ -16,6 +18,9 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 from tqdm import tqdm
 
 from sparam_surrogate.data import TouchstoneLoader
+
+PROGRESS_MODE_ENV = "SPARAM_SURROGATE_PROGRESS"
+FINAL_PROGRESS_MODE = "final"
 
 FEATURE_COLUMNS = (
     "EPS",
@@ -40,6 +45,11 @@ def build_feature_matrix(dataframe: pd.DataFrame) -> np.ndarray:
     return dataframe.loc[:, FEATURE_COLUMNS].to_numpy(dtype=float)
 
 
+def _final_progress_only() -> bool:
+    """Return whether progress output should be stored only after completion."""
+    return os.environ.get(PROGRESS_MODE_ENV) == FINAL_PROGRESS_MODE
+
+
 def load_il_targets(
     dataframe: pd.DataFrame, loader: TouchstoneLoader, *, split: str
 ) -> np.ndarray:
@@ -49,7 +59,14 @@ def load_il_targets(
     targets = np.empty((len(dataframe), len(loader.target_names)), dtype=float)
 
     rows = zip(frequencies, paths, strict=True)
-    progress_bar = tqdm(rows, total=len(dataframe), desc=f"Loading {split} IL targets")
+    progress_desc = f"Loading {split} IL targets"
+    final_progress = _final_progress_only()
+
+    if final_progress:
+        progress_bar = rows
+        progress_start = perf_counter()
+    else:
+        progress_bar = tqdm(rows, total=len(dataframe), desc=progress_desc)
 
     for row_index, (frequency_ghz, touchstone_path) in enumerate(progress_bar):
         targets[row_index] = loader(
@@ -59,6 +76,13 @@ def load_il_targets(
                 "TOUCHSTONE_REL_PATH": touchstone_path,
             },
         )
+
+    if final_progress:
+        elapsed = perf_counter() - progress_start
+        progress_status = tqdm.format_meter(
+            len(dataframe), len(dataframe), elapsed, prefix=progress_desc, ascii=True
+        )
+        print(progress_status)
 
     return targets
 
