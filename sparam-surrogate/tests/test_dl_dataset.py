@@ -67,6 +67,23 @@ class FakeMapFunc:
         return np.asarray([value], dtype=np.float32)
 
 
+class FakeMetadataLoader:
+    """
+    Small target loader used to test eager metadata-driven loading.
+    """
+
+    def __call__(
+        self,
+        features: np.ndarray,
+        row_metadata: Mapping[str, Any],
+    ) -> np.ndarray:
+        """
+        Return a deterministic target from metadata only.
+        """
+        assert len(features) == 0
+        return np.asarray([row_metadata["FREQ_GHZ"]], dtype=np.float32)
+
+
 class TestDLDataset:
     """
     Unit tests for cleaned-data split views.
@@ -87,6 +104,64 @@ class TestDLDataset:
             "raw/variation/simu_0.s2p",
         ]
 
+    def test_from_cleaned_csv_returns_train_val_test_splits(
+        self,
+        tmp_path,
+    ) -> None:
+        """
+        A cleaned CSV can be reopened as standard split-specific datasets.
+        """
+        cleaned_path = tmp_path / "cleaned.csv"
+        cleaned = _cleaned_frame()
+        cleaned.loc[len(cleaned)] = {
+            "EPS": 5.0,
+            "FREQ_GHZ": 3.0,
+            "SIMU_INDEX": 2,
+            "TOUCHSTONE_REL_PATH": "raw/variation/simu_2.s2p",
+            "SPLIT_TYPE": "test",
+        }
+        cleaned.to_csv(cleaned_path, index=False)
+
+        train_set, val_set, test_set = DLDataset.from_cleaned_csv(
+            cleaned_path,
+            feature_columns=["EPS", "FREQ_GHZ"],
+        )
+
+        assert train_set.split_type == "train"
+        assert val_set.split_type == "val"
+        assert test_set.split_type == "test"
+        assert len(train_set) == 2
+        assert len(val_set) == 1
+        assert len(test_set) == 1
+
+    def test_load_targets_materializes_callable_targets(self) -> None:
+        """
+        Eager target loading reuses the same feature and metadata alignment.
+        """
+        dataset = DLDataset(_cleaned_frame(), ["EPS", "FREQ_GHZ"], "train")
+
+        targets = dataset.load_targets(FakeMetadataLoader())
+
+        np.testing.assert_allclose(targets, [[1.0], [2.0]])
+
+    def test_load_targets_can_print_final_progress_only(
+        self,
+        monkeypatch,
+        capsys,
+    ) -> None:
+        """
+        Final-only progress mode prints one completed progress summary.
+        """
+        monkeypatch.setenv(DLDataset.PROGRESS_MODE_ENV, DLDataset.FINAL_PROGRESS_MODE)
+        dataset = DLDataset(_cleaned_frame(), ["EPS", "FREQ_GHZ"], "train")
+
+        targets = dataset.load_targets(FakeMetadataLoader())
+
+        np.testing.assert_allclose(targets, [[1.0], [2.0]])
+        captured = capsys.readouterr()
+        assert "Loading train targets" in captured.out
+        assert "2/2" in captured.out
+
     def test_rejects_missing_required_columns(self) -> None:
         """
         Missing metadata columns are reported clearly.
@@ -96,7 +171,9 @@ class TestDLDataset:
         with pytest.raises(ValueError, match="TOUCHSTONE_REL_PATH"):
             DLDataset(frame, ["EPS", "FREQ_GHZ"], "train")
 
-    def test_to_tf_dataset_maps_fake_callable_when_tensorflow_is_available(self) -> None:
+    def test_to_tf_dataset_maps_fake_callable_when_tensorflow_is_available(
+        self,
+    ) -> None:
         """
         TensorFlow mapping yields feature and target batches.
         """
