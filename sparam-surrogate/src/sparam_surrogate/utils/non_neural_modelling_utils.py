@@ -80,20 +80,6 @@ def sample_positions(
     return np.sort(rng.choice(n_rows, size=max_points, replace=False))
 
 
-def ordered_design_positions(
-    dataframe: pd.DataFrame,
-    simulation_index: int | None = None,
-) -> tuple[int, np.ndarray]:
-    """Return row positions for one design, sorted by frequency."""
-    if simulation_index is None:
-        simulation_index = int(dataframe["SIMU_INDEX"].iloc[0])
-    design_mask = dataframe["SIMU_INDEX"].to_numpy(dtype=int) == simulation_index
-    positions = np.flatnonzero(design_mask)
-    frequencies = dataframe["FREQ_GHZ"].to_numpy(dtype=float)
-    ordered = positions[np.argsort(frequencies[positions])]
-    return simulation_index, ordered
-
-
 def add_diagonal_reference(ax: Axes, y_true: np.ndarray, y_pred: np.ndarray) -> None:
     """Add an ideal y=x reference line to a scatter plot."""
     lower = float(np.min([np.min(y_true), np.min(y_pred)]))
@@ -106,21 +92,97 @@ def add_diagonal_reference(ax: Axes, y_true: np.ndarray, y_pred: np.ndarray) -> 
     ax.set_ylim(lower, upper)
 
 
-def plot_scalar_curve_for_design(
+def scalar_prediction_summary_by_frequency(
+    dataframe: pd.DataFrame,
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    lower_quantile: float = 0.10,
+    upper_quantile: float = 0.90,
+) -> pd.DataFrame:
+    """Return scalar true/predicted median and quantile bands by frequency."""
+    if not 0.0 <= lower_quantile < upper_quantile <= 1.0:
+        raise ValueError("Expected 0 <= lower_quantile < upper_quantile <= 1.")
+
+    true_values = np.asarray(y_true, dtype=float).reshape(-1)
+    pred_values = np.asarray(y_pred, dtype=float).reshape(-1)
+    frequencies = dataframe["FREQ_GHZ"].to_numpy(dtype=float)
+    if len(frequencies) != len(true_values) or len(frequencies) != len(pred_values):
+        raise ValueError("dataframe, y_true, and y_pred must have the same length.")
+
+    values = pd.DataFrame(
+        {
+            "FREQ_GHZ": frequencies,
+            "TRUE": true_values,
+            "PREDICTED": pred_values,
+        }
+    )
+    grouped = values.groupby("FREQ_GHZ", sort=True)
+    return pd.DataFrame(
+        {
+            "FREQ_GHZ": grouped.size().index.to_numpy(dtype=float),
+            "TRUE_LOWER": grouped["TRUE"].quantile(lower_quantile).to_numpy(),
+            "TRUE_MEDIAN": grouped["TRUE"].median().to_numpy(),
+            "TRUE_UPPER": grouped["TRUE"].quantile(upper_quantile).to_numpy(),
+            "PREDICTED_LOWER": grouped["PREDICTED"].quantile(lower_quantile).to_numpy(),
+            "PREDICTED_MEDIAN": grouped["PREDICTED"].median().to_numpy(),
+            "PREDICTED_UPPER": grouped["PREDICTED"].quantile(upper_quantile).to_numpy(),
+            "COUNT": grouped.size().to_numpy(dtype=int),
+        }
+    )
+
+
+def plot_scalar_prediction_band_by_frequency(
     dataframe: pd.DataFrame,
     y_true: np.ndarray,
     y_pred: np.ndarray,
     target_name: str,
-    simulation_index: int | None = None,
+    lower_quantile: float = 0.10,
+    upper_quantile: float = 0.90,
 ) -> Figure:
-    """Plot one true and predicted IL curve for a held-out design."""
-    selected_index, positions = ordered_design_positions(dataframe, simulation_index)
-    frequency = dataframe["FREQ_GHZ"].to_numpy(dtype=float)[positions]
+    """Plot true and predicted scalar IL distributions across designs."""
+    summary = scalar_prediction_summary_by_frequency(
+        dataframe,
+        y_true,
+        y_pred,
+        lower_quantile=lower_quantile,
+        upper_quantile=upper_quantile,
+    )
+    lower_label = int(round(lower_quantile * 100))
+    upper_label = int(round(upper_quantile * 100))
+    frequency = summary["FREQ_GHZ"].to_numpy(dtype=float)
 
-    fig, ax = plt.subplots(figsize=(8, 4.5))
-    ax.plot(frequency, y_true[positions], label="True", linewidth=2.0)
-    ax.plot(frequency, y_pred[positions], label="Predicted", linewidth=2.0)
-    ax.set_title(f"Scalar Ridge IL Curve: {target_name}, SIMU_INDEX={selected_index}")
+    fig, ax = plt.subplots(figsize=(8, 4.8))
+    ax.fill_between(
+        frequency,
+        summary["TRUE_LOWER"].to_numpy(dtype=float),
+        summary["TRUE_UPPER"].to_numpy(dtype=float),
+        color="tab:blue",
+        alpha=0.18,
+        label=f"True {lower_label}th-{upper_label}th percentile",
+    )
+    ax.plot(
+        frequency,
+        summary["TRUE_MEDIAN"].to_numpy(dtype=float),
+        color="tab:blue",
+        linewidth=2.0,
+        label="True median",
+    )
+    ax.fill_between(
+        frequency,
+        summary["PREDICTED_LOWER"].to_numpy(dtype=float),
+        summary["PREDICTED_UPPER"].to_numpy(dtype=float),
+        color="tab:orange",
+        alpha=0.20,
+        label=f"Predicted {lower_label}th-{upper_label}th percentile",
+    )
+    ax.plot(
+        frequency,
+        summary["PREDICTED_MEDIAN"].to_numpy(dtype=float),
+        color="tab:orange",
+        linewidth=2.0,
+        label="Predicted median",
+    )
+    ax.set_title(f"Scalar Ridge IL Distribution: {target_name}")
     ax.set_xlabel("Frequency (GHz)")
     ax.set_ylabel("Insertion loss (dB)")
     ax.grid(True, alpha=0.3)
@@ -235,37 +297,112 @@ def plot_scalar_mae_by_frequency(
     return fig
 
 
-def plot_vector_curves_for_design(
+def vector_prediction_summary_by_frequency(
     dataframe: pd.DataFrame,
     y_true: np.ndarray,
     y_pred: np.ndarray,
     names: tuple[str, ...],
-    simulation_index: int | None = None,
-) -> Figure:
-    """Plot six true and predicted IL curves for one held-out design."""
-    selected_index, positions = ordered_design_positions(dataframe, simulation_index)
-    frequency = dataframe["FREQ_GHZ"].to_numpy(dtype=float)[positions]
+    lower_quantile: float = 0.10,
+    upper_quantile: float = 0.90,
+) -> pd.DataFrame:
+    """Return vector true/predicted median and quantile bands by frequency."""
+    true_values = np.asarray(y_true, dtype=float)
+    pred_values = np.asarray(y_pred, dtype=float)
+    if true_values.shape != pred_values.shape:
+        raise ValueError("y_true and y_pred must have the same shape.")
+    if true_values.ndim != 2:
+        raise ValueError("Vector prediction summaries require two-dimensional arrays.")
+    if true_values.shape[1] != len(names):
+        raise ValueError("names must match the number of vector target columns.")
 
-    fig, axes = plt.subplots(2, 3, figsize=(14, 7), sharex=True)
-    for column_index, ax in enumerate(np.asarray(axes).ravel()):
-        ax.plot(
+    summaries = []
+    for column_index, target_name in enumerate(names):
+        summary = scalar_prediction_summary_by_frequency(
+            dataframe,
+            true_values[:, column_index],
+            pred_values[:, column_index],
+            lower_quantile=lower_quantile,
+            upper_quantile=upper_quantile,
+        )
+        summary.insert(1, "TARGET", target_name)
+        summaries.append(summary)
+    return pd.concat(summaries, ignore_index=True)
+
+
+def plot_vector_prediction_bands_by_frequency(
+    dataframe: pd.DataFrame,
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    names: tuple[str, ...],
+    lower_quantile: float = 0.10,
+    upper_quantile: float = 0.90,
+) -> Figure:
+    """Plot vector IL distributions across designs for each target."""
+    summary = vector_prediction_summary_by_frequency(
+        dataframe,
+        y_true,
+        y_pred,
+        names,
+        lower_quantile=lower_quantile,
+        upper_quantile=upper_quantile,
+    )
+    lower_label = int(round(lower_quantile * 100))
+    upper_label = int(round(upper_quantile * 100))
+    n_targets = len(names)
+    n_cols = min(3, n_targets)
+    n_rows = int(np.ceil(n_targets / n_cols))
+
+    fig, axes = plt.subplots(
+        n_rows,
+        n_cols,
+        figsize=(4.8 * n_cols, 3.4 * n_rows),
+        sharex=True,
+        squeeze=False,
+    )
+    for column_index, ax in enumerate(axes.ravel()):
+        if column_index >= n_targets:
+            ax.set_visible(False)
+            continue
+
+        target_name = names[column_index]
+        target_summary = summary.loc[summary["TARGET"] == target_name]
+        frequency = target_summary["FREQ_GHZ"].to_numpy(dtype=float)
+        ax.fill_between(
             frequency,
-            y_true[positions, column_index],
-            label="True",
-            linewidth=1.8,
+            target_summary["TRUE_LOWER"].to_numpy(dtype=float),
+            target_summary["TRUE_UPPER"].to_numpy(dtype=float),
+            color="tab:blue",
+            alpha=0.18,
+            label=f"True {lower_label}th-{upper_label}th percentile",
         )
         ax.plot(
             frequency,
-            y_pred[positions, column_index],
-            label="Predicted",
+            target_summary["TRUE_MEDIAN"].to_numpy(dtype=float),
+            color="tab:blue",
             linewidth=1.8,
+            label="True median",
         )
-        ax.set_title(names[column_index])
+        ax.fill_between(
+            frequency,
+            target_summary["PREDICTED_LOWER"].to_numpy(dtype=float),
+            target_summary["PREDICTED_UPPER"].to_numpy(dtype=float),
+            color="tab:orange",
+            alpha=0.20,
+            label=f"Predicted {lower_label}th-{upper_label}th percentile",
+        )
+        ax.plot(
+            frequency,
+            target_summary["PREDICTED_MEDIAN"].to_numpy(dtype=float),
+            color="tab:orange",
+            linewidth=1.8,
+            label="Predicted median",
+        )
+        ax.set_title(target_name)
         ax.set_xlabel("Frequency (GHz)")
         ax.set_ylabel("IL (dB)")
         ax.grid(True, alpha=0.3)
     axes[0, 0].legend()
-    fig.suptitle(f"Vector Ridge IL Curves, SIMU_INDEX={selected_index}", y=1.02)
+    fig.suptitle("Vector Ridge IL Distributions", y=1.02)
     fig.tight_layout()
     return fig
 
@@ -398,20 +535,21 @@ __all__ = [
     "SCATTER_MAX_POINTS",
     "add_diagonal_reference",
     "fit_ridge_with_validation",
-    "ordered_design_positions",
     "per_target_metrics",
-    "plot_scalar_curve_for_design",
     "plot_scalar_mae_by_frequency",
+    "plot_scalar_prediction_band_by_frequency",
     "plot_scalar_residual_histogram",
     "plot_scalar_residual_vs_frequency",
     "plot_scalar_true_vs_predicted",
-    "plot_vector_curves_for_design",
     "plot_vector_mae_by_frequency",
+    "plot_vector_prediction_bands_by_frequency",
     "plot_vector_residual_histograms",
     "plot_vector_residual_vs_frequency",
     "plot_vector_true_vs_predicted",
     "regression_metrics",
     "sample_positions",
     "scalar_mae_by_frequency",
+    "scalar_prediction_summary_by_frequency",
     "vector_mae_by_frequency",
+    "vector_prediction_summary_by_frequency",
 ]

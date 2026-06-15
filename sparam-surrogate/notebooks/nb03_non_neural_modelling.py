@@ -31,13 +31,13 @@ from sparam_surrogate.utils.non_neural_modelling_utils import (
     RIDGE_ALPHA_GRID,
     fit_ridge_with_validation,
     per_target_metrics,
-    plot_scalar_curve_for_design,
     plot_scalar_mae_by_frequency,
+    plot_scalar_prediction_band_by_frequency,
     plot_scalar_residual_histogram,
     plot_scalar_residual_vs_frequency,
     plot_scalar_true_vs_predicted,
-    plot_vector_curves_for_design,
     plot_vector_mae_by_frequency,
+    plot_vector_prediction_bands_by_frequency,
     plot_vector_residual_histograms,
     plot_vector_residual_vs_frequency,
     plot_vector_true_vs_predicted,
@@ -281,10 +281,14 @@ scalar_metrics = pd.DataFrame(
 print(scalar_metrics)
 
 # %% [markdown]
-# ### 1.5 Plotting: Predicted IL Curve Vs True IL Curve
+# ### 1.5 Plotting: Scalar IL Distribution Across Test Designs
+#
+# This plot groups all held-out test rows by frequency and compares the true and
+# predicted median curves, together with the 10th-90th percentile bands across
+# design variants.
 
 # %%
-fig_scalar_curve = plot_scalar_curve_for_design(
+fig_scalar_distribution = plot_scalar_prediction_band_by_frequency(
     test_set.dataframe,
     y_test_scalar,
     y_test_pred_scalar,
@@ -292,13 +296,12 @@ fig_scalar_curve = plot_scalar_curve_for_design(
 )
 
 # %% [markdown]
-# **Interpretation.** The predicted curve follows a smooth, almost linear
-# downward trend as frequency increases. This means the scalar Ridge model has
-# learned the average relationship between frequency and insertion loss. However,
-# the true curve contains ripples, local peaks, and deep notches that the linear
-# model cannot reproduce. The gap is especially visible at high frequency, where
-# the true response is strongly frequency-structured while the prediction remains
-# smooth.
+# **Interpretation.** The scalar Ridge baseline captures the central
+# insertion-loss trend well, as shown by the close agreement between the true and
+# predicted medians. However, its predicted percentile band is much narrower than
+# the true band, especially at high frequency. This indicates that the model
+# underfits design-specific variation and cannot represent frequency-dependent
+# resonant behaviour or the widening response envelope across variants.
 
 # %% [markdown]
 # ### 1.6 Plotting: Predicted Vs True IL Values
@@ -507,10 +510,10 @@ print("\nPer-port-pair test metrics:")
 print(per_target_test_metrics)
 
 # %% [markdown]
-# ### 2.5 Plot Vector IL Curves
+# ### 2.5 Plot Vector IL Distributions Across Test Designs
 
 # %%
-fig_vector_curves = plot_vector_curves_for_design(
+fig_vector_distributions = plot_vector_prediction_bands_by_frequency(
     test_set.dataframe,
     Y_test,
     Y_test_pred,
@@ -518,11 +521,12 @@ fig_vector_curves = plot_vector_curves_for_design(
 )
 
 # %% [markdown]
-# **Interpretation.** The same pattern appears across all six port pairs. The
-# vector Ridge model predicts smooth, near-linear loss curves, while each true IL
-# curve contains port-specific ripples and notches. This shows that the
-# multi-output model captures a shared average trend across the through paths, but
-# it does not model the target-specific frequency structure.
+# **Interpretation.** The vector Ridge model captures the central frequency-loss
+# trend for each through path, but the predicted percentile bands are much
+# narrower than the true bands. This repeats the scalar-model conclusion across
+# all six targets: the linear baseline learns the average response but underfits
+# design-specific variation, especially where the high-frequency response
+# envelope widens.
 
 # %% [markdown]
 # ### 2.6 Plot Vector Predicted Vs True Scatter
