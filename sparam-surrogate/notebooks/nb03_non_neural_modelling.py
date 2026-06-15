@@ -26,12 +26,10 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from sparam_surrogate.config import load_config, relative_to_project_root
-from sparam_surrogate.data import TouchstoneLoader
+from sparam_surrogate.data import DLDataset, TouchstoneLoader
 from sparam_surrogate.utils.non_neural_modelling_utils import (
     RIDGE_ALPHA_GRID,
-    build_feature_matrix,
     fit_ridge_with_validation,
-    load_il_targets,
     per_target_metrics,
     plot_scalar_curve_for_design,
     plot_scalar_mae_by_frequency,
@@ -69,7 +67,7 @@ raw_data_dir = Path(cfg["paths"]["raw_data"]) / DS_NAME
 processed_dir = Path(cfg["paths"]["processed_data"])
 port_pairs = tuple(tuple(pair) for pair in cfg["dataset"]["ports"])
 
-il_loader = TouchstoneLoader("scalar", cfg, "db", 512)
+il_loader = TouchstoneLoader("scalar", cfg, "db", 512) # Insertion Loss loader
 target_names = tuple(il_loader.target_names)
 
 print(f"Dataset: {DS_NAME}")
@@ -88,63 +86,45 @@ print("Target names:", *target_names, sep=", ")
 # %% [markdown]
 # ## Data Loading And Validation
 #
-# The following procedure loads the cleaned and split-ready CSV:
+# Load the cleaned CSV as three dataset views.
+# Each view owns one split.
 
 # %%
-samples_df = pd.read_csv(processed_dir / CLEANED_CSV)
-train_df = (
-    samples_df.loc[samples_df["SPLIT_TYPE"] == "train"]
-    .copy()
-    .reset_index(drop=True)
-)
-val_df = (
-    samples_df.loc[samples_df["SPLIT_TYPE"] == "val"]
-    .copy()
-    .reset_index(drop=True)
-)
-test_df = (
-    samples_df.loc[samples_df["SPLIT_TYPE"] == "test"]
-    .copy()
-    .reset_index(drop=True)
-)
+train_set, val_set, test_set = DLDataset.from_cleaned_csv(processed_dir / CLEANED_CSV)
 
 # %% [markdown]
-# The feature matrix is built by concatenating design parameters and frequency:
+# Build the in-memory arrays used by scikit-learn.
+#
+# `X` comes from the cleaned CSV. It contains design parameters plus frequency.
+# `Y` comes from Touchstone files. The loader reads those files on demand.
 
 # %%
-X_train = build_feature_matrix(train_df)
-X_val = build_feature_matrix(val_df)
-X_test = build_feature_matrix(test_df)
+# pylint: disable=invalid-name
+X_train, Y_train = train_set.features, train_set.load_targets(il_loader)
+X_val, Y_val = val_set.features, val_set.load_targets(il_loader)
+X_test, Y_test = test_set.features, test_set.load_targets(il_loader)
+# pylint: disable=invalid-name
 
-print(f"Shape of training samples: {train_df.shape}")
-print(f"Shape of validation samples: {val_df.shape}")
-print(f"Shape of test samples: {test_df.shape}")
+print(f"Training samples: {len(train_set)}")
+print(f"Validation samples: {len(val_set)}")
+print(f"Test samples: {len(test_set)}")
 print(f"X_train shape: {X_train.shape}")
 print(f"X_val shape: {X_val.shape}")
 print(f"X_test shape: {X_test.shape}")
 
 # %% [markdown]
-# The target values are read through `TouchstoneLoader`, which loads and caches
-# Touchstone files on demand. The resulting target arrays are materialized here
-# because the current non-neural baselines use scikit-learn `Ridge`, whose `fit`
-# and validation calls operate on full in-memory `X` and `y` arrays. Keeping these
-# arrays in memory also makes the later metric and plotting cells simpler and
-# reproducible:
+# The Ridge baselines need full NumPy arrays.
+# Keeping `X` and `Y` in memory also keeps the later plots simple.
+#
+# `TouchstoneLoader` caches files while building `Y`.
+# Once the targets are loaded, the cache can be cleared.
 
 # %%
-# pylint: disable=invalid-name
-Y_train = load_il_targets(train_df, il_loader, split="train")
-Y_val = load_il_targets(val_df, il_loader, split="validation")
-Y_test = load_il_targets(test_df, il_loader, split="test")
-# pylint: disable=invalid-name
-
 print(f"Y_train shape: {Y_train.shape}")
 print(f"Y_val shape: {Y_val.shape}")
 print(f"Y_test shape: {Y_test.shape}")
 print(f"Touchstone cache: {il_loader.cache_info()}")
 
-# Clear the cache to free up memory after loading, since the dataset is quite large
-# and we won't need to load any more Touchstone files for the rest of the notebook.
 il_loader.clear_cache()
 print(f"Touchstone cache after clearing: {il_loader.cache_info()}")
 
@@ -305,7 +285,7 @@ print(scalar_metrics)
 
 # %%
 fig_scalar_curve = plot_scalar_curve_for_design(
-    test_df,
+    test_set.dataframe,
     y_test_scalar,
     y_test_pred_scalar,
     scalar_target_name,
@@ -380,7 +360,7 @@ fig_scalar_residual_hist = plot_scalar_residual_histogram(
 
 # %%
 fig_scalar_residual_frequency = plot_scalar_residual_vs_frequency(
-    test_df,
+    test_set.dataframe,
     y_test_scalar,
     y_test_pred_scalar,
     scalar_target_name,
@@ -407,7 +387,7 @@ fig_scalar_residual_frequency = plot_scalar_residual_vs_frequency(
 
 # %%
 fig_scalar_mae_frequency = plot_scalar_mae_by_frequency(
-    test_df,
+    test_set.dataframe,
     y_test_scalar,
     y_test_pred_scalar,
     scalar_target_name,
@@ -531,7 +511,7 @@ print(per_target_test_metrics)
 
 # %%
 fig_vector_curves = plot_vector_curves_for_design(
-    test_df,
+    test_set.dataframe,
     Y_test,
     Y_test_pred,
     target_names,
@@ -584,7 +564,7 @@ fig_vector_residual_hists = plot_vector_residual_histograms(
 
 # %%
 fig_vector_residual_frequency = plot_vector_residual_vs_frequency(
-    test_df,
+    test_set.dataframe,
     Y_test,
     Y_test_pred,
     target_names,
@@ -608,7 +588,7 @@ fig_vector_residual_frequency = plot_vector_residual_vs_frequency(
 
 # %%
 fig_vector_mae_frequency = plot_vector_mae_by_frequency(
-    test_df,
+    test_set.dataframe,
     Y_test,
     Y_test_pred,
     target_names,
@@ -625,10 +605,10 @@ fig_vector_mae_frequency = plot_vector_mae_by_frequency(
 # ## Validation Checks
 
 # %%
-assert y_train_scalar.shape == (len(train_df),)
-assert Y_train.shape == (len(train_df), 6)
-assert Y_val.shape == (len(val_df), 6)
-assert Y_test.shape == (len(test_df), 6)
+assert y_train_scalar.shape == (len(train_set),)
+assert Y_train.shape == (len(train_set), 6)
+assert Y_val.shape == (len(val_set), 6)
+assert Y_test.shape == (len(test_set), 6)
 assert np.isfinite(y_test_pred_scalar).all()
 assert np.isfinite(Y_test_pred).all()
 

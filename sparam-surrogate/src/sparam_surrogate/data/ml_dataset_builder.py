@@ -60,7 +60,7 @@ class MLDatasetBuilder:
             raise TypeError("raw_data must be a RawData instance.")
         self.raw_data = raw_data
         self.processed_dir = Path(processed_dir)
-        default_features = (*self.PARAMETER_COLUMNS, self.FREQUENCY_COLUMN)
+        default_features = DLDataset.DEFAULT_FEATURE_COLUMNS
         self.feature_columns = tuple(feature_columns or default_features)
         self._validate_feature_columns()
 

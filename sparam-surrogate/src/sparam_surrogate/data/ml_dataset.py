@@ -2,12 +2,16 @@
 Lazy deep-learning dataset views backed by the cleaned preprocessing CSV.
 """
 
-from collections.abc import Callable, Sequence
-from typing import Any
+import os
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from pathlib import Path
+from time import perf_counter
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+from tqdm import tqdm
 
 
 class DLDataset:
@@ -25,6 +29,21 @@ class DLDataset:
         "TOUCHSTONE_REL_PATH",
         "SPLIT_TYPE",
     )
+    DEFAULT_FEATURE_COLUMNS = (
+        "EPS",
+        "TAND",
+        "PITCH",
+        "TRACE_LEN",
+        "START",
+        "VIAR",
+        "ANTIPADR",
+        "TDIEL",
+        "DISTTL",
+        "TLWIDTH",
+        "FREQ_GHZ",
+    )
+    PROGRESS_MODE_ENV = "SPARAM_SURROGATE_PROGRESS"
+    FINAL_PROGRESS_MODE = "final"
 
     def __init__(
         self,
@@ -36,6 +55,26 @@ class DLDataset:
         self._feature_columns = tuple(str(column) for column in feature_columns)
         self._split_type = str(split_type)
         self._dataframe = self._filtered_dataframe(dataframe)
+
+    @classmethod
+    def from_cleaned_csv(
+        cls,
+        cleaned_csv: Path | str,
+        feature_columns: Sequence[str] | None = None,
+    ) -> tuple["DLDataset", "DLDataset", "DLDataset"]:
+        """
+        Build train, validation, and test split views from a cleaned CSV.
+
+        The default feature order matches the cleaned dataset builder: all PCB
+        design parameters followed by ``FREQ_GHZ``.
+        """
+        cleaned = pd.read_csv(cleaned_csv)
+        selected_features = tuple(feature_columns or cls.DEFAULT_FEATURE_COLUMNS)
+        return (
+            cls(cleaned, selected_features, "train"),
+            cls(cleaned, selected_features, "val"),
+            cls(cleaned, selected_features, "test"),
+        )
 
     @property
     def dataframe(self) -> pd.DataFrame:
@@ -68,9 +107,52 @@ class DLDataset:
         """Return the number of design-frequency rows in this split."""
         return len(self._dataframe)
 
+    def load_targets(
+        self,
+        loader: Callable[[np.ndarray, Mapping[str, Any]], Any],
+    ) -> np.ndarray:
+        """
+        Materialize targets by applying a loader to every row in this split.
+        """
+        progress_desc = f"Loading {self.split_type} targets"
+        final_progress = (
+            os.environ.get(self.PROGRESS_MODE_ENV) == self.FINAL_PROGRESS_MODE
+        )
+        rows: Iterable[dict[str, Any]] = cast(
+            list[dict[str, Any]],
+            self.row_metadata.to_dict("records"),
+        )
+
+        if not final_progress:
+            rows = tqdm(
+                rows,
+                total=len(self),
+                desc=progress_desc,
+            )
+
+        # Empty feature array passed only to keep the loader signature.
+        _ = np.empty(0, dtype=float)
+
+        progress_start = perf_counter()
+        targets = np.stack(
+            [
+                np.asarray(loader(_, row_metadata), dtype=float)
+                for row_metadata in rows
+            ]
+        )
+        elapsed = perf_counter() - progress_start
+
+        if final_progress:
+            progress_status = tqdm.format_meter(
+                len(self), len(self), elapsed, prefix=progress_desc, ascii=True
+            )
+            print(progress_status)
+
+        return targets
+
     def to_tf_dataset(
         self,
-        map_func: Callable[[np.ndarray, dict[str, Any]], np.ndarray],
+        map_func: Callable[[np.ndarray, Mapping[str, Any]], np.ndarray],
         batch_size: int,
         shuffle: bool = False,
         prefetch: bool = True,
