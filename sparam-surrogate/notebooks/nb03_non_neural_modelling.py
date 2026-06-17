@@ -34,6 +34,8 @@ from sparam_surrogate.utils.non_neural_modelling_utils import (
     plot_scalar_mae_by_frequency,
     plot_scalar_prediction_band_by_frequency,
     plot_scalar_true_vs_predicted,
+    plot_shared_target_mae_comparison,
+    plot_shared_target_prediction_bands,
     plot_vector_mae_by_frequency,
     plot_vector_prediction_bands_by_frequency,
     plot_vector_true_vs_predicted,
@@ -899,19 +901,205 @@ fig_model_mae_comparison_frequency = plot_model_mae_comparison_by_frequency(
 #
 
 # %% [markdown]
-# ## Validation Checks
+# ## 4. Three-Model Comparison On S7_1_DB
+#
+# The scalar Ridge model only predicts `S7_1_DB`, so the cleanest comparison is
+# to evaluate all three fitted models on that shared target only. The scalar
+# model contributes its direct prediction. The Vector Ridge and Polynomial Ridge
+# models contribute only their `S7_1_DB` output column, even though they were
+# trained on all six outputs.
 
 # %%
-assert y_train_scalar.shape == (len(train_set),)
-assert Y_train.shape == (len(train_set), 6)
-assert Y_val.shape == (len(val_set), 6)
-assert Y_test.shape == (len(test_set), 6)
-assert np.isfinite(y_test_pred_scalar).all()
-assert np.isfinite(Y_test_pred).all()
+shared_target_name = scalar_target_name #  It should be "S7_1_DB"
+shared_target_index = scalar_target_index
 
-print("Validation checks passed:")
-print("- split integrity by SIMU_INDEX")
-print("- scalar target shape")
-print("- vector target shapes")
-print("- finite features, targets, and predictions")
-print("- target names match configured port pairs")
+shared_target_true = Y_test[:, shared_target_index]
+shared_target_predictions = {
+    "Scalar Ridge": y_test_pred_scalar,
+    "Vector Ridge": Y_test_pred[:, shared_target_index],
+    "Polynomial Ridge": Y_test_pred_poly[:, shared_target_index],
+}
+
+# %% [markdown]
+# First, compare the three `S7_1_DB` MAE curves by frequency.
+
+# %%
+fig_s7_three_model_mae_frequency = plot_shared_target_mae_comparison(
+    test_set.dataframe,
+    shared_target_true,
+    shared_target_predictions,
+    shared_target_name,
+)
+
+# %% [markdown]
+# Second, compare the true distribution curve against the predicted distribution
+# from each model. The true curve uses the same median and 10th-90th percentile
+# band in all cases, while each model contributes its own predicted median and
+# band. This makes it easier to see whether Polynomial Ridge improves the
+# `S7_1_DB` curve shape compared with Vector Ridge.
+
+# %%
+fig_s7_three_model_distributions = plot_shared_target_prediction_bands(
+    test_set.dataframe,
+    shared_target_true,
+    shared_target_predictions,
+    shared_target_name,
+)
+
+# %% [markdown]
+# 1. **All three models show almost the same frequency-dependent error trend**
+#
+#    In the MAE-by-frequency plot, the three curves are very close to each
+#    other. The error is low at low frequency and rises steadily toward high
+#    frequency, reaching about `13–14 dB` near `100 GHz`. This confirms that
+#    high-frequency prediction remains the main difficulty for all three
+#    models.
+#
+# 2. **Vector Ridge does not clearly improve over Scalar Ridge on `S7_1_DB`**
+#
+#    The Scalar Ridge and Vector Ridge curves are almost overlapping. This
+#    suggests that predicting all six outputs together does not significantly
+#    improve the individual `S7_1_DB` prediction. For Ridge regression, the
+#    multi-output model is therefore useful for convenience and consistency,
+#    but it does not provide strong shared-output learning.
+#
+# 3. **Polynomial Ridge gives only a small improvement**
+#
+#    Polynomial Ridge is slightly better in some frequency regions, especially
+#    near the low-frequency range, and its predicted median curve is slightly
+#    less straight than the Ridge curves. This shows that polynomial features
+#    add some nonlinear flexibility. However, the difference is small, so the
+#    improvement is modest.
+#
+# 4. **The predicted distribution is still too narrow**
+#
+#    In the distribution comparison, all three models produce much narrower
+#    predicted bands than the true 10th–90th percentile band. This means none
+#    of the three models captures the full design-to-design variation. The
+#    models still behave like average-response predictors.
+#
+# The three-model comparison shows a clear progression: Scalar Ridge
+# establishes the single-target baseline, Vector Ridge extends the same idea to
+# multiple outputs, and Polynomial Ridge adds limited nonlinear flexibility.
+# However, the improvement from each step is small. The dominant weakness
+# remains high-frequency underfitting and failure to capture the full response
+# spread.
+#
+#
+
+# %% [markdown]
+# ### Why Polynomial Ridge Only Gives a Limited Improvement
+#
+# The Polynomial Ridge model improves the curve shape slightly compared with
+# Vector Ridge, but it still does not fit the full response distribution well.
+# This is because the model is not simply fitting one curve; it is learning a
+# global relationship across many designs, frequencies, and output samples.
+#
+# %% [markdown]
+# #### 1. The model is fitting many designs at once, not one curve
+#
+# For one fixed PCB design, a polynomial curve may fit the frequency response
+# reasonably well. However, in this experiment, the model is learning the
+# mapping:
+#
+# $$
+# (\mathbf{u}, f) \rightarrow S_{7,1,\mathrm{dB}}(f)
+# $$
+#
+# Here, $\mathbf{u}$ represents the PCB design-parameter vector, and $(f)$
+# represents frequency. Therefore, the model must learn not only how `S7_1_DB`
+# changes with frequency, but also how the curve changes when the PCB geometry
+# and material parameters change. This is much harder than fitting one
+# frequency-response curve for one design.
+#
+# %% [markdown]
+# #### 2. Polynomial Ridge uses expanded features
+#
+# The Polynomial Ridge model can be written as:
+#
+# $$
+# \hat{y}=\beta_0+\sum_{r=1}^{R}\beta_r\phi_r(\mathbf{u},f)
+# $$
+#
+#
+# where:
+#
+# * $\hat{y}$ is the predicted target value, such as predicted `S7_1_DB`.
+# * $\beta_0$ is the intercept term.
+# * $R$ is the total number of expanded polynomial features.
+# * $\beta_r$ is the learned coefficient for the (r)-th polynomial feature.
+# * $\phi_r(\mathbf{u},f)$ is the (r)-th transformed feature generated
+#   from design parameters and frequency.
+#
+# In the current experiment, the original input feature count is 11, but the
+# polynomial expansion produces 44 features:
+#
+# $$
+# 11\ \text{original features} \rightarrow 44\ \text{polynomial features}
+# $$
+#
+# Therefore, for the Polynomial Ridge model in this experiment:
+#
+# $$
+# R=44
+# $$
+#
+# This gives the model more flexibility than plain Ridge, but it is still a
+# compact model rather than a highly expressive nonlinear model.
+#
+# %% [markdown]
+# #### 3. Strong regularisation limits the curvature
+#
+# The best Polynomial Ridge model uses `alpha = 1000`, which means the model is
+# strongly regularised. Ridge regression penalises large coefficients:
+#
+# $$
+# \min_{\boldsymbol{\beta}}
+# \sum_{q=1}^{N}
+# \left(\hat{y}^{(q)}-y^{(q)}\right)^2
+# +
+# \alpha
+# \sum_{r=1}^{R}\beta_r^2
+# $$
+#
+#
+# Here, $\alpha$ controls the strength of regularisation. A larger $\alpha$
+# shrinks the coefficients more strongly. This improves stability, but it also
+# prevents the polynomial curve from bending too aggressively. As a result, the
+# model still produces relatively smooth and average-like predictions.
+#
+# %% [markdown]
+# #### 4. High-frequency behaviour is more complex than polynomial curvature
+#
+# At higher frequencies, the S-parameter response may be affected by stronger
+# nonlinear effects, coupling, resonances, and sensitivity to small geometry
+# changes. A low-capacity polynomial model may not represent these behaviours
+# well.
+#
+# This explains why the Polynomial Ridge median curve is slightly less straight
+# than Vector Ridge, but the predicted 10th–90th percentile band is still too
+# narrow.
+#
+# %% [markdown]
+# #### 5. The loss function encourages average predictions
+#
+# The model is trained to minimise the overall error across many designs and
+# frequency points. When some extreme deep-loss samples are difficult to
+# predict, the model can reduce total error by staying close to the central
+# trend rather than fitting those extreme cases.
+#
+# Therefore, Polynomial Ridge improves the median curve shape slightly, but it
+# still misses the full design-to-design variation.
+#
+# %% [markdown]
+# #### Conclusion
+#
+# Polynomial Ridge is a useful improvement over Vector Ridge because it adds
+# nonlinear feature terms and produces a less straight, more realistic median
+# curve.
+#
+# But the design-specific curvature is partly averaged out during global
+# training. As a result, the predicted curve becomes smoother than the true
+# responses, especially at high frequency where different PCB designs show
+# stronger variation.
+#

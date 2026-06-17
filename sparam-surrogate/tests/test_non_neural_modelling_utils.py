@@ -13,6 +13,8 @@ import matplotlib.pyplot as plt  # noqa: E402
 from sparam_surrogate.utils.non_neural_modelling_utils import (  # noqa: E402
     plot_model_mae_comparison_by_frequency,
     plot_scalar_prediction_band_by_frequency,
+    plot_shared_target_mae_comparison,
+    plot_shared_target_prediction_bands,
     plot_vector_prediction_bands_by_frequency,
     scalar_prediction_summary_by_frequency,
     vector_prediction_summary_by_frequency,
@@ -211,4 +213,125 @@ class TestVectorPredictionBand:
         for ax in fig.axes:
             assert len(ax.lines) == 2
             assert len(ax.collections) == 2
+        plt.close(fig)
+
+
+class TestModelMaeComparison:
+    """
+    Unit tests for model-comparison plotting.
+    """
+
+    def test_plot_returns_one_line_per_model(self) -> None:
+        """
+        Mean vector MAE is plotted once for each named prediction matrix.
+        """
+        frame = pd.DataFrame({"FREQ_GHZ": [1.0, 1.0, 2.0, 2.0]})
+        y_true = np.asarray(
+            [
+                [-1.0, -10.0],
+                [-3.0, -30.0],
+                [-2.0, -20.0],
+                [-6.0, -60.0],
+            ]
+        )
+        predictions = {
+            "Vector Ridge": np.asarray(
+                [
+                    [-2.0, -11.0],
+                    [-2.5, -25.0],
+                    [-4.0, -22.0],
+                    [-4.5, -55.0],
+                ]
+            ),
+            "Polynomial": np.asarray(
+                [
+                    [-1.5, -10.5],
+                    [-2.8, -28.0],
+                    [-3.0, -21.0],
+                    [-5.0, -58.0],
+                ]
+            ),
+        }
+
+        fig = plot_model_mae_comparison_by_frequency(
+            frame,
+            y_true,
+            predictions,
+            ("S7_1_DB", "S8_2_DB"),
+        )
+
+        assert len(fig.axes) == 1
+        ax = fig.axes[0]
+        assert ax.get_title() == "Model MAE Comparison by Frequency"
+        assert [line.get_label() for line in ax.lines] == [
+            "Vector Ridge",
+            "Polynomial",
+        ]
+        plt.close(fig)
+
+
+class TestSharedTargetComparison:
+    """
+    Unit tests for scalar-target comparisons across several model families.
+    """
+
+    def test_mae_plot_returns_one_line_per_model(self) -> None:
+        """
+        Shared-target MAE curves are plotted once for each model.
+        """
+        frame = pd.DataFrame({"FREQ_GHZ": [1.0, 1.0, 2.0, 2.0]})
+        y_true = np.asarray([-1.0, -3.0, -2.0, -6.0])
+        predictions = {
+            "Scalar Ridge": np.asarray([-2.0, -2.5, -4.0, -4.5]),
+            "Vector Ridge": np.asarray([-1.5, -2.8, -3.0, -5.0]),
+            "Polynomial Ridge": np.asarray([-1.2, -3.2, -2.5, -5.5]),
+        }
+
+        fig = plot_shared_target_mae_comparison(
+            frame,
+            y_true,
+            predictions,
+            "S7_1_DB",
+        )
+
+        assert len(fig.axes) == 1
+        ax = fig.axes[0]
+        assert ax.get_title() == "S7_1_DB MAE by Frequency"
+        assert [line.get_label() for line in ax.lines] == [
+            "Scalar Ridge",
+            "Vector Ridge",
+            "Polynomial Ridge",
+        ]
+        plt.close(fig)
+
+    def test_prediction_bands_plot_true_and_each_model_distribution(self) -> None:
+        """
+        Distribution comparison includes true and per-model predicted bands.
+        """
+        frame = pd.DataFrame({"FREQ_GHZ": [1.0, 1.0, 2.0, 2.0]})
+        y_true = np.asarray([-1.0, -3.0, -2.0, -6.0])
+        predictions = {
+            "Scalar Ridge": np.asarray([-2.0, -2.5, -4.0, -4.5]),
+            "Vector Ridge": np.asarray([-1.5, -2.8, -3.0, -5.0]),
+            "Polynomial Ridge": np.asarray([-1.2, -3.2, -2.5, -5.5]),
+        }
+
+        fig = plot_shared_target_prediction_bands(
+            frame,
+            y_true,
+            predictions,
+            "S7_1_DB",
+        )
+
+        assert len(fig.axes) == 1
+        ax = fig.axes[0]
+        assert ax.get_title() == "S7_1_DB Predicted Distribution Comparison"
+        assert len(ax.lines) == 4
+        assert len(ax.collections) == 4
+        assert [line.get_label() for line in ax.lines] == [
+            "True median",
+            "Scalar Ridge predicted median",
+            "Vector Ridge predicted median",
+            "Polynomial Ridge predicted median",
+        ]
         plt.close(fig)
