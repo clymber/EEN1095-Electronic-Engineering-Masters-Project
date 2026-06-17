@@ -682,46 +682,221 @@ fig_vector_mae_frequency = plot_vector_mae_by_frequency(
 #
 
 # %% [markdown]
-# ### 2.8 Plot Vector Residual Vs Frequency
+# ## 3. Polynomial Vector Baseline
+#
+# This baseline keeps the same vector target definition as the vector Ridge model,
+# but expands each input feature with powers before fitting a regularised linear
+# model. The default follow-up experiment now sweeps degrees 3, 4, and 5 with a
+# stronger regularisation search, then selects the degree and Ridge
+# regularisation strength with the lowest validation MAE. For one feature, the
+# powers-only expansion is:
+#
+# $$
+# x_j \rightarrow [x_j, x_j^2, \ldots, x_j^D]
+# $$
+#
+# Unlike full polynomial features, this does not create cross terms such as
+# $x_1 x_2$. That keeps the feature matrix much smaller while still allowing each
+# design or frequency feature to learn smooth nonlinear curvature.
+
+# %% [markdown]
+# ### 3.1 Train Polynomial Degree Sweep
 
 # %%
-fig_vector_residual_frequency = plot_vector_residual_vs_frequency(
+polynomial_model = PolynomialModel()
+polynomial_model.fit(X_train, Y_train, X_val, Y_val)
+
+polynomial_validation_results = polynomial_model.validation_results
+best_polynomial_degree = polynomial_model.best_degree
+best_polynomial_alpha = polynomial_model.best_alpha
+if (
+    polynomial_validation_results is None
+    or best_polynomial_degree is None
+    or best_polynomial_alpha is None
+):
+    raise RuntimeError("Polynomial model did not record validation results.")
+
+polynomial_step = polynomial_model.pipeline.named_steps["polynomial"]
+expanded_feature_count = polynomial_step.n_output_features_
+
+print("Polynomial validation sweep:")
+print(polynomial_validation_results)
+print(f"Best polynomial degree: {best_polynomial_degree}")
+print(f"Best polynomial alpha: {best_polynomial_alpha:g}")
+print(f"Selected expanded polynomial feature count: {expanded_feature_count}")
+print("Selected polynomial pipeline:")
+print(polynomial_model.pipeline)
+
+# %% [markdown]
+# 1. **Degree 4 seems to be the sweet spot**
+#
+#    The best validation result comes from `degree = 4` with `alpha = 1000`. Degree 3 is
+#    close behind, while degree 5 offers no further improvement. Nonlinear interactions
+#    help, but extra complexity does not.
+#
+# 2. **Regularisation helps, but only slightly**
+#
+#    The best model uses the largest tested `alpha` (`1000`), suggesting stronger
+#    regularisation is beneficial. However, validation MAE changes little across `alpha`
+#    values, so most of the gain comes from the polynomial features.
+#
+# 3. **The gain is modest**
+#
+#    The best polynomial validation MAE is `7.2918 dB`, compared with about `7.3250 dB`
+#    for Vector Ridge. The polynomial expansion improves the baseline, but only
+#    slightly.
+#
+# 4. **Conclusion**
+#
+#    Polynomial features provide a small but consistent improvement while keeping the
+#    model simple and interpretable. However, the gain is limited, suggesting that a
+#    more expressive nonlinear model will be needed for larger improvements.
+
+# %% [markdown]
+# ### 3.2 Polynomial Evaluation
+
+# %%
+Y_val_pred_poly = polynomial_model.predict(X_val)  # pylint: disable=invalid-name
+Y_test_pred_poly = polynomial_model.predict(X_test)  # pylint: disable=invalid-name
+
+polynomial_metrics = pd.DataFrame(
+    [
+        {"split": "validation", **regression_metrics(Y_val, Y_val_pred_poly)},
+        {"split": "test", **regression_metrics(Y_test, Y_test_pred_poly)},
+    ]
+)
+per_target_polynomial_metrics = per_target_metrics(
+    Y_test,
+    Y_test_pred_poly,
+    target_names,
+)
+
+model_comparison = pd.DataFrame(
+    [
+        {"model": "Vector Ridge", **regression_metrics(Y_test, Y_test_pred)},
+        {"model": "Polynomial", **regression_metrics(Y_test, Y_test_pred_poly)},
+    ]
+)
+
+per_target_vector_comparison = per_target_test_metrics.copy()
+per_target_vector_comparison.insert(0, "model", "Vector Ridge")
+per_target_polynomial_comparison = per_target_polynomial_metrics.copy()
+per_target_polynomial_comparison.insert(0, "model", "Polynomial")
+per_target_model_comparison = pd.concat(
+    [per_target_vector_comparison, per_target_polynomial_comparison],
+    ignore_index=True,
+)
+
+print("Polynomial vector metrics:")
+print(polynomial_metrics)
+print("\nOverall model comparison:")
+print(model_comparison)
+print("\nPer-target model comparison:")
+print(per_target_model_comparison)
+
+# %% [markdown]
+# 1. The Polynomial model performs slightly better than Vector Ridge.
+#
+#    Test MAE drops from `7.80 dB` to `7.76 dB`, while RMSE decreases from `12.61 dB`
+#    to `12.59 dB`. The gain is small, but consistent.
+#
+# 2. The improvement appears across all six targets.
+#
+#    Each port-pair prediction improves slightly, suggesting the polynomial features
+#    provide a small overall benefit rather than helping only one specific link.
+#
+# 3. The main limitation remains.
+#
+#    The improvement is only a few hundredths of a dB, so the model is mainly refining
+#    the Ridge baseline rather than addressing its underlying weaknesses.
+#
+# 4. Overall, Polynomial Ridge is a slightly stronger non-neural baseline, but the
+#    modest gain suggests that a more expressive nonlinear model is likely needed for
+#    further improvement.
+#
+
+# %% [markdown]
+# ### 3.3 Plot Polynomial IL Distributions Across Test Designs
+
+# %%
+fig_polynomial_distributions = plot_vector_prediction_bands_by_frequency(
     test_set.dataframe,
     Y_test,
-    Y_test_pred,
+    Y_test_pred_poly,
+    target_names,
+    model_name="Polynomial",
+)
+
+# %% [markdown]
+# 1. The Polynomial model follows the median trend well.
+#
+#    For all six port pairs, the predicted median follows the true median across
+#    frequency. This shows that the polynomial features help the model represent
+#    the main frequency-dependent trend.
+#
+# 2. The predicted spread is still too narrow.
+#
+#    The true 10th–90th percentile band becomes much wider at high frequency,
+#    but the predicted band remains narrow. This means the model still
+#    underestimates design-to-design variation.
+#
+# 3. The qualitative behaviour is similar to Vector Ridge.
+#
+#    Compared with Vector Ridge, the Polynomial model gives a small improvement.
+#    The predicted median curves are less constrained to a straight-line trend
+#    and show a more realistic curved frequency response, indicating that the
+#    polynomial features capture some nonlinear frequency-dependent behaviour.
+#    However, the improvement is modest, as the predicted distribution remains
+#    much narrower than the true distribution and still fails to capture the full
+#    response range.
+#
+# Overall, Polynomial Ridge is a useful refinement of the linear baseline, but
+# it still underfits the wider high-frequency distribution. The next improvement
+# likely requires a more flexible nonlinear model.
+#
+
+# %% [markdown]
+# ### 3.4 Compare Ridge And Polynomial MAE By Frequency
+
+# %%
+fig_model_mae_comparison_frequency = plot_model_mae_comparison_by_frequency(
+    test_set.dataframe,
+    Y_test,
+    {
+        "Vector Ridge": Y_test_pred,
+        "Polynomial": Y_test_pred_poly,
+    },
     target_names,
 )
 
 # %% [markdown]
-# **Interpretation.** For all six port pairs, the residual spread grows as
-# frequency increases. The high-frequency region contains both a wider error band
-# and more large positive outliers. This means the vector Ridge model's errors are
-# frequency-dependent, with the weakest performance occurring where the true
-# responses are most nonlinear and resonance-like.
-
-# %% [markdown]
-# ### 2.9 Plot Vector MAE By Frequency
+# 1. The Polynomial model is slightly better overall.
 #
-# For each target column:
+#    The Polynomial MAE curve is very close to the Vector Ridge curve, but it is
+#    slightly lower in some frequency regions, especially at lower frequencies.
+#    This agrees with the numerical results: the Polynomial model improves the
+#    overall test MAE slightly, from about `7.80 dB` to `7.76 dB`.
 #
-# $$
-#     MAE_j(f_k) = mean_i |IL_j(i,k) - \widehat{IL}_j(i,k)|
-# $$
-
-# %%
-fig_vector_mae_frequency = plot_vector_mae_by_frequency(
-    test_set.dataframe,
-    Y_test,
-    Y_test_pred,
-    target_names,
-)
-
-# %% [markdown]
-# **Interpretation.** The six MAE curves are very close to each other and all
-# increase with frequency. This shows that the six through-path targets have
-# similar difficulty for the Ridge baseline. The steadily rising curves also
-# confirm the main conclusion from the residual plots: high-frequency prediction
-# is the dominant weakness of this non-neural linear baseline.
+# 2. Both models show the same frequency-dependent error pattern.
+#
+#    The two curves have almost the same shape. MAE increases steadily from
+#    around `1 dB` at low frequency to about `13–14 dB` near `100 GHz`. This
+#    means the Polynomial model has not changed the main difficulty of the
+#    problem: prediction becomes much harder at higher frequencies.
+#
+# 3. The improvement is useful but limited.
+#
+#    The Polynomial model adds some nonlinear flexibility, so it is a stronger
+#    baseline than plain Vector Ridge. However, the error curve is only shifted
+#    slightly and still rises strongly with frequency. This suggests that
+#    polynomial features refine the model but do not fully solve the
+#    high-frequency underfitting problem.
+#
+# Overall, Polynomial Ridge is a modest improvement over Vector Ridge. It should
+# be kept as the stronger non-neural baseline, but the similar MAE-by-frequency
+# shape shows that a more expressive nonlinear model is still needed for
+# substantial improvement.
+#
 
 # %% [markdown]
 # ## Validation Checks
