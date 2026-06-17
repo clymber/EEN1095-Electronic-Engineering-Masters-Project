@@ -219,6 +219,107 @@ def plot_scalar_mae_by_frequency(
     return fig
 
 
+def plot_shared_target_mae_comparison(
+    dataframe: pd.DataFrame,
+    y_true: np.ndarray,
+    predictions: dict[str, np.ndarray],
+    target_name: str,
+) -> Figure:
+    """Plot MAE-by-frequency curves for several models on one scalar target."""
+    if not predictions:
+        raise ValueError("predictions must contain at least one model.")
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+    for model_name, y_pred in predictions.items():
+        mae_curve = scalar_mae_by_frequency(dataframe, y_true, y_pred)
+        ax.plot(
+            mae_curve["FREQ_GHZ"].to_numpy(dtype=float),
+            mae_curve["MAE"].to_numpy(dtype=float),
+            label=model_name,
+            linewidth=1.8,
+        )
+
+    ax.set_title(f"{target_name} MAE by Frequency")
+    ax.set_xlabel("Frequency (GHz)")
+    ax.set_ylabel("MAE (dB)")
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    fig.tight_layout()
+    return fig
+
+
+def plot_shared_target_prediction_bands(
+    dataframe: pd.DataFrame,
+    y_true: np.ndarray,
+    predictions: dict[str, np.ndarray],
+    target_name: str,
+    lower_quantile: float = 0.10,
+    upper_quantile: float = 0.90,
+) -> Figure:
+    """Plot true and per-model predicted distribution bands for one target."""
+    if not predictions:
+        raise ValueError("predictions must contain at least one model.")
+
+    summaries = {
+        model_name: scalar_prediction_summary_by_frequency(
+            dataframe,
+            y_true,
+            y_pred,
+            lower_quantile=lower_quantile,
+            upper_quantile=upper_quantile,
+        )
+        for model_name, y_pred in predictions.items()
+    }
+    first_summary = next(iter(summaries.values()))
+    frequency = first_summary["FREQ_GHZ"].to_numpy(dtype=float)
+    lower_label = int(round(lower_quantile * 100))
+    upper_label = int(round(upper_quantile * 100))
+    colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+
+    fig, ax = plt.subplots(figsize=(9, 5.2))
+    ax.fill_between(
+        frequency,
+        first_summary["TRUE_LOWER"].to_numpy(dtype=float),
+        first_summary["TRUE_UPPER"].to_numpy(dtype=float),
+        color="tab:blue",
+        alpha=0.16,
+        label=f"True {lower_label}th-{upper_label}th percentile",
+    )
+    ax.plot(
+        frequency,
+        first_summary["TRUE_MEDIAN"].to_numpy(dtype=float),
+        color="tab:blue",
+        linewidth=2.4,
+        label="True median",
+    )
+
+    for model_index, (model_name, summary) in enumerate(summaries.items()):
+        color = colors[(model_index + 1) % len(colors)]
+        ax.fill_between(
+            frequency,
+            summary["PREDICTED_LOWER"].to_numpy(dtype=float),
+            summary["PREDICTED_UPPER"].to_numpy(dtype=float),
+            color=color,
+            alpha=0.10,
+            label=f"{model_name} predicted band",
+        )
+        ax.plot(
+            frequency,
+            summary["PREDICTED_MEDIAN"].to_numpy(dtype=float),
+            color=color,
+            linewidth=1.9,
+            label=f"{model_name} predicted median",
+        )
+
+    ax.set_title(f"{target_name} Predicted Distribution Comparison")
+    ax.set_xlabel("Frequency (GHz)")
+    ax.set_ylabel("S7_1_DB (dB)")
+    ax.grid(True, alpha=0.3)
+    ax.legend(ncol=2, fontsize="small")
+    fig.tight_layout()
+    return fig
+
+
 def vector_prediction_summary_by_frequency(
     dataframe: pd.DataFrame,
     y_true: np.ndarray,
@@ -432,6 +533,8 @@ __all__ = [
     "plot_scalar_mae_by_frequency",
     "plot_scalar_prediction_band_by_frequency",
     "plot_scalar_true_vs_predicted",
+    "plot_shared_target_mae_comparison",
+    "plot_shared_target_prediction_bands",
     "plot_vector_mae_by_frequency",
     "plot_vector_prediction_bands_by_frequency",
     "plot_vector_true_vs_predicted",
