@@ -60,7 +60,7 @@ class MLDatasetBuilder:
             raise TypeError("raw_data must be a RawData instance.")
         self.raw_data = raw_data
         self.processed_dir = Path(processed_dir)
-        default_features = (*self.PARAMETER_COLUMNS, self.FREQUENCY_COLUMN)
+        default_features = DLDataset.DEFAULT_FEATURE_COLUMNS
         self.feature_columns = tuple(feature_columns or default_features)
         self._validate_feature_columns()
 
@@ -91,7 +91,7 @@ class MLDatasetBuilder:
                 self.raw_data.touchstone(simulation_index)
             )
             for frequency_ghz in frequencies_ghz:
-                row = {
+                row: dict[str, object] = {
                     column: float(design[column]) for column in self.PARAMETER_COLUMNS
                 }
                 row[self.FREQUENCY_COLUMN] = float(frequency_ghz)
@@ -221,13 +221,13 @@ class MLDatasetBuilder:
         missing = [column for column in self.CLEANED_COLUMNS if column not in cleaned]
         if missing:
             raise ValueError("Required columns missing: " + ", ".join(missing))
-        validated = cleaned.loc[:, self.CLEANED_COLUMNS].copy()
-        numeric_columns = [*self.PARAMETER_COLUMNS, self.FREQUENCY_COLUMN]
-        validated.loc[:, numeric_columns] = validated.loc[:, numeric_columns].apply(
+        validated = cleaned.reindex(columns=self.CLEANED_COLUMNS).copy()
+        numeric_cols = [*self.PARAMETER_COLUMNS, self.FREQUENCY_COLUMN]
+        validated.loc[:, numeric_cols] = validated.loc[:, numeric_cols].apply(
             pd.to_numeric,
             errors="coerce",
         )
-        if not np.isfinite(validated.loc[:, numeric_columns].to_numpy(dtype=float)).all():
+        if not np.isfinite(validated.loc[:, numeric_cols].to_numpy(dtype=float)).all():
             raise ValueError("Cleaned feature and frequency values must be finite.")
         raw_indices = pd.to_numeric(validated[self.SIMULATION_COLUMN], errors="coerce")
         if raw_indices.isna().any():
@@ -255,7 +255,10 @@ class MLDatasetBuilder:
 
     def _unique_simulation_indices(self, cleaned: pd.DataFrame) -> np.ndarray:
         """Return unique design indices in cleaned-data order."""
-        return pd.unique(cleaned[self.SIMULATION_COLUMN]).astype(np.int64)
+        return np.asarray(
+            pd.unique(cleaned[self.SIMULATION_COLUMN]),
+            dtype=np.int64,
+        )
 
     def _split_labels_by_index(
         self,
