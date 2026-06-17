@@ -11,6 +11,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 from sparam_surrogate.utils.non_neural_modelling_utils import (  # noqa: E402
+    plot_model_mae_comparison_by_frequency,
     plot_scalar_prediction_band_by_frequency,
     plot_vector_prediction_bands_by_frequency,
     scalar_prediction_summary_by_frequency,
@@ -97,7 +98,7 @@ class TestScalarPredictionBand:
 
         assert len(fig.axes) == 1
         ax = fig.axes[0]
-        assert ax.get_title() == "Scalar Ridge IL Distribution: S7_1_DB"
+        assert ax.get_title() == "Scalar Ridge Magnitude Distribution: S7_1_DB"
         assert len(ax.lines) == 2
         assert len(ax.collections) == 2
         plt.close(fig)
@@ -198,9 +199,14 @@ class TestVectorPredictionBand:
             y_true,
             y_pred,
             ("S7_1_DB", "S8_2_DB"),
+            model_name="Polynomial",
         )
 
         assert len(fig.axes) == 2
+        assert fig._suptitle is not None
+        assert fig._suptitle.get_text() == (
+            "Polynomial Transmission Magnitude Distributions"
+        )
         assert [ax.get_title() for ax in fig.axes] == ["S7_1_DB", "S8_2_DB"]
         for ax in fig.axes:
             assert len(ax.lines) == 2

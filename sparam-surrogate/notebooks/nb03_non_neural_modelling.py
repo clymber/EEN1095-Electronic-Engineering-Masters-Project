@@ -17,29 +17,25 @@
 Train non-neural scalar and vector insertion-loss baseline models.
 """
 from pathlib import Path
-from typing import cast
 
-import numpy as np
 import pandas as pd
-from sklearn.linear_model import Ridge
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
 
 from sparam_surrogate.config import load_config, relative_to_project_root
 from sparam_surrogate.data import DLDataset, TouchstoneLoader
-from sparam_surrogate.utils.non_neural_modelling_utils import (
+from sparam_surrogate.models import (
     RIDGE_ALPHA_GRID,
-    fit_ridge_with_validation,
+    PolynomialModel,
+    ScalarRidgeModel,
+    VectorRidgeModel,
+)
+from sparam_surrogate.utils.non_neural_modelling_utils import (
     per_target_metrics,
+    plot_model_mae_comparison_by_frequency,
     plot_scalar_mae_by_frequency,
     plot_scalar_prediction_band_by_frequency,
-    plot_scalar_residual_histogram,
-    plot_scalar_residual_vs_frequency,
     plot_scalar_true_vs_predicted,
     plot_vector_mae_by_frequency,
     plot_vector_prediction_bands_by_frequency,
-    plot_vector_residual_histograms,
-    plot_vector_residual_vs_frequency,
     plot_vector_true_vs_predicted,
     regression_metrics,
 )
@@ -52,13 +48,13 @@ CLEANED_CSV = "sipi_dataset_cleaned.csv"
 #
 # In this notebook, I train non-neural baseline models to predict insertion-loss
 # targets derived from S-parameters. The first baseline predicts one scalar IL
-# value for one port pair. The second baseline predicts one vector containing the
-# six configured through-path IL values.
+# value for one port pair. The second and third baselines predict one vector
+# containing the six configured through-path IL values.
 #
 # The cleaned CSV stores only design features, frequency, split labels, simulation
 # indices, and Touchstone paths. The `TouchstoneLoader` reads Touchstone files on
 # demand, then this notebook materializes the target arrays before fitting because
-# the scikit-learn Ridge baselines expect in-memory NumPy arrays.
+# the `scikit-learn` Ridge baselines expect in-memory `NumPy` arrays.
 
 # %%
 # Import and setup
@@ -79,21 +75,22 @@ print("Target names:", *target_names, sep=", ")
 # %% [markdown]
 # ## Shared Notebook Utilities
 #
-# Reusable helpers for feature extraction, target materialization from
-# Touchstone files, validation sweeps, metrics, and plotting live in
+# Reusable model classes live in `src/sparam_surrogate/models/`. Metrics,
+# frequency summaries, and plotting helpers live in
 # `src/sparam_surrogate/utils/non_neural_modelling_utils.py`.
 
 # %% [markdown]
 # ## Data Loading And Validation
 #
-# Load the cleaned CSV as three dataset views.
+# Load the cleaned CSV as three dataset views: training set, evaluation set and
+# test set.
 # Each view owns one split.
 
 # %%
 train_set, val_set, test_set = DLDataset.from_cleaned_csv(processed_dir / CLEANED_CSV)
 
 # %% [markdown]
-# Build the in-memory arrays used by scikit-learn.
+# Build the in-memory arrays used by `scikit-learn`.
 #
 # `X` comes from the cleaned CSV. It contains design parameters plus frequency.
 # `Y` comes from Touchstone files. The loader reads those files on demand.
@@ -113,7 +110,7 @@ print(f"X_val shape: {X_val.shape}")
 print(f"X_test shape: {X_test.shape}")
 
 # %% [markdown]
-# The Ridge baselines need full NumPy arrays.
+# The Ridge baselines need full `NumPy` arrays.
 # Keeping `X` and `Y` in memory also keeps the later plots simple.
 #
 # `TouchstoneLoader` caches files while building `Y`.
@@ -190,10 +187,10 @@ print(f"Touchstone cache after clearing: {il_loader.cache_info()}")
 # tested before choosing the final baseline model:
 
 # %%
-print("RIDGE_ALPHA_GRID = ", RIDGE_ALPHA_GRID)
+print("RIDGE_ALPHA_GRID = ", *RIDGE_ALPHA_GRID)
 
 # %% [markdown]
-# In scikit-learn's `Ridge`, this value is called `alpha`. It has the same role as
+# In `scikit-learn`'s `Ridge`, this value is called `alpha`. It has the same role as
 # $\lambda$ in the Ridge objective above. A small `alpha` keeps the model close to
 # ordinary least squares, while a large `alpha` shrinks coefficients more strongly
 # and can reduce overfitting. The notebook fits one model for each candidate value,
@@ -202,17 +199,15 @@ print("RIDGE_ALPHA_GRID = ", RIDGE_ALPHA_GRID)
 # metrics remain held-out estimates.
 
 # %% [markdown]
-# ### 1.3.2 Scikit-Learn Model Design
+# ### 1.3.2 `Scikit-Learn` Model Design
 #
-# Each alpha candidate uses the same two-step scikit-learn pipeline:
+# Each alpha candidate uses the same two-step `scikit-learn` pipeline:
 #
 # ```python
-# Pipeline(
-#     [
-#         ("scaler", StandardScaler()),
-#         ("model", Ridge(alpha=alpha)),
-#     ]
-# )
+# Pipeline([
+#     ("scaler", StandardScaler()),
+#     ("model", Ridge(alpha=alpha)),
+# ])
 # ```
 #
 # `StandardScaler()` standardises every feature column using the training split
@@ -224,17 +219,10 @@ print("RIDGE_ALPHA_GRID = ", RIDGE_ALPHA_GRID)
 # scaled feature matrix. The `alpha` value controls the L2 penalty strength.
 
 # %%
-def build_ridge_pipeline(alpha: float) -> Pipeline:
-    """Return the scaler-plus-Ridge pipeline used by each alpha candidate."""
-    return Pipeline(
-        [
-            ("scaler", StandardScaler()),
-            ("model", Ridge(alpha=alpha)),
-        ]
-    )
-
-print("Example instantiated pipeline:")
-print(build_ridge_pipeline(alpha=RIDGE_ALPHA_GRID[0]))
+example_scalar_model = ScalarRidgeModel(alphas=(RIDGE_ALPHA_GRID[0],))
+print("Example instantiated model:")
+print(f"- name={example_scalar_model.name}")
+print(f"- alphas={example_scalar_model.alphas}")
 
 # %%
 scalar_target_index = 0  # pylint: disable=invalid-name
@@ -244,33 +232,27 @@ y_train_scalar = Y_train[:, scalar_target_index]
 y_val_scalar = Y_val[:, scalar_target_index]
 y_test_scalar = Y_test[:, scalar_target_index]
 
-scalar_model, scalar_alpha_results = fit_ridge_with_validation(
-    X_train,
-    y_train_scalar,
-    X_val,
-    y_val_scalar,
-    RIDGE_ALPHA_GRID,
-    build_ridge_pipeline,
-)
+scalar_model = ScalarRidgeModel()
+scalar_model.fit(X_train, y_train_scalar, X_val, y_val_scalar)
 
-best_scalar_alpha = scalar_alpha_results.loc[
-    scalar_alpha_results["MAE"].idxmin(),
-    "alpha",
-]
+scalar_alpha_results = scalar_model.validation_results
+best_scalar_alpha = scalar_model.best_alpha
+if scalar_alpha_results is None or best_scalar_alpha is None:
+    raise RuntimeError("Scalar Ridge model did not record validation results.")
 
-print(f"Scalar target: {scalar_target_name}")
-print("Scalar Ridge validation sweep:")
+print(f"- Scalar target: {scalar_target_name}")
+print("- Scalar Ridge validation sweep:")
 print(scalar_alpha_results)
-print(f"Best scalar alpha: {best_scalar_alpha:g}")
-print(f"Selected scalar preprocessing: {scalar_model.named_steps['scaler']}")
-print(f"Selected scalar regressor: {scalar_model.named_steps['model']}")
+print(f"- Best scalar alpha: {best_scalar_alpha:g}")
+print(f"- Selected scalar preprocessing: {scalar_model.pipeline.named_steps['scaler']}")
+print(f"- Selected scalar regressor: {scalar_model.pipeline.named_steps['model']}")
 
 # %% [markdown]
 # ### 1.4 Evaluate On Held-Out Test Data
 
 # %%
-y_val_pred_scalar = cast(np.ndarray, scalar_model.predict(X_val))
-y_test_pred_scalar = cast(np.ndarray, scalar_model.predict(X_test))
+y_val_pred_scalar = scalar_model.predict(X_val)
+y_test_pred_scalar = scalar_model.predict(X_test)
 
 scalar_metrics = pd.DataFrame(
     [
@@ -279,6 +261,17 @@ scalar_metrics = pd.DataFrame(
     ]
 )
 print(scalar_metrics)
+
+# %% [markdown]
+# For the single `S7_1_DB` target, the scalar model achieved MAE/RMSE values of
+# 7.20/11.06 on the validation set and 7.68/12.45 on the held-out test set. The test
+# performance is slightly worse, with an error increase of approximately 6.6% in MAE and
+# 12.5% in RMSE. This indicates a modest generalisation gap, but not severe overfitting.
+#
+# The larger relative increase in RMSE suggests that some test samples contain larger
+# prediction errors. Therefore, the baseline model is useful as a pipeline validation
+# step, but further analysis is needed to locate the high-error regions, especially
+# across frequency and design-parameter space.
 
 # %% [markdown]
 # ### 1.5 Plotting: Scalar IL Distribution Across Test Designs
@@ -296,12 +289,23 @@ fig_scalar_distribution = plot_scalar_prediction_band_by_frequency(
 )
 
 # %% [markdown]
-# **Interpretation.** The scalar Ridge baseline captures the central
-# insertion-loss trend well, as shown by the close agreement between the true and
-# predicted medians. However, its predicted percentile band is much narrower than
-# the true band, especially at high frequency. This indicates that the model
-# underfits design-specific variation and cannot represent frequency-dependent
-# resonant behaviour or the widening response envelope across variants.
+# 1. __Overall trend captured__
+#
+#    The Ridge model follows the main downward trend of `S7_1_DB` as frequency
+#    increases. This shows that the model has learned the broad frequency-dependent
+#    behaviour.
+#
+# 2. __Spread is underestimated__
+#
+#    The true 10th–90th percentile band becomes much wider at high frequency, but the
+#    predicted band remains very narrow. This means the model mostly predicts an
+#    average-like response and does not capture design-to-design variation well.
+#
+# 3. __High-frequency region is harder__
+#
+#    The mismatch becomes more obvious above the mid/high-frequency range. This suggests
+#    that the relationship between PCB parameters and response becomes more nonlinear at
+#    higher frequencies.
 
 # %% [markdown]
 # ### 1.6 Plotting: Predicted Vs True IL Values
@@ -317,68 +321,33 @@ fig_scalar_scatter = plot_scalar_true_vs_predicted(
 )
 
 # %% [markdown]
-# **Interpretation.** The diagonal line represents perfect prediction:
-# $\widehat{IL} = IL$. Points close to this line mean the Ridge model predicts the
-# true insertion loss accurately. In this plot, most predictions are compressed
-# into a relatively narrow dB range, while the true values extend to much lower
-# insertion-loss values. This means the scalar linear baseline is underestimating
-# the severity of deep-loss cases: when the true IL is very negative, the model
-# tends to predict a less negative value.
+# 1. **Perfect prediction reference**
 #
-# The dense horizontal cloud also suggests that this simple Ridge model captures
-# the broad average trend but not sharp frequency-dependent behaviour such as
-# resonances or notches. Therefore, this plot should be read as evidence that the
-# scalar Ridge baseline is useful as a simple benchmark, but it is not expressive
-# enough to reproduce the full dynamic range of the S7_1_DB response.
-
-# %% [markdown]
-# ### 1.7 Plotting: Residual Histogram
+#    The black diagonal line represents perfect prediction. Points close to this line
+#    would mean the model predicts the true value accurately.
 #
-# $$
-#     e_n = \hat{y}_n - y_n
-# $$
+# 2. **Predictions are compressed**
 #
-# This shows whether the model is biased or has heavy-error tails.
-
-# %%
-fig_scalar_residual_hist = plot_scalar_residual_histogram(
-    y_test_scalar,
-    y_test_pred_scalar,
-    scalar_target_name,
-)
-
-# %% [markdown]
-# **Interpretation.** Most residuals are close to zero, so many samples are
-# predicted reasonably near their true values. The histogram is not symmetric,
-# though: it has a long positive tail. Since residual is defined as
-# `prediction - truth`, positive residuals mean the model predicts insertion loss
-# values that are less negative than the true values. This confirms that deep-loss
-# cases are often under-estimated by the scalar baseline.
-
-# %% [markdown]
-# ### 1.8 Plotting: Residual Vs Frequency
+#    The true values cover a very wide range, but the predicted values stay in a much
+#    narrower range. This means the Ridge model cannot reproduce the full dynamic range
+#    of `S7_1_DB`.
 #
-# The x-axis is frequency in GHz and the y-axis is residual. This shows whether
-# the linear model fails more badly at high frequency or resonance-like regions.
-
-# %%
-fig_scalar_residual_frequency = plot_scalar_residual_vs_frequency(
-    test_set.dataframe,
-    y_test_scalar,
-    y_test_pred_scalar,
-    scalar_target_name,
-)
-
-# %% [markdown]
-# **Interpretation.** The error spread increases with frequency. At low
-# frequencies, residuals are tightly concentrated around zero, but at higher
-# frequencies the residual band becomes wider and large positive outliers appear.
-# This suggests that the linear scalar model is not failing uniformly; it becomes
-# less reliable in high-frequency regions where the S-parameter response has more
-# complex structure.
+# 3. **Deep-loss samples are missed.**
+#
+#    For very negative true values, the model predicts values that are not negative
+#    enough. In other words, strong attenuation cases are underestimated.
+#
+# 4. **Same issue as the percentile plot**
+#
+#    This confirms the result from Section 1.5: the model captures the broad
+#    trend, but it smooths the response too much and misses extreme cases.
+#
+# The scalar Ridge model is useful as a baseline, but it is too limited for accurate
+# sample-level prediction across the full response range.
+#
 
 # %% [markdown]
-# ### 1.9 Plotting: MAE By Frequency
+# ### 1.7 Plotting: MAE By Frequency
 #
 # Group test rows by `FREQ_GHZ`:
 #
@@ -397,10 +366,38 @@ fig_scalar_mae_frequency = plot_scalar_mae_by_frequency(
 )
 
 # %% [markdown]
-# **Interpretation.** The MAE rises steadily with frequency, from low error near
-# the start of the sweep to much larger error near 100 GHz. This makes the
-# frequency dependence of the baseline error clear: the scalar Ridge model is a
-# much stronger approximation at low frequency than at high frequency.
+# 1. **Error increases with frequency**
+#
+#    The MAE rises from about 1 dB at low frequency to about 13–14 dB near 100 GHz. This
+#    shows that the model performs much better at low frequency than at high frequency.
+#
+# 2. **High-frequency prediction is the main weakness**
+#
+#    The error does not stay constant across the frequency range. Most of the prediction
+#    difficulty comes from the mid-to-high-frequency region, especially above roughly 40
+#    GHz.
+#
+# 3. **The increase is smooth, not random**
+#
+#    The MAE grows gradually rather than showing only a few isolated spikes.
+#    This suggests a systematic modelling limitation, not just a small number of bad
+#    samples.
+#
+# 4. **Likely cause: underfitting**
+#
+#    Ridge regression is a linear model, so it produces smooth predictions. At higher
+#    frequencies, the S-parameter response becomes more nonlinear and more sensitive to
+#    PCB design parameters. The model therefore cannot capture the full behaviour.
+#
+# 5. **Connection to previous plots**
+#
+#    This supports the observations from Sections 1.5 and 1.6. The Ridge model captures
+#    the broad trend, but it underestimates the response spread and misses strong
+#    attenuation cases, especially at high frequency.
+#
+# The scalar Ridge model is acceptable as an early baseline, but its accuracy degrades
+# clearly with frequency. A nonlinear model is needed to improve high-frequency
+# prediction.
 
 # %% [markdown]
 # ## 2. Vector Insertion Loss Baseline
@@ -469,32 +466,56 @@ print(f"Y_test shape: {Y_test.shape}")
 # the scalar modelling section.
 
 # %%
-vector_model, vector_alpha_results = fit_ridge_with_validation(
-    X_train,
-    Y_train,
-    X_val,
-    Y_val,
-    RIDGE_ALPHA_GRID,
-    build_ridge_pipeline,
-)
+vector_model = VectorRidgeModel()
+vector_model.fit(X_train, Y_train, X_val, Y_val)
 
-best_vector_alpha = vector_alpha_results.loc[
-    vector_alpha_results["MAE"].idxmin(),
-    "alpha",
-]
+vector_alpha_results = vector_model.validation_results
+best_vector_alpha = vector_model.best_alpha
+if vector_alpha_results is None or best_vector_alpha is None:
+    raise RuntimeError("Vector Ridge model did not record validation results.")
 
-print("Vector Ridge validation sweep:")
-print(vector_alpha_results)
+print("Vector Ridge validation sweep:", vector_alpha_results, sep="\n")
 print(f"Best vector alpha: {best_vector_alpha:g}")
-print(f"Selected vector preprocessing: {vector_model.named_steps['scaler']}")
-print(f"Selected vector regressor: {vector_model.named_steps['model']}")
+print(f"Selected vector preprocessing: {vector_model.pipeline.named_steps['scaler']}")
+print(f"Selected vector regressor: {vector_model.pipeline.named_steps['model']}")
 
 # %% [markdown]
-# ### 2.4 Vector Evaluation
+# 1. **Validation performance is almost unchanged**
+#
+#    Across all tested `alpha` values, the MAE stays around `7.325 dB` and the RMSE
+#    stays around `11.23 dB`, with only negligible differences between settings. The
+#    selected
+#    value is `alpha = 1e-05`, the weakest regularisation tested, indicating that the
+#    model performs best when Ridge behaves almost like ordinary linear regression.
+#
+# 2. **Regularisation is not the main issue**
+#
+#    Increasing `alpha` does not improve validation performance. This suggests that the
+#    main limitation is not overfitting, but underfitting: the linear model is too
+#    simple to capture the full behaviour.
+#
+# 3. **Vector output works, but remains limited**
+#
+#    The model predicts six output columns together, but Ridge still uses a linear
+#    relationship between input features and outputs. It does not fully capture
+#    nonlinear frequency-dependent effects or complex design-to-design variation. The
+#    flat validation sweep further indicates that tuning `alpha` cannot significantly
+#    improve performance, so meaningful gains will likely require a more expressive
+#    model such as polynomial features, tree-based regression, or a neural network.
+#
+# 4. **StandardScaler is appropriate**
+#
+#    Using `StandardScaler()` is sensible because Ridge regression is sensitive to
+#    feature scale. This keeps parameters such as geometry values and frequency on
+#    comparable numerical scales.
+#
+
+# %% [markdown]
+# ### 2.4 Vector Ridge Model Evaluation
 
 # %%
-Y_val_pred = cast(np.ndarray, vector_model.predict(X_val))  # pylint: disable=invalid-name
-Y_test_pred = cast(np.ndarray, vector_model.predict(X_test))  # pylint: disable=invalid-name
+Y_val_pred = vector_model.predict(X_val)  # pylint: disable=invalid-name
+Y_test_pred = vector_model.predict(X_test)  # pylint: disable=invalid-name
 
 vector_metrics = pd.DataFrame(
     [
@@ -504,10 +525,36 @@ vector_metrics = pd.DataFrame(
 )
 per_target_test_metrics = per_target_metrics(Y_test, Y_test_pred, target_names)
 
-print("Overall vector metrics:")
-print(vector_metrics)
-print("\nPer-port-pair test metrics:")
-print(per_target_test_metrics)
+print("Overall vector metrics:", vector_metrics, sep="\n")
+print("\nPer-port-pair test metrics:", per_target_test_metrics, sep="\n")
+
+# %% [markdown]
+# 1. **Test performance is slightly worse than validation**
+#
+#    The validation MAE/RMSE are `7.33 dB` and `11.23 dB`, while the test MAE/RMSE
+#    increase to `7.80 dB` and `12.61 dB`. This shows a modest generalisation gap, but
+#    not severe overfitting.
+#
+# 2. **RMSE increases more than MAE**
+#
+#    The test RMSE is noticeably higher than the test MAE. This suggests that some
+#    held-out samples have relatively large prediction errors. In other words, the model
+#    is not just making small uniform errors; it misses some difficult cases more
+#    strongly.
+#
+# 3. **All six port pairs have similar difficulty**
+#
+#    The per-port-pair MAE values are all close, roughly between `7.58 dB` and
+#    `7.96 dB`. This means no single output dominates the overall error. The Ridge model
+#    has similar predictive difficulty across the six through-link responses.
+#
+# 4. **Vector Ridge is still a linear baseline**
+#
+#    Although the model predicts six outputs together, Ridge regression still learns a
+#    linear mapping from the input features to each output. Therefore, it cannot fully
+#    capture nonlinear frequency behaviour, resonance-like effects, or wide
+#    design-to-design variation.
+#
 
 # %% [markdown]
 # ### 2.5 Plot Vector IL Distributions Across Test Designs
@@ -521,15 +568,39 @@ fig_vector_distributions = plot_vector_prediction_bands_by_frequency(
 )
 
 # %% [markdown]
-# **Interpretation.** The vector Ridge model captures the central frequency-loss
-# trend for each through path, but the predicted percentile bands are much
-# narrower than the true bands. This repeats the scalar-model conclusion across
-# all six targets: the linear baseline learns the average response but underfits
-# design-specific variation, especially where the high-frequency response
-# envelope widens.
+# 1. **All six links show a similar pattern**
+#
+#    The six predicted distributions have almost the same behaviour. The predicted
+#    median follows the true median reasonably well for every port pair, so the vector
+#    Ridge model has learned the broad frequency trend across all six outputs.
+#
+# 2. **Predicted spread is too narrow**
+#
+#    The true 10th–90th percentile bands become much wider as frequency increases,
+#    especially above the mid-frequency range. However, the predicted percentile bands
+#    remain very narrow. This means the model does not capture the full design-to-design
+#    variation.
+#
+# 3. **High-frequency variation is missed**
+#
+#    At high frequencies, the true responses vary strongly between different test
+#    designs, but the Ridge model mostly predicts a smooth average-like response. This
+#    confirms that the model underfits the more complex high-frequency behaviour.
+#
+# 4. **Vector Ridge is stable but limited**
+#
+#    The model is stable across multiple outputs, which makes it a useful baseline.
+#    However, the narrow predicted bands show that linear Ridge regression cannot model
+#    the full response distribution.
 
 # %% [markdown]
 # ### 2.6 Plot Vector Predicted Vs True Scatter
+#
+# The diagonal means perfect prediction:
+#
+# $$
+# \widehat{y}=y
+# $$
 
 # %%
 fig_vector_scatter = plot_vector_true_vs_predicted(
@@ -539,29 +610,76 @@ fig_vector_scatter = plot_vector_true_vs_predicted(
 )
 
 # %% [markdown]
-# **Interpretation.** All six scatter plots show predictions compressed into a
-# narrower range than the true IL values. Points near the diagonal correspond to
-# good predictions, but the deep-loss samples sit far away from the diagonal. This
-# indicates that the vector Ridge baseline has the same main limitation for every
-# through path: it smooths the response and does not reproduce the full dynamic
-# range of the true S-parameter targets.
+# 1. **Predictions are compressed for all six outputs**
+#
+#    In every subplot, the true values cover a very wide range, but the predicted values
+#    stay in a much narrower band. This means the vector Ridge model cannot reproduce
+#    the full dynamic range of the six through-link responses.
+#
+# 2. **Deep-loss cases are not predicted correctly**
+#
+#    For very negative true values, the model predicts values that are not negative
+#    enough. Strong attenuation cases are therefore underestimated.
+#
+# 3. **All port pairs show the same failure pattern**
+#
+#    The six scatter plots look very similar. This agrees with the per-port-pair
+#    metrics: no single port pair is uniquely problematic; the limitation comes from the
+#    model type.
+#
+# 4. **Same conclusion as the distribution plots**
+#
+#    This confirms Section 2.5 at the sample level. The model captures the broad trend,
+#    but it predicts an average-like response and misses extreme design-frequency cases.
+#
+# 5. **Conclusion**
+#
+#    Vector Ridge is a useful multi-output baseline, but it is too simple for accurate
+#    prediction across the full response range. A nonlinear model is needed to capture
+#    stronger attenuation and wider design-to-design variation.
 
 # %% [markdown]
-# ### 2.7 Plot Vector Residual Histograms
+# ### 2.7 Plot Vector MAE By Frequency
+#
+# For each target column:
+#
+# $$
+#     MAE_j(f_k) = mean_i |IL_j(i,k) - \widehat{IL}_j(i,k)|
+# $$
 
 # %%
-fig_vector_residual_hists = plot_vector_residual_histograms(
+fig_vector_mae_frequency = plot_vector_mae_by_frequency(
+    test_set.dataframe,
     Y_test,
     Y_test_pred,
     target_names,
 )
 
 # %% [markdown]
-# **Interpretation.** The residual distributions are broadly similar across the
-# six targets. They peak close to zero, which means the model often gives a
-# reasonable average prediction, but the asymmetric tails show that some samples
-# have much larger errors. The repeated shape across targets suggests this is a
-# model-capacity limitation rather than a problem with only one port pair.
+# 1. **Error increases with frequency**
+#
+#    The MAE is low at the beginning of the frequency range, around `1 dB`, but rises
+#    steadily to about `13–14 dB` near `100 GHz`. This shows that the Vector Ridge model
+#    becomes less accurate as frequency increases.
+#
+# 2. **All six links follow almost the same error trend**
+#
+#    The six MAE curves are very close to each other across the whole frequency range.
+#    This means the model has similar difficulty across all six through-link targets,
+#    rather than failing on only one specific port pair.
+#
+# 3. **High-frequency modelling is the main weakness**
+#
+#    The error growth is smooth and systematic, not caused by isolated spikes. This
+#    suggests underfitting: the linear Ridge model cannot capture the more complex
+#    high-frequency behaviour of the S-parameter responses.
+#
+# 4. **Conclusion**
+#
+#    The Vector Ridge model is a stable multi-output baseline, but its error increases
+#    strongly with frequency. A more expressive nonlinear model is needed to improve
+#    prediction accuracy, especially in the high-frequency region.
+#
 
 # %% [markdown]
 # ### 2.8 Plot Vector Residual Vs Frequency
