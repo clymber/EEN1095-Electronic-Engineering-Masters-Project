@@ -78,7 +78,7 @@ def _build_polynomial_pipeline(degree: int, alpha: float) -> Pipeline:
 class PolynomialModel(SparamModel):
     """Vector-output powers-only polynomial Ridge model."""
 
-    name = "polynomial"
+    name = "polynomial_ridge"
 
     def __init__(
         self,

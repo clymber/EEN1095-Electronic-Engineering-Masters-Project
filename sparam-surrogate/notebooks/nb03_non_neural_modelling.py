@@ -7,9 +7,9 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.19.3
 #   kernelspec:
-#     display_name: meng
+#     display_name: Python (sparam-surrogate)
 #     language: python
-#     name: python3
+#     name: sparam-surrogate
 # ---
 
 # %%
@@ -18,6 +18,7 @@ Train non-neural scalar and vector insertion-loss baseline models.
 """
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from sparam_surrogate.config import load_config, relative_to_project_root
@@ -27,6 +28,9 @@ from sparam_surrogate.models import (
     PolynomialModel,
     ScalarRidgeModel,
     VectorRidgeModel,
+)
+from sparam_surrogate.utils.model_prediction_plots import (
+    plot_design_prediction_curves,
 )
 from sparam_surrogate.utils.non_neural_modelling_utils import (
     per_target_metrics,
@@ -829,6 +833,7 @@ fig_polynomial_distributions = plot_vector_prediction_bands_by_frequency(
     model_name="Polynomial",
 )
 
+
 # %% [markdown]
 # 1. The Polynomial model follows the median trend well.
 #
@@ -856,6 +861,29 @@ fig_polynomial_distributions = plot_vector_prediction_bands_by_frequency(
 # it still underfits the wider high-frequency distribution. The next improvement
 # likely requires a more flexible nonlinear model.
 #
+
+# %%
+# Randomly inspect held-out test designs with fresh Polynomial Ridge predictions.
+def random_simu_indices(test_set: DLDataset, n_simu: int, seed: int = 42) -> np.ndarray:
+    """
+    Select a random subset of simulation indices from the test set.
+    """
+    test_simu_ids = np.asarray(test_set.dataframe["SIMU_INDEX"].drop_duplicates())
+    return np.random.default_rng(seed).choice(
+        test_simu_ids,
+        size=min(n_simu, len(test_simu_ids)),
+        replace=False,
+    )
+
+selected_simu_indices = random_simu_indices(test_set, 6, seed=cfg["project"]["seed"])
+print("Random test SIMU_INDEXs:", *selected_simu_indices)
+
+fig_random_design_curves = plot_design_prediction_curves(
+    polynomial_model,
+    test_set,
+    il_loader,
+    selected_simu_indices,
+)
 
 # %% [markdown]
 # ### 3.4 Compare Ridge And Polynomial MAE By Frequency
