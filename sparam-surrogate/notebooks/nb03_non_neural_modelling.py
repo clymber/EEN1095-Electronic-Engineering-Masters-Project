@@ -69,8 +69,9 @@ raw_data_dir = Path(cfg["paths"]["raw_data"]) / DS_NAME
 processed_dir = Path(cfg["paths"]["processed_data"])
 port_pairs = tuple(tuple(pair) for pair in cfg["dataset"]["ports"])
 
-il_loader = TouchstoneLoader("scalar", cfg, "db", 512) # Insertion Loss loader
-target_names = tuple(il_loader.target_names)
+scalar_db_loader = TouchstoneLoader("scalar", cfg, "db", 512)
+vector_db_loader = TouchstoneLoader("vector", cfg, "db", 512)
+target_names = tuple(vector_db_loader.target_names)
 
 print(f"Dataset: {DS_NAME}")
 print(f"Raw data directory: {relative_to_project_root(raw_data_dir)}")
@@ -103,9 +104,9 @@ train_set, val_set, test_set = DLDataset.from_cleaned_csv(processed_dir / CLEANE
 
 # %%
 # pylint: disable=invalid-name
-X_train, Y_train = train_set.features, train_set.load_targets(il_loader)
-X_val, Y_val = val_set.features, val_set.load_targets(il_loader)
-X_test, Y_test = test_set.features, test_set.load_targets(il_loader)
+X_train, Y_train = train_set.features, train_set.load_targets(vector_db_loader)
+X_val, Y_val = val_set.features, val_set.load_targets(vector_db_loader)
+X_test, Y_test = test_set.features, test_set.load_targets(vector_db_loader)
 # pylint: disable=invalid-name
 
 print(f"Training samples: {len(train_set)}")
@@ -126,10 +127,10 @@ print(f"X_test shape: {X_test.shape}")
 print(f"Y_train shape: {Y_train.shape}")
 print(f"Y_val shape: {Y_val.shape}")
 print(f"Y_test shape: {Y_test.shape}")
-print(f"Touchstone cache: {il_loader.cache_info()}")
+print(f"Touchstone cache: {vector_db_loader.cache_info()}")
 
-il_loader.clear_cache()
-print(f"Touchstone cache after clearing: {il_loader.cache_info()}")
+vector_db_loader.clear_cache()
+print(f"Touchstone cache after clearing: {vector_db_loader.cache_info()}")
 
 # %% [markdown]
 # ## 1. Scalar Insertion Loss Baseline
@@ -292,6 +293,32 @@ fig_scalar_distribution = plot_scalar_prediction_band_by_frequency(
     y_test_scalar,
     y_test_pred_scalar,
     scalar_target_name,
+)
+
+
+# %%
+# Randomly choose a list of simulation indices for plotting.
+def random_simu_indices(
+        test_set: DLDataset, n_simu: int, seed: int|None = None
+) -> np.ndarray:
+    """
+    Select a random subset of simulation indices from the test set.
+    """
+    test_simu_ids = np.asarray(test_set.dataframe["SIMU_INDEX"].drop_duplicates())
+    return np.random.default_rng(seed).choice(
+        test_simu_ids,
+        size=min(n_simu, len(test_simu_ids)),
+        replace=False,
+    )
+
+selected_simu_indices = random_simu_indices(test_set, 5, seed=cfg["project"]["seed"])
+
+# %%
+fig_random_scalar_design_curves = plot_design_prediction_curves(
+    scalar_model,
+    test_set,
+    scalar_db_loader,
+    selected_simu_indices,
 )
 
 # %% [markdown]
@@ -599,6 +626,14 @@ fig_vector_distributions = plot_vector_prediction_bands_by_frequency(
 #    However, the narrow predicted bands show that linear Ridge regression cannot model
 #    the full response distribution.
 
+# %%
+fig_random_vector_design_curves = plot_design_prediction_curves(
+    vector_model,
+    test_set,
+    vector_db_loader,
+    selected_simu_indices,
+)
+
 # %% [markdown]
 # ### 2.6 Plot Vector Predicted Vs True Scatter
 #
@@ -833,6 +868,14 @@ fig_polynomial_distributions = plot_vector_prediction_bands_by_frequency(
     model_name="Polynomial",
 )
 
+# %%
+# Randomly inspect held-out test designs with fresh Polynomial Ridge predictions.
+fig_random_polynomial_design_curves = plot_design_prediction_curves(
+    polynomial_model,
+    test_set,
+    vector_db_loader,
+    selected_simu_indices,
+)
 
 # %% [markdown]
 # 1. The Polynomial model follows the median trend well.
@@ -861,29 +904,6 @@ fig_polynomial_distributions = plot_vector_prediction_bands_by_frequency(
 # it still underfits the wider high-frequency distribution. The next improvement
 # likely requires a more flexible nonlinear model.
 #
-
-# %%
-# Randomly inspect held-out test designs with fresh Polynomial Ridge predictions.
-def random_simu_indices(test_set: DLDataset, n_simu: int, seed: int = 42) -> np.ndarray:
-    """
-    Select a random subset of simulation indices from the test set.
-    """
-    test_simu_ids = np.asarray(test_set.dataframe["SIMU_INDEX"].drop_duplicates())
-    return np.random.default_rng(seed).choice(
-        test_simu_ids,
-        size=min(n_simu, len(test_simu_ids)),
-        replace=False,
-    )
-
-selected_simu_indices = random_simu_indices(test_set, 6, seed=cfg["project"]["seed"])
-print("Random test SIMU_INDEXs:", *selected_simu_indices)
-
-fig_random_design_curves = plot_design_prediction_curves(
-    polynomial_model,
-    test_set,
-    il_loader,
-    selected_simu_indices,
-)
 
 # %% [markdown]
 # ### 3.4 Compare Ridge And Polynomial MAE By Frequency

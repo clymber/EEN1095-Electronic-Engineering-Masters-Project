@@ -160,7 +160,7 @@ scalar_loader = TouchstoneLoader(
     representation="db",
 )
 full_loader = TouchstoneLoader(
-    mode="full_smatrix",
+    mode="smatrix",
     config=cfg,
     representation="real_imag",
 )
