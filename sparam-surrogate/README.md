@@ -81,15 +81,15 @@ scalar_loader = TouchstoneLoader(
     representation="db",
 )
 full_loader = TouchstoneLoader(
-    mode="full_smatrix",
+    mode="smatrix",
     config=cfg,
     representation="real_imag",
 )
 ```
 
-`TouchstoneLoader` requires `cfg["dataset"]["nports"]`. Scalar mode also
-requires `cfg["dataset"]["ports"]` so selected one-based port pairs stay in the
-configuration file.
+`TouchstoneLoader` requires `cfg["dataset"]["nports"]`. Scalar and vector modes
+also require `cfg["dataset"]["ports"]` so selected one-based port pairs stay in
+the configuration file.
 
 Feature scaling is intentionally not written into the cleaned CSV. Training
 code should fit scaling statistics on train rows only, then apply those

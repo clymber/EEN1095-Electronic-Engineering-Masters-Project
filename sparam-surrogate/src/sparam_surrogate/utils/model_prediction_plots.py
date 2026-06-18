@@ -101,7 +101,7 @@ def plot_design_prediction_curves(
             if target_row == 0:
                 ax.set_title(f"{SIMULATION_COLUMN} {simulation_index}")
             if design_column == 0:
-                ax.set_ylabel(f"{target_names[target_row]}\nMagnitude (dB)")
+                ax.set_ylabel(f"{target_names[target_row]}")
             if target_row == n_targets - 1:
                 ax.set_xlabel("Frequency (GHz)")
             ax.grid(True, alpha=0.3)

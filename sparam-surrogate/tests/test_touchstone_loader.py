@@ -46,7 +46,7 @@ def _config(ports: list[list[int]] | None = None) -> dict[str, object]:
     """
     Return a minimal loader configuration.
     """
-    return {"dataset": {"nports": 2, "ports": ports or [[2, 1]]}}
+    return {"dataset": {"nports": 2, "ports": ports or [[2, 1], [1, 2]]}}
 
 
 class TestTouchstoneLoader:
@@ -60,7 +60,7 @@ class TestTouchstoneLoader:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """
-        Scalar mode returns dB magnitudes for configured one-based ports.
+        Scalar mode returns the first configured one-based port pair by default.
         """
         rel_path = "raw/variation/simu_0.s2p"
         matrices = [
@@ -80,13 +80,39 @@ class TestTouchstoneLoader:
         assert loader.target_names == ("S2_1_DB",)
         np.testing.assert_allclose(target, [20 * np.log10(0.25)])
 
-    def test_load_full_smatrix_target(
+    def test_load_vector_il_target(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """
-        Full mode returns all real components followed by all imaginary parts.
+        Vector mode returns all configured port pairs as positive insertion loss.
+        """
+        rel_path = "raw/variation/simu_0.s2p"
+        matrix = np.array([[0.1 + 0.0j, 0.2 + 0.0j], [0.5 + 0.0j, 0.3 + 0.0j]])
+        _write_s2p(tmp_path / rel_path, [matrix])
+        monkeypatch.setattr(touchstone_loader_module, "PROJECT_ROOT", tmp_path)
+        loader = TouchstoneLoader(
+            mode="vector",
+            config=_config(),
+            representation="il",
+        )
+
+        target = loader(np.zeros(2), _metadata(rel_path))
+
+        assert loader.target_names == ("IL_S2_1_DB", "IL_S1_2_DB")
+        np.testing.assert_allclose(
+            target,
+            [-20 * np.log10(0.5), -20 * np.log10(0.2)],
+        )
+
+    def test_load_smatrix_target(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """
+        S-matrix mode returns all real components followed by all imaginary parts.
         """
         rel_path = "raw/variation/simu_0.s2p"
         matrix = np.array(
@@ -96,7 +122,7 @@ class TestTouchstoneLoader:
         _write_s2p(tmp_path / rel_path, [matrix])
         monkeypatch.setattr(touchstone_loader_module, "PROJECT_ROOT", tmp_path)
         loader = TouchstoneLoader(
-            mode="full_smatrix",
+            mode="smatrix",
             config=_config(),
             representation="real_imag",
         )

@@ -1,7 +1,7 @@
 {
     "project": {
         "name": "sparam-surrogate",
-        "seed": 42
+        "seed": 256
     },
     "paths": {
         "data_root": "data",
