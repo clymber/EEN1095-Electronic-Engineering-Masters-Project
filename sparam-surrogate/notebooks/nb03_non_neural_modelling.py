@@ -12,16 +12,31 @@
 #     name: sparam-surrogate
 # ---
 
-# %%
+# %% tags=["remove-input"]
 """
 Train non-neural scalar and vector insertion-loss baseline models.
 """
+# Reloads all modules every time before executing code, except explicitly
+# excluded using ``%aimport -<package>``, like ``%aimport -numpy``.
+# %load_ext autoreload
+# %autoreload 2
+# %aimport -pathlib
+# %aimport -numpy
+
+# ruff: noqa: E402 -- Configure filtered notebook output before remaining imports.
+from sparam_surrogate.config import configure_stdio_relative_path
+
+# Display paths relative to project root or user home for consistent output across
+# platforms. It should be called before other imports to setup filters.
+configure_stdio_relative_path()
+
+# %%
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from sparam_surrogate.config import load_config, relative_to_project_root
+from sparam_surrogate.config import load_config
 from sparam_surrogate.data import DLDataset, TouchstoneLoader
 from sparam_surrogate.models import (
     RIDGE_ALPHA_GRID,
@@ -74,8 +89,8 @@ vector_db_loader = TouchstoneLoader("vector", cfg, "db", 512)
 target_names = tuple(vector_db_loader.target_names)
 
 print(f"Dataset: {DS_NAME}")
-print(f"Raw data directory: {relative_to_project_root(raw_data_dir)}")
-print(f"Processed directory: {relative_to_project_root(processed_dir)}")
+print(f"Raw data directory: {raw_data_dir}")
+print(f"Processed directory: {processed_dir}")
 print("Configured IL port pairs: ", *port_pairs)
 print("Target names:", *target_names, sep=", ")
 
@@ -313,7 +328,6 @@ def random_simu_indices(
 
 selected_simu_indices = random_simu_indices(test_set, 5, seed=cfg["project"]["seed"])
 
-# %%
 fig_random_scalar_design_curves = plot_design_prediction_curves(
     scalar_model,
     test_set,

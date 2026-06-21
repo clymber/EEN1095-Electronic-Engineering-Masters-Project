@@ -1,18 +1,21 @@
 """
 Configuration utilities for the sparam-surrogate project.
 """
-from .paths import PROJECT_ROOT
-from .paths import NOTEBOOK_RESOURCE_DIR
-from .paths import find_project_root
-from .paths import notebook_resource_path
-from .paths import relative_to_project_root
-from .mylogging import set_logging_cfg, get_md_logger
-from .mylogging import MarkdownLogger, MarkdownFormatter
 from .basic_cfg import load_config
+from .mylogging import MarkdownFormatter, MarkdownLogger, get_md_logger, set_logging_cfg
+from .paths import (
+    NOTEBOOK_RESOURCE_DIR,
+    PROJECT_ROOT,
+    configure_stdio_relative_path,
+    find_project_root,
+    notebook_resource_path,
+    relative_to_project_root,
+)
 
 __all__ = [
     "PROJECT_ROOT",
     "NOTEBOOK_RESOURCE_DIR",
+    "configure_stdio_relative_path",
     "find_project_root",
     "notebook_resource_path",
     "relative_to_project_root",

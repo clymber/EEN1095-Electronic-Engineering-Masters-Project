@@ -1,27 +1,13 @@
-# ---
-# jupyter:
-#   jupytext:
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.19.3
-#   kernelspec:
-#     display_name: meng
-#     language: python
-#     name: python3
-# ---
-
-# %%
 """
 Basic runtime configurations.
 """
+
 import json
 from pathlib import Path
+
 from .paths import PROJECT_ROOT
 
 
-# %%
 def load_config(extra_cfg_path: str | Path | None = None) -> dict:
     """
     Load configuration from default, local, and optional extra JSON files.
@@ -44,7 +30,8 @@ def load_config(extra_cfg_path: str | Path | None = None) -> dict:
         # Update the default config with local overrides.
         cfg.update(local_cfg)
 
-    # If a specific config path is provided, it will override both default and local configs.
+    # If a specific config path is provided,
+    # it will override both default and local configs.
     if extra_cfg_path is not None:
         extra_cfg_path = Path(extra_cfg_path)
         if not extra_cfg_path.is_absolute():

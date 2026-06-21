@@ -1,3 +1,2 @@
-# Pair ipynb notebooks to py:percent text notebooks
-formats = "ipynb,py:percent"
-
+# Pair notebooks/ ipynb files to py:percent text notebooks in the same directory
+formats = "notebooks///ipynb,notebooks///py:percent"

@@ -27,6 +27,14 @@
 # During training, targets are loaded lazily from Touchstone files through
 # `tf.data.Dataset.map(...)`.
 
+
+# %% tags=["remove-input"]
+# Reloads all modules every time before executing code.
+# %load_ext autoreload
+# %autoreload 2
+# %aimport -pathlib
+# %aimport -numpy
+
 # %% [markdown]
 # ## 1. Setup
 #
@@ -41,11 +49,14 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from sparam_surrogate.config import load_config, relative_to_project_root
+from sparam_surrogate.config import configure_stdio_relative_path, load_config
 from sparam_surrogate.data import MLDatasetBuilder, RawData, TouchstoneLoader
 
 DS_NAME = "linkOn8CavityStackBetween10x10Array_19_08_2021"
 REBUILD_CLEANED_CSV = False
+
+# Display paths relative to project root or user home for consistent output.
+configure_stdio_relative_path()
 
 # %%
 cfg = load_config()
@@ -60,8 +71,8 @@ test_fraction = float(cfg["training"]["test_fraction"])
 seed = int(cfg["project"]["seed"])
 
 print(f"Dataset: {DS_NAME}")
-print(f"Raw data directory: {relative_to_project_root(raw_data_dir)}")
-print(f"Processed directory: {relative_to_project_root(processed_dir)}")
+print(f"Raw data directory: {raw_data_dir}")
+print(f"Processed directory: {processed_dir}")
 print("Preprocessing artifact: sipi_dataset_cleaned.csv")
 
 # %% [markdown]
@@ -93,7 +104,7 @@ builder = MLDatasetBuilder(raw_data, processed_dir)
 cleaned_before_split = builder.data_cleaning(force=REBUILD_CLEANED_CSV)
 
 print(f"Cleaned rows before split: {len(cleaned_before_split):,}")
-print(f"Cleaned CSV: {relative_to_project_root(builder.cleaned_path)}")
+print(f"Cleaned CSV: {builder.cleaned_path}")
 print("Columns:")
 print(list(cleaned_before_split.columns))
 
@@ -116,10 +127,8 @@ cleaned = pd.read_csv(builder.cleaned_path)
 row_counts = cleaned["SPLIT_TYPE"].value_counts().sort_index()
 design_counts = cleaned.groupby("SPLIT_TYPE")["SIMU_INDEX"].nunique().sort_index()
 
-print("Row counts by split:")
-print(row_counts)
-print("\nDesign counts by split:")
-print(design_counts)
+print("Row counts by split:", row_counts, sep="\n")
+print("\nDesign counts by split:", design_counts, sep="\n")
 
 # %% [markdown]
 # ## 5. Sanity Checks
@@ -182,7 +191,7 @@ print(f"First full target names: {full_loader.target_names[:8]}")
 # The previous eager array artifacts are no longer part of the normal pipeline.
 
 # %%
-print(f"Final cleaned CSV: {relative_to_project_root(builder.cleaned_path)}")
+print(f"Final cleaned CSV: {builder.cleaned_path}")
 print(f"Total cleaned rows: {len(cleaned):,}")
 print(f"Unique designs: {cleaned['SIMU_INDEX'].nunique():,}")
 print(f"Unique frequencies: {cleaned['FREQ_GHZ'].nunique():,}")
