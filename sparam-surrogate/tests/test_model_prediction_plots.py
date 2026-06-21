@@ -109,7 +109,7 @@ def test_scalar_model_uses_one_target_row_and_design_columns() -> None:
         "SIMU_INDEX 102",
         "SIMU_INDEX 101",
     ]
-    assert fig.axes[0].get_ylabel() == "S2_1_DB\nMagnitude (dB)"
+    assert fig.axes[0].get_ylabel() == "S2_1_DB"
     assert fig.axes[0].get_xlabel() == "Frequency (GHz)"
     assert fig._suptitle is not None
     assert fig._suptitle.get_text() == "Scalar Ridge: Selected Test Design Curves"
@@ -137,8 +137,8 @@ def test_vector_model_uses_target_rows_and_design_columns() -> None:
         "SIMU_INDEX 101",
     ]
     assert fig.axes[2].get_title() == ""
-    assert fig.axes[0].get_ylabel() == "S2_1_DB\nMagnitude (dB)"
-    assert fig.axes[2].get_ylabel() == "S3_1_DB\nMagnitude (dB)"
+    assert fig.axes[0].get_ylabel() == "S2_1_DB"
+    assert fig.axes[2].get_ylabel() == "S3_1_DB"
     assert fig.axes[2].get_xlabel() == "Frequency (GHz)"
     assert fig._suptitle is not None
     assert fig._suptitle.get_text() == "Vector Ridge: Selected Test Design Curves"

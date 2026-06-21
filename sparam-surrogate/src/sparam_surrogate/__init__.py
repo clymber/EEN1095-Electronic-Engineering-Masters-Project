@@ -5,7 +5,7 @@ Machine learning surrogate models for predicting PCB interconnect
 S-parameters and signal integrity metrics.
 """
 
-from importlib.metadata import version, PackageNotFoundError
+from importlib.metadata import PackageNotFoundError, version
 
 try:
     __version__ = version("sparam-surrogate")
