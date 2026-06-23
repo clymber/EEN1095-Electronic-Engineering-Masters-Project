@@ -16,6 +16,7 @@
 """
 Train non-neural scalar and vector insertion-loss baseline models.
 """
+
 # Reloads all modules every time before executing code, except explicitly
 # excluded using ``%aimport -<package>``, like ``%aimport -numpy``.
 # %load_ext autoreload
@@ -84,15 +85,19 @@ raw_data_dir = Path(cfg["paths"]["raw_data"]) / DS_NAME
 processed_dir = Path(cfg["paths"]["processed_data"])
 port_pairs = tuple(tuple(pair) for pair in cfg["dataset"]["ports"])
 
-scalar_db_loader = TouchstoneLoader("scalar", cfg, "db", 512)
-vector_db_loader = TouchstoneLoader("vector", cfg, "db", 512)
-target_names = tuple(vector_db_loader.target_names)
+scalar_db_loader = TouchstoneLoader("scalar", cfg, "db", 8)
+vector_db_loader = TouchstoneLoader("vector", cfg, "db", 8)
+scalar_target_index = 0  # pylint: disable=invalid-name
+scalar_target_name = scalar_db_loader.target_names[scalar_target_index]
+vector_target_names = tuple(vector_db_loader.target_names)
+cleaned_csv = processed_dir / CLEANED_CSV
 
 print(f"Dataset: {DS_NAME}")
 print(f"Raw data directory: {raw_data_dir}")
 print(f"Processed directory: {processed_dir}")
 print("Configured IL port pairs: ", *port_pairs)
-print("Target names:", *target_names, sep=", ")
+print(f"Scalar target: {scalar_target_name}")
+print("Vector target names:", *vector_target_names, sep=", ")
 
 # %% [markdown]
 # ## Shared Notebook Utilities
@@ -102,50 +107,59 @@ print("Target names:", *target_names, sep=", ")
 # `src/sparam_surrogate/utils/non_neural_modelling_utils.py`.
 
 # %% [markdown]
-# ## Data Loading And Validation
+# ## Scalar Data Loading And Validation
 #
-# Load the cleaned CSV as three dataset views: training set, evaluation set and
-# test set.
-# Each view owns one split.
+# The scalar experiment owns train, validation, and test dataset views configured
+# with the scalar dB loader. On the first run, each view materializes its target
+# array from Touchstone files and writes a split cache. Later runs load the cache
+# whenever it is newer than the cleaned CSV.
 
 # %%
-train_set, val_set, test_set = DLDataset.from_cleaned_csv(processed_dir / CLEANED_CSV)
+scalar_train_set, scalar_val_set, scalar_test_set = DLDataset.from_cleaned_csv(
+    cleaned_csv,
+    target_loader=scalar_db_loader,
+    cache=True,
+)
+
+print(f"Number of scalar model training   samples: {len(scalar_train_set)}")
+print(f"Number of scalar model validation samples: {len(scalar_val_set)}")
+print(f"Number of scalar model test       samples: {len(scalar_test_set)}")
 
 # %% [markdown]
 # Build the in-memory arrays used by `scikit-learn`.
 #
 # `X` comes from the cleaned CSV. It contains design parameters plus frequency.
-# `Y` comes from Touchstone files. The loader reads those files on demand.
+# The scalar `y` arrays come from split-specific caches or, on a cache miss, from
+# the Touchstone loader. `ScalarRidgeModel` expects one-dimensional targets, so
+# the single-column cached arrays are flattened by selecting column zero.
 
 # %%
 # pylint: disable=invalid-name
-X_train, Y_train = train_set.features, train_set.load_targets(vector_db_loader)
-X_val, Y_val = val_set.features, val_set.load_targets(vector_db_loader)
-X_test, Y_test = test_set.features, test_set.load_targets(vector_db_loader)
-# pylint: disable=invalid-name
+X_train_scalar = scalar_train_set.features
+X_val_scalar = scalar_val_set.features
+X_test_scalar = scalar_test_set.features
+print(f"Shape of training   features: {X_train_scalar.shape}")
+print(f"Shape of validation features: {X_val_scalar.shape}")
+print(f"Shape of test       features: {X_test_scalar.shape}")
 
-print(f"Training samples: {len(train_set)}")
-print(f"Validation samples: {len(val_set)}")
-print(f"Test samples: {len(test_set)}")
-print(f"X_train shape: {X_train.shape}")
-print(f"X_val shape: {X_val.shape}")
-print(f"X_test shape: {X_test.shape}")
+y_train_scalar = scalar_train_set.targets[:, 0]
+y_val_scalar = scalar_val_set.targets[:, 0]
+y_test_scalar = scalar_test_set.targets[:, 0]
+print(f"Shape of training    targets: {y_train_scalar.shape}")
+print(f"Shape of validation  targets: {y_val_scalar.shape}")
+print(f"Shape of test        targets: {y_test_scalar.shape}")
+# pylint: disable=invalid-name
 
 # %% [markdown]
-# The Ridge baselines need full `NumPy` arrays.
-# Keeping `X` and `Y` in memory also keeps the later plots simple.
-#
-# `TouchstoneLoader` caches files while building `Y`.
-# Once the targets are loaded, the cache can be cleared.
+# The Ridge baseline needs full `NumPy` arrays. `DLDataset` persists targets on
+# disk, while `TouchstoneLoader` temporarily caches parsed Touchstone networks
+# only during a cold load. Its small in-memory network cache can be cleared once
+# the scalar arrays are ready.
 
 # %%
-print(f"Y_train shape: {Y_train.shape}")
-print(f"Y_val shape: {Y_val.shape}")
-print(f"Y_test shape: {Y_test.shape}")
-print(f"Touchstone cache: {vector_db_loader.cache_info()}")
-
-vector_db_loader.clear_cache()
-print(f"Touchstone cache after clearing: {vector_db_loader.cache_info()}")
+print(f"Scalar Touchstone cache info: {scalar_db_loader.cache_info()}")
+scalar_db_loader.clear_cache()
+print(f"Scalar Touchstone cache after clearing: {scalar_db_loader.cache_info()}")
 
 # %% [markdown]
 # ## 1. Scalar Insertion Loss Baseline
@@ -247,15 +261,8 @@ print(f"- name={example_scalar_model.name}")
 print(f"- alphas={example_scalar_model.alphas}")
 
 # %%
-scalar_target_index = 0  # pylint: disable=invalid-name
-scalar_target_name = target_names[scalar_target_index]
-
-y_train_scalar = Y_train[:, scalar_target_index]
-y_val_scalar = Y_val[:, scalar_target_index]
-y_test_scalar = Y_test[:, scalar_target_index]
-
 scalar_model = ScalarRidgeModel()
-scalar_model.fit(X_train, y_train_scalar, X_val, y_val_scalar)
+scalar_model.fit(X_train_scalar, y_train_scalar, X_val_scalar, y_val_scalar)
 
 scalar_alpha_results = scalar_model.validation_results
 best_scalar_alpha = scalar_model.best_alpha
@@ -273,8 +280,8 @@ print(f"- Selected scalar regressor: {scalar_model.pipeline.named_steps['model']
 # ### 1.4 Evaluate On Held-Out Test Data
 
 # %%
-y_val_pred_scalar = scalar_model.predict(X_val)
-y_test_pred_scalar = scalar_model.predict(X_test)
+y_val_pred_scalar = scalar_model.predict(X_val_scalar)
+y_test_pred_scalar = scalar_model.predict(X_test_scalar)
 
 scalar_metrics = pd.DataFrame(
     [
@@ -304,7 +311,7 @@ print(scalar_metrics)
 
 # %%
 fig_scalar_distribution = plot_scalar_prediction_band_by_frequency(
-    test_set.dataframe,
+    scalar_test_set.dataframe,
     y_test_scalar,
     y_test_pred_scalar,
     scalar_target_name,
@@ -314,23 +321,28 @@ fig_scalar_distribution = plot_scalar_prediction_band_by_frequency(
 # %%
 # Randomly choose a list of simulation indices for plotting.
 def random_simu_indices(
-        test_set: DLDataset, n_simu: int, seed: int|None = None
+    dataset: DLDataset, n_simu: int, seed: int | None = None
 ) -> np.ndarray:
     """
     Select a random subset of simulation indices from the test set.
     """
-    test_simu_ids = np.asarray(test_set.dataframe["SIMU_INDEX"].drop_duplicates())
+    test_simu_ids = np.asarray(dataset.dataframe["SIMU_INDEX"].drop_duplicates())
     return np.random.default_rng(seed).choice(
         test_simu_ids,
         size=min(n_simu, len(test_simu_ids)),
         replace=False,
     )
 
-selected_simu_indices = random_simu_indices(test_set, 5, seed=cfg["project"]["seed"])
+
+selected_simu_indices = random_simu_indices(
+    scalar_test_set,
+    5,
+    seed=cfg["project"]["seed"],
+)
 
 fig_random_scalar_design_curves = plot_design_prediction_curves(
     scalar_model,
-    test_set,
+    scalar_test_set,
     scalar_db_loader,
     selected_simu_indices,
 )
@@ -406,7 +418,7 @@ fig_scalar_scatter = plot_scalar_true_vs_predicted(
 
 # %%
 fig_scalar_mae_frequency = plot_scalar_mae_by_frequency(
-    test_set.dataframe,
+    scalar_test_set.dataframe,
     y_test_scalar,
     y_test_pred_scalar,
     scalar_target_name,
@@ -447,12 +459,57 @@ fig_scalar_mae_frequency = plot_scalar_mae_by_frequency(
 # prediction.
 
 # %% [markdown]
+# The scalar experiment is now complete. Its figures and predictions are retained,
+# but the large scalar dataset and feature arrays are released before loading the
+# vector experiment. This keeps the two experiments independent without holding two
+# complete sets of dataframe views in memory at the same time.
+
+# %%
+del scalar_train_set, scalar_val_set, scalar_test_set
+del X_train_scalar, X_val_scalar, X_test_scalar
+del y_train_scalar, y_val_scalar, y_test_scalar, y_val_pred_scalar
+
+# %% [markdown]
 # ## 2. Vector Insertion Loss Baseline
 #
 # This baseline trains one multi-output non-neural regressor to predict a vector
 # of six insertion-loss values from the same design-frequency feature vector.
 # Full IL curves are reconstructed by evaluating the trained vector model across
 # all frequency points for the same design.
+
+# %% [markdown]
+# The vector and polynomial experiments use a separate set of train, validation,
+# and test views configured with the six-target vector dB loader. Their cache files
+# are independent from the scalar experiment: a scalar cache can be rebuilt or
+# removed without affecting vector model development.
+
+# %%
+vector_train_set, vector_val_set, vector_test_set = DLDataset.from_cleaned_csv(
+    cleaned_csv,
+    target_loader=vector_db_loader,
+    cache=True,
+)
+
+print(f"Nuber of training   samples: {len(vector_train_set)}")
+print(f"Nuber of validation samples: {len(vector_val_set)}")
+print(f"Nuber of test       samples: {len(vector_test_set)}\n")
+
+# pylint: disable=invalid-name
+X_train, Y_train = vector_train_set.features, vector_train_set.targets
+X_val,   Y_val   = vector_val_set.features,   vector_val_set.targets
+X_test,  Y_test  = vector_test_set.features,  vector_test_set.targets
+# pylint: enable=invalid-name
+
+print(f"Shape of training   features: {X_train.shape}")
+print(f"Shape of validation features: {X_val.shape}")
+print(f"Shape of test       features: {X_test.shape}")
+print(f"Shape of training   targets: {Y_train.shape}")
+print(f"Shape of validation targets: {Y_val.shape}")
+print(f"Shape of test       targets: {Y_test.shape}\n")
+
+print(f"Vector Touchstone cache: {vector_db_loader.cache_info()}")
+vector_db_loader.clear_cache()
+print(f"Vector Touchstone cache after clearing: {vector_db_loader.cache_info()}")
 
 # %% [markdown]
 # ### 2.1 Input-Output Definition
@@ -484,25 +541,21 @@ fig_scalar_mae_frequency = plot_scalar_mae_by_frequency(
 # $$
 
 # %%
-print(f"Vector target names: {target_names}")
-print(f"Y_train shape: {Y_train.shape}")
-print(f"Y_val shape: {Y_val.shape}")
-print(f"Y_test shape: {Y_test.shape}")
+print(f"Target names of vector model: {vector_target_names}")
 
 # %% [markdown]
 # ### 2.2 Target Loading
 #
-# The six dB IL targets were loaded once with:
+# The six dB IL targets are loaded with:
 #
 # ```python
-# TouchstoneLoader(mode="scalar", representation="db", config=cfg)
+# TouchstoneLoader(mode="vector", representation="db", config=cfg)
 # ```
 #
-# The loader accesses Touchstone data on demand while filling `Y_train`, `Y_val`,
-# and `Y_test`, but those arrays remain in notebook memory after this step. This
-# is a deliberate trade-off for the Ridge baseline: it keeps the fitting,
-# validation, metric, and plotting code simple while leaving the cleaned CSV
-# unchanged.
+# On a cold load, the loader accesses Touchstone data while filling `Y_train`,
+# `Y_val`, and `Y_test`, then each split is saved as an NPZ cache. On a warm load,
+# the arrays come directly from the corresponding cache. Keeping the arrays in
+# memory after loading is a deliberate trade-off for the scikit-learn baselines.
 
 # %% [markdown]
 # ### 2.3 Model Training
@@ -570,7 +623,7 @@ vector_metrics = pd.DataFrame(
         {"split": "test", **regression_metrics(Y_test, Y_test_pred)},
     ]
 )
-per_target_test_metrics = per_target_metrics(Y_test, Y_test_pred, target_names)
+per_target_test_metrics = per_target_metrics(Y_test, Y_test_pred, vector_target_names)
 
 print("Overall vector metrics:", vector_metrics, sep="\n")
 print("\nPer-port-pair test metrics:", per_target_test_metrics, sep="\n")
@@ -608,10 +661,10 @@ print("\nPer-port-pair test metrics:", per_target_test_metrics, sep="\n")
 
 # %%
 fig_vector_distributions = plot_vector_prediction_bands_by_frequency(
-    test_set.dataframe,
+    vector_test_set.dataframe,
     Y_test,
     Y_test_pred,
-    target_names,
+    vector_target_names,
 )
 
 # %% [markdown]
@@ -643,7 +696,7 @@ fig_vector_distributions = plot_vector_prediction_bands_by_frequency(
 # %%
 fig_random_vector_design_curves = plot_design_prediction_curves(
     vector_model,
-    test_set,
+    vector_test_set,
     vector_db_loader,
     selected_simu_indices,
 )
@@ -661,7 +714,7 @@ fig_random_vector_design_curves = plot_design_prediction_curves(
 fig_vector_scatter = plot_vector_true_vs_predicted(
     Y_test,
     Y_test_pred,
-    target_names,
+    vector_target_names,
 )
 
 # %% [markdown]
@@ -704,10 +757,10 @@ fig_vector_scatter = plot_vector_true_vs_predicted(
 
 # %%
 fig_vector_mae_frequency = plot_vector_mae_by_frequency(
-    test_set.dataframe,
+    vector_test_set.dataframe,
     Y_test,
     Y_test_pred,
-    target_names,
+    vector_target_names,
 )
 
 # %% [markdown]
@@ -823,7 +876,7 @@ polynomial_metrics = pd.DataFrame(
 per_target_polynomial_metrics = per_target_metrics(
     Y_test,
     Y_test_pred_poly,
-    target_names,
+    vector_target_names,
 )
 
 model_comparison = pd.DataFrame(
@@ -875,10 +928,10 @@ print(per_target_model_comparison)
 
 # %%
 fig_polynomial_distributions = plot_vector_prediction_bands_by_frequency(
-    test_set.dataframe,
+    vector_test_set.dataframe,
     Y_test,
     Y_test_pred_poly,
-    target_names,
+    vector_target_names,
     model_name="Polynomial",
 )
 
@@ -886,7 +939,7 @@ fig_polynomial_distributions = plot_vector_prediction_bands_by_frequency(
 # Randomly inspect held-out test designs with fresh Polynomial Ridge predictions.
 fig_random_polynomial_design_curves = plot_design_prediction_curves(
     polynomial_model,
-    test_set,
+    vector_test_set,
     vector_db_loader,
     selected_simu_indices,
 )
@@ -924,13 +977,13 @@ fig_random_polynomial_design_curves = plot_design_prediction_curves(
 
 # %%
 fig_model_mae_comparison_frequency = plot_model_mae_comparison_by_frequency(
-    test_set.dataframe,
+    vector_test_set.dataframe,
     Y_test,
     {
         "Vector Ridge": Y_test_pred,
         "Polynomial": Y_test_pred_poly,
     },
-    target_names,
+    vector_target_names,
 )
 
 # %% [markdown]
@@ -972,7 +1025,7 @@ fig_model_mae_comparison_frequency = plot_model_mae_comparison_by_frequency(
 # trained on all six outputs.
 
 # %%
-shared_target_name = scalar_target_name #  It should be "S7_1_DB"
+shared_target_name = scalar_target_name
 shared_target_index = scalar_target_index
 
 shared_target_true = Y_test[:, shared_target_index]
@@ -987,7 +1040,7 @@ shared_target_predictions = {
 
 # %%
 fig_s7_three_model_mae_frequency = plot_shared_target_mae_comparison(
-    test_set.dataframe,
+    vector_test_set.dataframe,
     shared_target_true,
     shared_target_predictions,
     shared_target_name,
@@ -1002,7 +1055,7 @@ fig_s7_three_model_mae_frequency = plot_shared_target_mae_comparison(
 
 # %%
 fig_s7_three_model_distributions = plot_shared_target_prediction_bands(
-    test_set.dataframe,
+    vector_test_set.dataframe,
     shared_target_true,
     shared_target_predictions,
     shared_target_name,
