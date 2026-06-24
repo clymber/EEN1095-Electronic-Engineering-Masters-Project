@@ -1,21 +1,3 @@
-# ---
-# jupyter:
-#   jupytext:
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.19.2
-#   kernelspec:
-#     display_name: meng
-#     language: python
-#     name: python3
-# ---
-
-# %% [markdown]
-# # My Logging
-
-# %%
 """
 A custom logging module that formats log messages in Markdown style.
 """
@@ -25,13 +7,13 @@ import logging.config
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
 from pandas import DataFrame
 
 from .basic_cfg import load_config
 from .paths import PROJECT_ROOT
 
 
-# %%
 class MarkdownLogger(logging.Logger):
     """
     Markdown Logger, formats messages as Markdown with special methods.
@@ -133,7 +115,7 @@ def set_logging_cfg(
     logging.setLoggerClass(MarkdownLogger)
 
     # Load the logging configuration from the specified JSON file
-    with open(log_cfg_path, "r", encoding="utf-8") as f:
+    with open(log_cfg_path, encoding="utf-8") as f:
         config = json.load(f)
 
     # Update the log file path in the configuration to include the log directory

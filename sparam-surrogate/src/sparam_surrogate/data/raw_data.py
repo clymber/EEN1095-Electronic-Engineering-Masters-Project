@@ -16,11 +16,12 @@
 """
 Raw data(unzipped dataset) processing.
 """
-import pandas as pd
 import re
 import textwrap
 from pathlib import Path
 from typing import TypedDict
+
+import pandas as pd
 
 
 # %%

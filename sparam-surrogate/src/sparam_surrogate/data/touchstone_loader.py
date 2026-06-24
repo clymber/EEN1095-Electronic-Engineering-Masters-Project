@@ -3,7 +3,7 @@ Lazy Touchstone target loading for TensorFlow dataset mapping.
 """
 
 import json
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
@@ -26,30 +26,29 @@ class TouchstoneLoader:
 
     def __init__(
         self,
-        mode: Literal["scalar", "full_smatrix"],
+        mode: Literal["scalar", "vector", "smatrix"],
         config: Mapping[str, Any] | Path | str | None = None,
-        representation: Literal["db", "real_imag", "complex"] = "db",
+        representation: Literal["db", "il", "real_imag", "complex"] = "db",
         cache_size: int = 256,
     ) -> None:
         """
         Configure lazy S-parameter target extraction.
 
-        Scalar mode reads one-based port pairs from configuration. Full
-        S-matrix mode returns flattened real/imag targets.
+        Scalar mode reads the first configured one-based port pair. Vector mode
+        reads all configured port pairs. S-matrix mode returns the flattened
+        full S-parameter matrix.
         """
-        self.mode = str(mode)
+        self.mode = self._normalise_mode(mode)
         self.config = self._load_config(config)
         self.project_root = PROJECT_ROOT.resolve()
         self.representation = str(representation)
         self.cache_size = int(cache_size)
         if self.cache_size <= 0:
             raise ValueError("cache_size must be positive.")
-        if self.mode not in {"scalar", "full_smatrix"}:
-            raise ValueError("mode must be either 'scalar' or 'full_smatrix'.")
-        if self.representation not in {"db", "real_imag", "complex"}:
-            raise ValueError("representation must be 'db', 'real_imag', or 'complex'.")
-        if self.mode == "full_smatrix" and self.representation != "real_imag":
-            raise ValueError("full_smatrix mode requires representation='real_imag'.")
+        if self.representation not in {"db", "il", "real_imag", "complex"}:
+            raise ValueError(
+                "representation must be 'db', 'il', 'real_imag', or 'complex'."
+            )
 
         self.nports = self._configured_nports()
         self.port_pairs = self._configured_port_pairs()
@@ -58,30 +57,52 @@ class TouchstoneLoader:
     @property
     def target_names(self) -> tuple[str, ...]:
         """Return target names in the same order as loader outputs."""
-        if self.mode == "scalar":
-            if self.representation == "db":
-                return tuple(self.response_column_name(pair) for pair in self.port_pairs)
-            if self.representation == "complex":
-                return tuple(f"S{receiver}_{source}" for receiver, source in self.port_pairs)
-            real_names = [
-                f"REAL_S{receiver}_{source}" for receiver, source in self.port_pairs
-            ]
-            imag_names = [
-                f"IMAG_S{receiver}_{source}" for receiver, source in self.port_pairs
-            ]
-            return tuple([*real_names, *imag_names])
+        if self.mode in {"scalar", "vector"}:
+            return self._target_names_for_pairs(self._target_port_pairs())
+        return self._target_names_for_pairs(self._smatrix_port_pairs(self.nports))
 
-        real_names = [
-            f"REAL_S{receiver}_{source}"
-            for receiver in range(1, self.nports + 1)
-            for source in range(1, self.nports + 1)
-        ]
-        imag_names = [
-            f"IMAG_S{receiver}_{source}"
-            for receiver in range(1, self.nports + 1)
-            for source in range(1, self.nports + 1)
-        ]
+    def _target_names_for_pairs(
+        self,
+        port_pairs: Iterable[tuple[int, int]],
+    ) -> tuple[str, ...]:
+        """Return target names for port pairs in this loader's representation."""
+        pairs = tuple(port_pairs)
+        if self.representation == "db":
+            return tuple(self.response_column_name(pair) for pair in pairs)
+        if self.representation == "il":
+            return tuple(
+                f"IL_S{receiver}_{source}_DB" for receiver, source in pairs
+            )
+        if self.representation == "complex":
+            return tuple(f"S{receiver}_{source}" for receiver, source in pairs)
+        real_names = [f"REAL_S{receiver}_{source}" for receiver, source in pairs]
+        imag_names = [f"IMAG_S{receiver}_{source}" for receiver, source in pairs]
         return tuple([*real_names, *imag_names])
+
+    def _target_port_pairs(self) -> tuple[tuple[int, int], ...]:
+        """Return the configured port pairs selected by the current mode."""
+        if self.mode == "scalar":
+            return self.port_pairs[:1]
+        return self.port_pairs
+
+    @staticmethod
+    def _normalise_mode(
+        mode: Literal["scalar", "vector", "smatrix"],
+    ) -> str:
+        """Return the canonical target-loading mode."""
+        raw_mode = str(mode)
+        if raw_mode in {"scalar", "vector", "smatrix"}:
+            return raw_mode
+        raise ValueError("mode must be 'scalar', 'vector', or 'smatrix'.")
+
+    @staticmethod
+    def _smatrix_port_pairs(nports: int) -> tuple[tuple[int, int], ...]:
+        """Return all one-based S-matrix port pairs in flattened matrix order."""
+        return tuple(
+            (receiver, source)
+            for receiver in range(1, nports + 1)
+            for source in range(1, nports + 1)
+        )
 
     @property
     def target_shape(self) -> tuple[int, ...]:
@@ -108,9 +129,9 @@ class TouchstoneLoader:
             )
         frequency_ghz = self._metadata_frequency(row_metadata)
         frequency_index = self._target_frequency_index(network, frequency_ghz)
-        if self.mode == "scalar":
-            return self._scalar_target(network, frequency_index)
-        return self._full_smatrix_target(network, frequency_index)
+        if self.mode in {"scalar", "vector"}:
+            return self._port_pair_target(network, frequency_index)
+        return self._smatrix_target(network, frequency_index)
 
     def cache_info(self) -> object:
         """Return current Touchstone file cache statistics."""
@@ -126,7 +147,10 @@ class TouchstoneLoader:
         receiver, source = pair
         return f"S{receiver}_{source}_DB"
 
-    def _load_config(self, config: Mapping[str, Any] | Path | str | None) -> dict[str, Any]:
+    def _load_config(
+        self,
+        config: Mapping[str, Any] | Path | str | None,
+    ) -> dict[str, Any]:
         """Load configuration from a mapping, JSON path, or project defaults."""
         if config is None:
             return load_config()
@@ -137,7 +161,7 @@ class TouchstoneLoader:
             return json.load(config_file)
 
     def _configured_port_pairs(self) -> tuple[tuple[int, int], ...]:
-        """Validate and return scalar port pairs from configuration."""
+        """Validate and return configured one-based port pairs."""
         raw_pairs = self.config.get("dataset", {}).get("ports", [])
         pairs: list[tuple[int, int]] = []
         for raw_pair in raw_pairs:
@@ -152,8 +176,10 @@ class TouchstoneLoader:
                     f"dataset.nports={self.nports}."
                 )
             pairs.append((receiver, source))
-        if self.mode == "scalar" and not pairs:
-            raise ValueError("Scalar mode requires dataset.ports in configuration.")
+        if self.mode in {"scalar", "vector"} and not pairs:
+            raise ValueError(
+                "Scalar and vector modes require dataset.ports in configuration."
+            )
         return tuple(pairs)
 
     def _configured_nports(self) -> int:
@@ -218,31 +244,26 @@ class TouchstoneLoader:
             )
         return int(matches[0])
 
-    def _scalar_target(self, network: rf.Network, frequency_index: int) -> np.ndarray:
-        """Extract configured scalar targets at one frequency."""
+    def _port_pair_target(
+        self,
+        network: rf.Network,
+        frequency_index: int,
+    ) -> np.ndarray:
+        """Extract configured scalar or vector targets at one frequency."""
         values: list[complex] = []
-        for receiver, source in self.port_pairs:
+        for receiver, source in self._target_port_pairs():
             if receiver > network.nports or source > network.nports:
                 raise ValueError(
                     f"Configured port pair {(receiver, source)} is unavailable "
                     f"for a {network.nports}-port network."
                 )
             values.append(network.s[frequency_index, receiver - 1, source - 1])
-        complex_values = np.asarray(values, dtype=complex)
-        if self.representation == "complex":
-            if not np.isfinite(complex_values).all():
-                raise ValueError("Scalar complex target contains non-finite values.")
-            return complex_values
-        if self.representation == "real_imag":
-            target = np.concatenate([complex_values.real, complex_values.imag])
-        else:
-            with np.errstate(divide="ignore"):
-                target = 20.0 * np.log10(np.abs(complex_values))
-        if not np.isfinite(target).all():
-            raise ValueError("Scalar target contains non-finite values.")
-        return np.asarray(target, dtype=float)
+        return self._represent_complex_values(
+            np.asarray(values, dtype=complex),
+            f"{self.mode} target",
+        )
 
-    def _full_smatrix_target(
+    def _smatrix_target(
         self,
         network: rf.Network,
         frequency_index: int,
@@ -251,5 +272,25 @@ class TouchstoneLoader:
         matrix = np.asarray(network.s[frequency_index], dtype=complex)
         if not np.isfinite(matrix).all():
             raise ValueError("Full S-matrix target contains non-finite values.")
-        flattened = matrix.reshape(-1)
-        return np.concatenate([flattened.real, flattened.imag]).astype(float)
+        return self._represent_complex_values(matrix.reshape(-1), "S-matrix target")
+
+    def _represent_complex_values(
+        self,
+        complex_values: np.ndarray,
+        label: str,
+    ) -> np.ndarray:
+        """Convert complex S-parameters to the configured representation."""
+        if self.representation == "complex":
+            if not np.isfinite(complex_values).all():
+                raise ValueError(f"{label} contains non-finite values.")
+            return complex_values
+        if self.representation == "real_imag":
+            target = np.concatenate([complex_values.real, complex_values.imag])
+        else:
+            with np.errstate(divide="ignore"):
+                target = 20.0 * np.log10(np.abs(complex_values))
+            if self.representation == "il":
+                target = -target
+        if not np.isfinite(target).all():
+            raise ValueError(f"{label} contains non-finite values.")
+        return np.asarray(target, dtype=float)
