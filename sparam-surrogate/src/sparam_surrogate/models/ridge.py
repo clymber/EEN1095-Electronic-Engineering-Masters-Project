@@ -30,7 +30,9 @@ RIDGE_ALPHA_GRID = (
 
 
 def _build_ridge_pipeline(alpha: float) -> Pipeline:
-    """Return the scaler-plus-Ridge pipeline used by each alpha candidate."""
+    """
+    Return the scaler-plus-Ridge pipeline used by each alpha candidate.
+    """
     return Pipeline(
         [
             ("scaler", StandardScaler()),
@@ -40,7 +42,9 @@ def _build_ridge_pipeline(alpha: float) -> Pipeline:
 
 
 class RidgeModel(SparamModel):
-    """Shared validation-sweep implementation for Ridge surrogate models."""
+    """
+    Shared validation-sweep implementation for Ridge surrogate models.
+    """
 
     name = "ridge"
 
@@ -57,7 +61,9 @@ class RidgeModel(SparamModel):
         X_val: np.ndarray | None = None,  # pylint: disable=invalid-name
         y_val: np.ndarray | None = None,
     ) -> RidgeModel:
-        """Fit Ridge candidates and keep the lowest-validation-MAE model."""
+        """
+        Fit Ridge candidates and keep the lowest-validation-MAE model.
+        """
         if X_val is None or y_val is None:
             raise ValueError("RidgeModel requires validation data for alpha selection.")
         if not self.alphas:
@@ -89,24 +95,32 @@ class RidgeModel(SparamModel):
         return self
 
     def predict(self, X: np.ndarray) -> np.ndarray:  # pylint: disable=invalid-name
-        """Return predictions from the selected Ridge pipeline."""
+        """
+        Return predictions from the selected Ridge pipeline.
+        """
         return np.asarray(self.pipeline.predict(X))
 
     @property
     def pipeline(self) -> Pipeline:
-        """Return the selected fitted pipeline."""
+        """
+        Return the selected fitted pipeline.
+        """
         if self.model is None:
             raise RuntimeError(f"{self.name} must be fitted before prediction.")
         return self.model
 
 
 class ScalarRidgeModel(RidgeModel):
-    """Ridge baseline for one-dimensional insertion-loss targets."""
+    """
+    Ridge baseline for one-dimensional insertion-loss targets.
+    """
 
     name = "scalar_ridge"
 
 
 class VectorRidgeModel(RidgeModel):
-    """Ridge baseline for multi-output insertion-loss targets."""
+    """
+    Ridge baseline for multi-output insertion-loss targets.
+    """
 
     name = "vector_ridge"

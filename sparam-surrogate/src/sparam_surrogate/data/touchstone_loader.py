@@ -56,7 +56,9 @@ class TouchstoneLoader:
 
     @property
     def target_names(self) -> tuple[str, ...]:
-        """Return target names in the same order as loader outputs."""
+        """
+        Return target names in the same order as loader outputs.
+        """
         if self.mode in {"scalar", "vector"}:
             return self._target_names_for_pairs(self._target_port_pairs())
         return self._target_names_for_pairs(self._smatrix_port_pairs(self.nports))
@@ -65,7 +67,9 @@ class TouchstoneLoader:
         self,
         port_pairs: Iterable[tuple[int, int]],
     ) -> tuple[str, ...]:
-        """Return target names for port pairs in this loader's representation."""
+        """
+        Return target names for port pairs in this loader's representation.
+        """
         pairs = tuple(port_pairs)
         if self.representation == "db":
             return tuple(self.response_column_name(pair) for pair in pairs)
@@ -80,7 +84,9 @@ class TouchstoneLoader:
         return tuple([*real_names, *imag_names])
 
     def _target_port_pairs(self) -> tuple[tuple[int, int], ...]:
-        """Return the configured port pairs selected by the current mode."""
+        """
+        Return the configured port pairs selected by the current mode.
+        """
         if self.mode == "scalar":
             return self.port_pairs[:1]
         return self.port_pairs
@@ -89,7 +95,9 @@ class TouchstoneLoader:
     def _normalise_mode(
         mode: Literal["scalar", "vector", "smatrix"],
     ) -> str:
-        """Return the canonical target-loading mode."""
+        """
+        Return the canonical target-loading mode.
+        """
         raw_mode = str(mode)
         if raw_mode in {"scalar", "vector", "smatrix"}:
             return raw_mode
@@ -97,7 +105,9 @@ class TouchstoneLoader:
 
     @staticmethod
     def _smatrix_port_pairs(nports: int) -> tuple[tuple[int, int], ...]:
-        """Return all one-based S-matrix port pairs in flattened matrix order."""
+        """
+        Return all one-based S-matrix port pairs in flattened matrix order.
+        """
         return tuple(
             (receiver, source)
             for receiver in range(1, nports + 1)
@@ -106,7 +116,9 @@ class TouchstoneLoader:
 
     @property
     def target_shape(self) -> tuple[int, ...]:
-        """Return the one-sample target shape."""
+        """
+        Return the one-sample target shape.
+        """
         return (len(self.target_names),)
 
     def __call__(
@@ -134,16 +146,22 @@ class TouchstoneLoader:
         return self._smatrix_target(network, frequency_index)
 
     def cache_info(self) -> object:
-        """Return current Touchstone file cache statistics."""
+        """
+        Return current Touchstone file cache statistics.
+        """
         return self._cached_network.cache_info()
 
     def clear_cache(self) -> None:
-        """Release cached Touchstone networks held by this loader."""
+        """
+        Release cached Touchstone networks held by this loader.
+        """
         self._cached_network.cache_clear()
 
     @staticmethod
     def response_column_name(pair: tuple[int, int]) -> str:
-        """Return the scalar dB column name for one port pair."""
+        """
+        Return the scalar dB column name for one port pair.
+        """
         receiver, source = pair
         return f"S{receiver}_{source}_DB"
 
@@ -151,7 +169,9 @@ class TouchstoneLoader:
         self,
         config: Mapping[str, Any] | Path | str | None,
     ) -> dict[str, Any]:
-        """Load configuration from a mapping, JSON path, or project defaults."""
+        """
+        Load configuration from a mapping, JSON path, or project defaults.
+        """
         if config is None:
             return load_config()
         if isinstance(config, Mapping):
@@ -161,7 +181,9 @@ class TouchstoneLoader:
             return json.load(config_file)
 
     def _configured_port_pairs(self) -> tuple[tuple[int, int], ...]:
-        """Validate and return configured one-based port pairs."""
+        """
+        Validate and return configured one-based port pairs.
+        """
         raw_pairs = self.config.get("dataset", {}).get("ports", [])
         pairs: list[tuple[int, int]] = []
         for raw_pair in raw_pairs:
@@ -183,7 +205,9 @@ class TouchstoneLoader:
         return tuple(pairs)
 
     def _configured_nports(self) -> int:
-        """Return the configured Touchstone port count."""
+        """
+        Return the configured Touchstone port count.
+        """
         raw_nports = self.config.get("dataset", {}).get("nports")
         if raw_nports is None:
             raise ValueError("dataset.nports must be configured.")
@@ -193,7 +217,9 @@ class TouchstoneLoader:
         return nports
 
     def _resolve_path(self, row_metadata: Mapping[str, Any]) -> Path:
-        """Resolve a metadata Touchstone path against the project root."""
+        """
+        Resolve a metadata Touchstone path against the project root.
+        """
         try:
             raw_path = str(row_metadata["TOUCHSTONE_REL_PATH"])
         except KeyError as exc:
@@ -209,7 +235,9 @@ class TouchstoneLoader:
         return resolved
 
     def _metadata_frequency(self, row_metadata: Mapping[str, Any]) -> float:
-        """Return the requested frequency from row metadata."""
+        """
+        Return the requested frequency from row metadata.
+        """
         try:
             frequency_ghz = float(row_metadata["FREQ_GHZ"])
         except KeyError as exc:
@@ -217,15 +245,21 @@ class TouchstoneLoader:
         return frequency_ghz
 
     def _network(self, path: Path) -> rf.Network:
-        """Return a cached scikit-rf network for a Touchstone path."""
+        """
+        Return a cached scikit-rf network for a Touchstone path.
+        """
         return self._cached_network(path.as_posix())
 
     def _read_network(self, path: str) -> rf.Network:
-        """Parse one Touchstone file from disk."""
+        """
+        Parse one Touchstone file from disk.
+        """
         return rf.Network(path)
 
     def _target_frequency_index(self, network: rf.Network, frequency_ghz: float) -> int:
-        """Locate the requested frequency in a Touchstone network."""
+        """
+        Locate the requested frequency in a Touchstone network.
+        """
         frequencies_ghz = np.asarray(network.f, dtype=float) / 1e9
         if frequencies_ghz.ndim != 1 or not np.isfinite(frequencies_ghz).all():
             raise ValueError("Touchstone frequency grid is invalid.")
@@ -249,7 +283,9 @@ class TouchstoneLoader:
         network: rf.Network,
         frequency_index: int,
     ) -> np.ndarray:
-        """Extract configured scalar or vector targets at one frequency."""
+        """
+        Extract configured scalar or vector targets at one frequency.
+        """
         values: list[complex] = []
         for receiver, source in self._target_port_pairs():
             if receiver > network.nports or source > network.nports:
@@ -268,7 +304,9 @@ class TouchstoneLoader:
         network: rf.Network,
         frequency_index: int,
     ) -> np.ndarray:
-        """Extract and flatten the complete S-matrix at one frequency."""
+        """
+        Extract and flatten the complete S-matrix at one frequency.
+        """
         matrix = np.asarray(network.s[frequency_index], dtype=complex)
         if not np.isfinite(matrix).all():
             raise ValueError("Full S-matrix target contains non-finite values.")
@@ -279,7 +317,9 @@ class TouchstoneLoader:
         complex_values: np.ndarray,
         label: str,
     ) -> np.ndarray:
-        """Convert complex S-parameters to the configured representation."""
+        """
+        Convert complex S-parameters to the configured representation.
+        """
         if self.representation == "complex":
             if not np.isfinite(complex_values).all():
                 raise ValueError(f"{label} contains non-finite values.")

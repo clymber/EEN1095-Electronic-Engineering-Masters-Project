@@ -55,11 +55,15 @@ class CLI:
 
     @property
     def app_name(self) -> str:
-        """Return the application name."""
+        """
+        Return the application name.
+        """
         return self._app_name
 
     def add_subcommand_unzip(self) -> None:
-        """Add the unzip subcommand."""
+        """
+        Add the unzip subcommand.
+        """
         unzip_parser = self._subparsers.add_parser(
             "unzip",
             help="Extract a ZIP archive.",
@@ -141,7 +145,9 @@ class CLI:
         )
 
     def add_subcommand_train(self) -> None:
-        """Add the train subcommand."""
+        """
+        Add the train subcommand.
+        """
         train_parser = self._subparsers.add_parser(
             "train",
             help="Train a surrogate model.",
@@ -174,7 +180,9 @@ class CLI:
         )
 
     def add_subcommand_predict(self) -> None:
-        """Add the predict subcommand."""
+        """
+        Add the predict subcommand.
+        """
         pred_parser = self._subparsers.add_parser(
             "predict",
             help="Make predictions with a trained surrogate model.",
@@ -208,13 +216,17 @@ class CLI:
     def parse_cli(
         self, args: Sequence[str] | None = None, namespace: None = None
     ) -> argparse.Namespace:
-        """Parse command-line arguments."""
+        """
+        Parse command-line arguments.
+        """
         return self._parser.parse_args(args, namespace)
 
 
 # %%
 def main() -> int:
-    """Run the command-line interface."""
+    """
+    Run the command-line interface.
+    """
     # Set up logging
     mylogging.set_logging_cfg()
     logger = mylogging.get_md_logger("sparam_surrogate.cli")

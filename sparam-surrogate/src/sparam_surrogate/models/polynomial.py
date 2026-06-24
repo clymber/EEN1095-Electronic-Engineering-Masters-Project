@@ -29,7 +29,9 @@ POLYNOMIAL_ALPHA_GRID = (
 
 
 class PowersOnlyPolynomialFeatures(BaseEstimator, TransformerMixin):
-    """Expand each feature independently into powers up to ``degree``."""
+    """
+    Expand each feature independently into powers up to ``degree``.
+    """
 
     def __init__(self, degree: int = 3) -> None:
         self.degree = int(degree)
@@ -39,7 +41,9 @@ class PowersOnlyPolynomialFeatures(BaseEstimator, TransformerMixin):
         X: np.ndarray,  # pylint: disable=invalid-name
         y: np.ndarray | None = None,
     ) -> PowersOnlyPolynomialFeatures:
-        """Record feature widths for a later powers-only transform."""
+        """
+        Record feature widths for a later powers-only transform.
+        """
         del y
         if self.degree < 1:
             raise ValueError("degree must be a positive integer.")
@@ -49,7 +53,9 @@ class PowersOnlyPolynomialFeatures(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, X: np.ndarray) -> np.ndarray:  # pylint: disable=invalid-name
-        """Return ``[X, X**2, ..., X**degree]`` with no cross terms."""
+        """
+        Return ``[X, X**2, ..., X**degree]`` with no cross terms.
+        """
         check_is_fitted(self, ("n_features_in_", "n_output_features_"))
         X_checked = check_array(X)
         if X_checked.shape[1] != self.n_features_in_:
@@ -64,7 +70,9 @@ class PowersOnlyPolynomialFeatures(BaseEstimator, TransformerMixin):
 
 
 def _build_polynomial_pipeline(degree: int, alpha: float) -> Pipeline:
-    """Return the powers-only polynomial Ridge pipeline."""
+    """
+    Return the powers-only polynomial Ridge pipeline.
+    """
     return Pipeline(
         [
             ("input_scaler", StandardScaler()),
@@ -76,7 +84,9 @@ def _build_polynomial_pipeline(degree: int, alpha: float) -> Pipeline:
 
 
 class PolynomialModel(SparamModel):
-    """Vector-output powers-only polynomial Ridge model."""
+    """
+    Vector-output powers-only polynomial Ridge model.
+    """
 
     name = "polynomial_ridge"
 
@@ -99,7 +109,9 @@ class PolynomialModel(SparamModel):
         X_val: np.ndarray | None = None,  # pylint: disable=invalid-name
         y_val: np.ndarray | None = None,
     ) -> PolynomialModel:
-        """Fit polynomial candidates and keep the lowest-validation-MAE model."""
+        """
+        Fit polynomial candidates and keep the lowest-validation-MAE model.
+        """
         if X_val is None or y_val is None:
             raise ValueError(
                 "PolynomialModel requires validation data for degree/alpha selection."
@@ -144,12 +156,16 @@ class PolynomialModel(SparamModel):
         return self
 
     def predict(self, X: np.ndarray) -> np.ndarray:  # pylint: disable=invalid-name
-        """Return predictions from the selected polynomial pipeline."""
+        """
+        Return predictions from the selected polynomial pipeline.
+        """
         return np.asarray(self.pipeline.predict(X))
 
     @property
     def pipeline(self) -> Pipeline:
-        """Return the selected fitted pipeline."""
+        """
+        Return the selected fitted pipeline.
+        """
         if self.model is None:
             raise RuntimeError(f"{self.name} must be fitted before prediction.")
         return self.model
