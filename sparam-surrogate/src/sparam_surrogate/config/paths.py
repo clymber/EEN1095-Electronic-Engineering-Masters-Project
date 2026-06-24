@@ -1,27 +1,15 @@
-# ---
-# jupyter:
-#   jupytext:
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.19.3
-#   kernelspec:
-#     display_name: meng
-#     language: python
-#     name: python3
-# ---
-
-# %%
 """
 Application runtime paths helper and config.
 """
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
 
+from ..utils.text_stream import set_text_stream_filter
 
-# %%
+
 def find_project_root(start: Path | None = None) -> Path:
     """Find the project root by looking for pyproject.toml."""
     current = (start or Path.cwd()).resolve()
@@ -63,14 +51,10 @@ def relative_to_project_root(
         ) from exc
 
 
-# %% [markdown]
 # Basic runtime directory configuration:
-
-# %%
 PROJECT_ROOT = find_project_root()
 NOTEBOOK_RESOURCE_DIR = PROJECT_ROOT / "notebooks" / "resources"
 
-# %%
 def notebook_resource_path(
     filename: Path | str,
     *,
@@ -95,3 +79,15 @@ def notebook_resource_path(
     raise FileNotFoundError(
         f"Notebook resource not found: {resource}. Checked: {candidate}"
     )
+
+
+def configure_stdio_relative_path() -> None:
+    """
+    Display paths beneath a base path relatively for consistent standard streams.
+    """
+    substitution = {
+        f"{Path(PROJECT_ROOT).resolve()}{os.sep}": "",
+        f"{Path.home().resolve()}{os.sep}": f"~{os.sep}",
+    }
+    sys.stdout = set_text_stream_filter(sys.stdout, map=substitution)
+    sys.stderr = set_text_stream_filter(sys.stderr, map=substitution)

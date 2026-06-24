@@ -16,6 +16,10 @@ class SparamModel(ABC):
 
     name = "sparam_model"
 
+    def model_name(self) -> str:
+        """Return the human-readable model name used in reports and plots."""
+        return str(self.name).replace("_", " ").title()
+
     @abstractmethod
     def fit(
         self,
