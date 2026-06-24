@@ -11,7 +11,9 @@ from ..utils.text_stream import set_text_stream_filter
 
 
 def find_project_root(start: Path | None = None) -> Path:
-    """Find the project root by looking for pyproject.toml."""
+    """
+    Find the project root by looking for pyproject.toml.
+    """
     current = (start or Path.cwd()).resolve()
 
     for path in [current, *current.parents]:

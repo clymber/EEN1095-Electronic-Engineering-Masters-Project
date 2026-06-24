@@ -42,7 +42,9 @@ class ResponseDatasetLike(Protocol):
     through_s_db: np.ndarray
 
     def at_frequency(self, frequency_ghz: float) -> pd.DataFrame:
-        """Return selected response columns at one frequency."""
+        """
+        Return selected response columns at one frequency.
+        """
         ...
 
 
@@ -57,7 +59,9 @@ class PcbDatasetEDA:
         parameters: PcbParameters,
         responses: ResponseDatasetLike | None = None,
     ) -> None:
-        """Create an exploratory dataset from parameters and optional responses."""
+        """
+        Create an exploratory dataset from parameters and optional responses.
+        """
         features = parameters.dataframe.copy()
         features = features.assign(
             BOARD_HEIGHT=2 * features["START"] + 9 * features["PITCH"],
@@ -75,12 +79,16 @@ class PcbDatasetEDA:
 
     @property
     def dataframe(self) -> pd.DataFrame:
-        """Return the derived feature table."""
+        """
+        Return the derived feature table.
+        """
         return self._features
 
     @property
     def responses(self) -> ResponseDatasetLike | None:
-        """Return the optional aligned frequency-response dataset."""
+        """
+        Return the optional aligned frequency-response dataset.
+        """
         return self._responses
 
     @overload
@@ -90,7 +98,9 @@ class PcbDatasetEDA:
     def __getitem__(self, key: list[str] | pd.Index) -> pd.DataFrame: ...
 
     def __getitem__(self, key: str | list[str] | pd.Index) -> pd.Series | pd.DataFrame:
-        """Select feature columns using DataFrame-style syntax."""
+        """
+        Select feature columns using DataFrame-style syntax.
+        """
         return self._features[key]
 
     def plot_board_geometry_verification(
@@ -187,7 +197,9 @@ class PcbDatasetEDA:
     def _select_columns(
         self, columns: str | list[str] | pd.Index | None = None
     ) -> pd.DataFrame:
-        """Return the full feature table or a requested column subset."""
+        """
+        Return the full feature table or a requested column subset.
+        """
         if columns is None:
             return self._features
         if isinstance(columns, str):
@@ -656,12 +668,16 @@ class PcbDatasetEDA:
 
     @staticmethod
     def response_column_name(pair: tuple[int, int]) -> str:
-        """Return the standard dB response column name for one port pair."""
+        """
+        Return the standard dB response column name for one port pair.
+        """
         receiver, source = pair
         return f"S{receiver}_{source}_DB"
 
     def _require_responses(self) -> ResponseDatasetLike:
-        """Return the response object or raise a clear analysis error."""
+        """
+        Return the response object or raise a clear analysis error.
+        """
         if self._responses is None:
             raise RuntimeError(
                 "Response analysis requires an aligned response dataset."

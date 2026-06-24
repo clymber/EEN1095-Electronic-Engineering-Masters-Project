@@ -55,7 +55,9 @@ class MLDatasetBuilder:
         processed_dir: Path | str,
         feature_columns: Sequence[str] | None = None,
     ) -> None:
-        """Configure cleaned CSV construction."""
+        """
+        Configure cleaned CSV construction.
+        """
         if not isinstance(raw_data, RawData):
             raise TypeError("raw_data must be a RawData instance.")
         self.raw_data = raw_data
@@ -66,7 +68,9 @@ class MLDatasetBuilder:
 
     @property
     def cleaned_path(self) -> Path:
-        """Return the path to the cleaned CSV artifact."""
+        """
+        Return the path to the cleaned CSV artifact.
+        """
         return self.processed_dir / self.CLEANED_FILENAME
 
     def data_cleaning(self, force: bool = False) -> pd.DataFrame:
@@ -137,7 +141,9 @@ class MLDatasetBuilder:
         )
 
     def _validate_feature_columns(self) -> None:
-        """Validate feature columns for returned ``DLDataset`` objects."""
+        """
+        Validate feature columns for returned ``DLDataset`` objects.
+        """
         if not self.feature_columns:
             raise ValueError("feature_columns must contain at least one column.")
         allowed = {*self.PARAMETER_COLUMNS, self.FREQUENCY_COLUMN}
@@ -146,7 +152,9 @@ class MLDatasetBuilder:
             raise ValueError("Unsupported feature columns: " + ", ".join(unknown))
 
     def _valid_parameter_frame(self, parameters: PcbParameters) -> pd.DataFrame:
-        """Validate and normalize the source parameter table."""
+        """
+        Validate and normalize the source parameter table.
+        """
         frame = parameters.dataframe.copy()
         required = [*self.PARAMETER_COLUMNS, self.SIMULATION_COLUMN]
         missing = [column for column in required if column not in frame.columns]
@@ -173,7 +181,9 @@ class MLDatasetBuilder:
         return frame
 
     def _aligned_parameter_frame(self, frame: pd.DataFrame) -> pd.DataFrame:
-        """Drop parameter rows without Touchstone files and ignore orphan files."""
+        """
+        Drop parameter rows without Touchstone files and ignore orphan files.
+        """
         self.raw_data.check_index_consistency()
         touchstone_indices = set(self.raw_data.touchstone_indices())
         aligned = frame.loc[
@@ -184,7 +194,9 @@ class MLDatasetBuilder:
         return aligned.reset_index(drop=True)
 
     def _frequency_grid_for(self, aligned: pd.DataFrame) -> np.ndarray:
-        """Read the common frequency grid from a representative Touchstone file."""
+        """
+        Read the common frequency grid from a representative Touchstone file.
+        """
         simulation_index = int(aligned.iloc[0][self.SIMULATION_COLUMN])
         network = rf.Network(str(self.raw_data.touchstone(simulation_index)))
         if network.nports != self.raw_data.nports:
@@ -202,7 +214,9 @@ class MLDatasetBuilder:
         return frequencies_ghz
 
     def _relative_touchstone_path(self, touchstone_path: Path) -> str:
-        """Convert a Touchstone path to a portable relative metadata path."""
+        """
+        Convert a Touchstone path to a portable relative metadata path.
+        """
         resolved = touchstone_path.resolve()
         for root in (PROJECT_ROOT.resolve(), self.raw_data.path.resolve().parent):
             try:
@@ -217,7 +231,9 @@ class MLDatasetBuilder:
         *,
         require_split: bool = False,
     ) -> pd.DataFrame:
-        """Validate the cleaned CSV schema and values."""
+        """
+        Validate the cleaned CSV schema and values.
+        """
         missing = [column for column in self.CLEANED_COLUMNS if column not in cleaned]
         if missing:
             raise ValueError("Required columns missing: " + ", ".join(missing))
@@ -249,12 +265,16 @@ class MLDatasetBuilder:
         return validated
 
     def _write_cleaned(self, cleaned: pd.DataFrame) -> None:
-        """Persist the cleaned dataframe."""
+        """
+        Persist the cleaned dataframe.
+        """
         self.processed_dir.mkdir(parents=True, exist_ok=True)
         cleaned.to_csv(self.cleaned_path, index=False)
 
     def _unique_simulation_indices(self, cleaned: pd.DataFrame) -> np.ndarray:
-        """Return unique design indices in cleaned-data order."""
+        """
+        Return unique design indices in cleaned-data order.
+        """
         return np.asarray(
             pd.unique(cleaned[self.SIMULATION_COLUMN]),
             dtype=np.int64,
@@ -268,7 +288,9 @@ class MLDatasetBuilder:
         test_fraction: float,
         seed: int,
     ) -> dict[int, str]:
-        """Assign deterministic train, validation, and test labels by design."""
+        """
+        Assign deterministic train, validation, and test labels by design.
+        """
         n_designs = len(simulation_indices)
         n_test = self._fraction_to_count(
             test_fraction,
@@ -298,7 +320,9 @@ class MLDatasetBuilder:
 
     @staticmethod
     def _fraction_to_count(fraction: float, n_designs: int, name: str) -> int:
-        """Convert a split fraction to a design count."""
+        """
+        Convert a split fraction to a design count.
+        """
         fraction = float(fraction)
         if fraction <= 0.0 or fraction >= 1.0:
             raise ValueError(f"{name} must be between 0 and 1.")

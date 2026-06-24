@@ -20,23 +20,33 @@ class MarkdownLogger(logging.Logger):
     """
 
     def heading1(self, msg: str, *args: Any, **kwargs: Any) -> None:
-        """Markdown heading level 1."""
+        """
+        Markdown heading level 1.
+        """
         self._log(logging.INFO, msg, args, extra={"md_type": "h1"}, **kwargs)
 
     def heading2(self, msg: str, *args: Any, **kwargs: Any) -> None:
-        """Markdown heading level 2."""
+        """
+        Markdown heading level 2.
+        """
         self._log(logging.INFO, msg, args, extra={"md_type": "h2"}, **kwargs)
 
     def heading3(self, msg: str, *args: Any, **kwargs: Any) -> None:
-        """Markdown heading level 3."""
+        """
+        Markdown heading level 3.
+        """
         self._log(logging.INFO, msg, args, extra={"md_type": "h3"}, **kwargs)
 
     def bullet(self, msg: str, *args: Any, **kwargs: Any) -> None:
-        """Markdown bullet point."""
+        """
+        Markdown bullet point.
+        """
         self._log(logging.INFO, msg, args, extra={"md_type": "bullet"}, **kwargs)
 
     def pd_table(self, data: DataFrame|dict, msg: str = "") -> None:
-        """Markdown table from a pandas DataFrame or a dictionary."""
+        """
+        Markdown table from a pandas DataFrame or a dictionary.
+        """
         if isinstance(data, dict):
             data = DataFrame(data)
         table_md = data.to_markdown(index=False)
@@ -44,13 +54,17 @@ class MarkdownLogger(logging.Logger):
         self._log(logging.INFO, full_msg, (), extra={"md_type": "table"})
 
     def code_block(self, code: str, language: str = "") -> None:
-        """Markdown code block."""
+        """
+        Markdown code block.
+        """
         msg = f"```{language}\n{code}\n```"
         self._log(logging.INFO, msg, (), extra={"md_type": "raw"})
 
 
 class MarkdownFormatter(logging.Formatter):
-    """Markdown Formatter, converts log records to Markdown-styled."""
+    """
+    Markdown Formatter, converts log records to Markdown-styled.
+    """
 
     level_icons = {
         logging.DEBUG: "🔍DEBUG",
@@ -126,7 +140,9 @@ def set_logging_cfg(
 
 
 def get_md_logger(name: str = "sparam_surrogate") -> MarkdownLogger:
-    """Return a Markdown logger by name."""
+    """
+    Return a Markdown logger by name.
+    """
     return logging.getLogger(name)  # type: ignore
 
 
