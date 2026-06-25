@@ -24,15 +24,13 @@
 Analytical exploration of dataset linkOn8CavityStackBetween10x10Array_19_08_2021
 """
 
-from pathlib import Path
-
 import numpy as np
 import skrf as rf
 from IPython.display import Image, display
 from matplotlib import pyplot as plt
 
 from sparam_surrogate.config import (
-    load_config,
+    SurrogateConfig,
     notebook_resource_path,
 )
 from sparam_surrogate.data import (
@@ -42,10 +40,7 @@ from sparam_surrogate.data import (
 )
 from sparam_surrogate.utils.filesystem import directory_tree
 
-DS_NAME = "linkOn8CavityStackBetween10x10Array_19_08_2021"
-cfg = load_config()  # Runtime configuration
-dataset = Path(cfg["paths"]["raw_data"]) / DS_NAME  # Target dataset
-nports = cfg["dataset"]["nports"]  # Number of ports
+cfg = SurrogateConfig.from_csv()
 
 # %% [markdown]
 # ## 1. Dataset Structure
@@ -54,7 +49,7 @@ nports = cfg["dataset"]["nports"]  # Number of ports
 # uniform archive structure, shown by the following procedure:
 
 # %%
-print(directory_tree(dataset, max_depth=2, max_children=5))
+print(directory_tree(cfg.dataset.path, max_depth=2, max_children=5))
 
 
 # %% [markdown]
@@ -79,7 +74,7 @@ print(directory_tree(dataset, max_depth=2, max_children=5))
 # provide convenience for further operation:
 
 # %%
-rawdata = RawData(dataset, nports)
+rawdata = RawData(cfg.dataset.path, cfg.dataset.nports)
 print(f"{len(rawdata.touchstones())} touchstone files found in the dataset.")
 
 # %% [markdown]
@@ -849,7 +844,7 @@ _ = eda.plot_ratio_relationships()
 # collected into `sparam-surrogate/configs/default.json`:
 
 # %%
-print("ports: ", cfg["dataset"]["ports"])
+print("Number of ports: ", cfg.dataset.nports)
 
 # %% [markdown]
 # The top view of the PCB helps connect these port numbers to the physical
@@ -961,10 +956,7 @@ print(f"S{demo_pair[0]}{demo_pair[1]} first 5 dB values:", *demo_curve_db[:5])
 # only; full training targets are loaded lazily later.
 
 # %%
-port_pairs = [tuple(pair) for pair in cfg["dataset"]["ports"]]
-frequency_ghz = np.asarray(network.f) / 1e9
-
-for pair in port_pairs:
+for pair in cfg.dataset.ports:
     curve = response_db[:, pair[0] - 1, pair[1] - 1]
     print(
         f"S{pair[0]}_{pair[1]}_DB: "
@@ -974,8 +966,9 @@ for pair in port_pairs:
     )
 
 # %%
+frequency_ghz = np.asarray(network.f) / 1e9
 fig, ax = plt.subplots(figsize=(8, 4), constrained_layout=True)
-for pair in port_pairs:
+for pair in cfg.dataset.ports:
     curve = response_db[:, pair[0] - 1, pair[1] - 1]
     ax.plot(frequency_ghz, curve, label=f"S{pair[0]}_{pair[1]}_DB")
 ax.set_xlabel("Frequency (GHz)")

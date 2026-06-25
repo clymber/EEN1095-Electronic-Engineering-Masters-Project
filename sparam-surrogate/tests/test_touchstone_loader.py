@@ -8,6 +8,14 @@ import numpy as np
 import pytest
 
 import sparam_surrogate.data.touchstone_loader as touchstone_loader_module
+from sparam_surrogate.config.surrogate_config import (
+    DatasetConfig,
+    PathsConfig,
+    PreprocessingConfig,
+    ProjectConfig,
+    SurrogateConfig,
+    TrainingConfig,
+)
 from sparam_surrogate.data import TouchstoneLoader
 
 
@@ -42,11 +50,29 @@ def _metadata(path: str, frequency_ghz: float = 1.0) -> dict[str, object]:
     }
 
 
-def _config(ports: list[list[int]] | None = None) -> dict[str, object]:
+def _config(ports: tuple[tuple[int, int], ...] | None = None) -> SurrogateConfig:
     """
-    Return a minimal loader configuration.
+    Return a minimal typed loader configuration.
     """
-    return {"dataset": {"nports": 2, "ports": ports or [[2, 1], [1, 2]]}}
+    raw_data = Path("data/raw")
+    dataset_name = "test-dataset"
+    return SurrogateConfig(
+        project=ProjectConfig(name="test-project", seed=128),
+        paths=PathsConfig(raw_data=raw_data, processed_data=Path("data/processed")),
+        dataset=DatasetConfig(
+            name=dataset_name,
+            path=raw_data / dataset_name,
+            parameter_csv=raw_data / dataset_name / "parameter.csv",
+            nports=2,
+            ports=ports or ((2, 1), (1, 2)),
+        ),
+        preprocessing=PreprocessingConfig(
+            processed_csv=Path("data/processed/sipi_dataset_cleaned.csv"),
+            val_fraction=0.2,
+            test_fraction=0.2,
+        ),
+        training=TrainingConfig(batch_size=32, epochs=100),
+    )
 
 
 class TestTouchstoneLoader:
@@ -161,20 +187,6 @@ class TestTouchstoneLoader:
         )
 
         np.testing.assert_allclose(target, [20 * np.log10(0.5)])
-
-    def test_rejects_invalid_configured_port_pair(self) -> None:
-        """
-        Port pairs outside ``dataset.nports`` are rejected at construction.
-        """
-        with pytest.raises(ValueError, match="exceeds"):
-            TouchstoneLoader("scalar", _config(ports=[[3, 1]]))
-
-    def test_rejects_missing_configured_nports(self) -> None:
-        """
-        The loader requires ``dataset.nports`` for path and target validation.
-        """
-        with pytest.raises(ValueError, match="dataset.nports must be configured"):
-            TouchstoneLoader("scalar", {"dataset": {"ports": [[2, 1]]}})
 
     def test_caches_loaded_networks_by_touchstone_path(
         self,

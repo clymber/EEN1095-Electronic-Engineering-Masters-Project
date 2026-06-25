@@ -54,25 +54,22 @@ RawData
 ## Basic Usage
 
 ```python
-from pathlib import Path
-
-from sparam_surrogate.config import load_config
+from sparam_surrogate.config import SurrogateConfig
 from sparam_surrogate.data import MLDatasetBuilder, RawData, TouchstoneLoader
 
-cfg = load_config()
-dataset_name = "linkOn8CavityStackBetween10x10Array_19_08_2021"
+cfg = SurrogateConfig.from_csv()
 
 raw_data = RawData(
-    Path(cfg["paths"]["raw_data"]) / dataset_name,
-    nports=int(cfg["dataset"]["nports"]),
+    cfg.dataset.path,
+    nports=cfg.dataset.nports,
 )
-builder = MLDatasetBuilder(raw_data, cfg["paths"]["processed_data"])
+builder = MLDatasetBuilder(raw_data, cfg.paths.processed_data)
 
 builder.data_cleaning()
 train_set, val_set, test_set = builder.split(
-    val_fraction=float(cfg["training"]["val_fraction"]),
-    test_fraction=float(cfg["training"]["test_fraction"]),
-    seed=int(cfg["project"]["seed"]),
+    val_fraction=cfg.preprocessing.val_fraction,
+    test_fraction=cfg.preprocessing.test_fraction,
+    seed=cfg.project.seed,
 )
 
 scalar_loader = TouchstoneLoader(
@@ -87,8 +84,8 @@ full_loader = TouchstoneLoader(
 )
 ```
 
-`TouchstoneLoader` requires `cfg["dataset"]["nports"]`. Scalar and vector modes
-also require `cfg["dataset"]["ports"]` so selected one-based port pairs stay in
+`TouchstoneLoader` requires `cfg.dataset.nports`. Scalar and vector modes
+also require `cfg.dataset.ports` so selected one-based port pairs stay in
 the configuration file.
 
 Feature scaling is intentionally not written into the cleaned CSV. Training
@@ -100,7 +97,7 @@ statistics to validation and test rows.
 ```python
 train_ds = train_set.to_tf_dataset(
     map_func=scalar_loader,
-    batch_size=int(cfg["training"]["batch_size"]),
+    batch_size=cfg.training.batch_size,
     shuffle=True,
 )
 ```

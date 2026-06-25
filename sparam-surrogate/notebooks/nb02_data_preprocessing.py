@@ -43,37 +43,30 @@
 # raw dataset was processed.
 
 # %%
-from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
-from sparam_surrogate.config import configure_stdio_relative_path, load_config
+from sparam_surrogate.config import SurrogateConfig, configure_stdio_relative_path
 from sparam_surrogate.data import MLDatasetBuilder, RawData, TouchstoneLoader
+from sparam_surrogate.utils.filesystem import ensure_dir
 
-DS_NAME = "linkOn8CavityStackBetween10x10Array_19_08_2021"
 REBUILD_CLEANED_CSV = False
 
 # Display paths relative to project root or user home for consistent output.
 configure_stdio_relative_path()
 
 # %%
-cfg = load_config()
+cfg = SurrogateConfig.from_csv()
+print(f"Name of raw dataset: {cfg.dataset.name}")
 
-raw_data_dir = Path(cfg["paths"]["raw_data"]) / DS_NAME
-processed_dir = Path(cfg["paths"]["processed_data"])
-processed_dir.mkdir(parents=True, exist_ok=True)
+raw_data_dir = cfg.dataset.path
+print(f"Path of raw dataset: {raw_data_dir}")
 
-nports = int(cfg["dataset"]["nports"])
-val_fraction = float(cfg["training"]["val_fraction"])
-test_fraction = float(cfg["training"]["test_fraction"])
-seed = int(cfg["project"]["seed"])
-
-print(f"Dataset: {DS_NAME}")
-print(f"Raw data directory: {raw_data_dir}")
+processed_dir = ensure_dir(cfg.paths.processed_data)
 print(f"Processed directory: {processed_dir}")
-print("Preprocessing artifact: sipi_dataset_cleaned.csv")
+print(f"Preprocessing artifact: {cfg.preprocessing.processed_csv}")
 
 # %% [markdown]
 # ## 2. Raw Data Consistency
@@ -83,7 +76,7 @@ print("Preprocessing artifact: sipi_dataset_cleaned.csv")
 # while orphan Touchstone files are ignored.
 
 # %%
-raw_data = RawData(raw_data_dir, nports=nports)
+raw_data = RawData(raw_data_dir, nports=cfg.dataset.nports)
 report = raw_data.check_index_consistency()
 
 print(f"Parameter rows: {report['parameter_count']:,}")
@@ -117,10 +110,10 @@ print(list(cleaned_before_split.columns))
 
 # %%
 train_set, val_set, test_set = builder.split(
-    val_fraction=val_fraction,
-    test_fraction=test_fraction,
-    seed=seed,
-    force=False,
+    val_fraction=cfg.preprocessing.val_fraction,
+    test_fraction=cfg.preprocessing.test_fraction,
+    seed=cfg.project.seed,
+    force=REBUILD_CLEANED_CSV,
 )
 cleaned = pd.read_csv(builder.cleaned_path)
 

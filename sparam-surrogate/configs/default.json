@@ -15,6 +15,7 @@
         "reports": "outputs/reports"
     },
     "dataset": {
+        "name": "linkOn8CavityStackBetween10x10Array_19_08_2021",
         "parameter_file": "parameter.csv",
         "variation_dir": "variation",
         "touchstone_pattern": "simu_{index}.s12p",
@@ -28,10 +29,13 @@
             [12, 6]
         ]
     },
-    "training": {
+    "preprocessing": {
+        "cleaned_csv": "sipi_dataset_cleaned.csv",
         "test_fraction": 0.2,
-        "val_fraction": 0.2,
+        "val_fraction": 0.2
+    },
+    "training": {
         "batch_size": 32,
         "epochs": 100
-  }
+    }
 }
