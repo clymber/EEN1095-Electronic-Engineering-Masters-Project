@@ -8,6 +8,15 @@ import re
 from pathlib import Path
 
 
+def ensure_dir(path: Path | str) -> Path:
+    """
+    Ensure that a directory exists, creating it if necessary.
+    """
+    dir_path = Path(path)
+    dir_path.mkdir(parents=True, exist_ok=True)
+    return dir_path
+
+
 def _natural_name_key(path: Path) -> list[str | int]:
     """
     Return name components that sort embedded numbers numerically.
@@ -89,4 +98,3 @@ def directory_tree(
 
     add_children(root, "", 0)
     return "\n".join(lines)
-

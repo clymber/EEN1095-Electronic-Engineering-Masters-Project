@@ -32,12 +32,10 @@ from sparam_surrogate.config import configure_stdio_relative_path
 configure_stdio_relative_path()
 
 # %%
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 
-from sparam_surrogate.config import load_config
+from sparam_surrogate.config import SurrogateConfig
 from sparam_surrogate.data import DLDataset, TouchstoneLoader
 from sparam_surrogate.models import (
     RIDGE_ALPHA_GRID,
@@ -64,9 +62,6 @@ from sparam_surrogate.utils.non_neural_modelling_utils import (
     regression_metrics,
 )
 
-DS_NAME = "linkOn8CavityStackBetween10x10Array_19_08_2021"
-CLEANED_CSV = "sipi_dataset_cleaned.csv"
-
 # %% [markdown]
 # # Non-Neural Network Modelling
 #
@@ -81,23 +76,18 @@ CLEANED_CSV = "sipi_dataset_cleaned.csv"
 # the `scikit-learn` Ridge baselines expect in-memory `NumPy` arrays.
 
 # %%
-cfg = load_config()
-raw_data_dir = Path(cfg["paths"]["raw_data"]) / DS_NAME
-processed_dir = Path(cfg["paths"]["processed_data"])
-port_pairs = tuple(tuple(pair) for pair in cfg["dataset"]["ports"])
-random_seed = cfg["project"]["seed"]
-
+cfg = SurrogateConfig.from_csv()
+random_seed = cfg.project.seed
 scalar_db_loader = TouchstoneLoader("scalar", cfg, "db", 8)
 vector_db_loader = TouchstoneLoader("vector", cfg, "db", 8)
 scalar_target_index = 0  # pylint: disable=invalid-name
 scalar_target_name = scalar_db_loader.target_names[scalar_target_index]
 vector_target_names = tuple(vector_db_loader.target_names)
-cleaned_csv = processed_dir / CLEANED_CSV
 
-print(f"Dataset: {DS_NAME}")
-print(f"Raw data directory: {raw_data_dir}")
-print(f"Processed directory: {processed_dir}")
-print("Configured IL port pairs: ", *port_pairs)
+print(f"Name of raw dataset: {cfg.dataset.name}")
+print(f"Raw data directory: {cfg.dataset.path}")
+print(f"Processed directory: {cfg.paths.processed_data}")
+print("Configured IL port pairs: ", *cfg.dataset.ports)
 print(f"Scalar target: {scalar_target_name}")
 print("Vector target names:", *vector_target_names, sep=", ")
 
@@ -118,7 +108,7 @@ print("Vector target names:", *vector_target_names, sep=", ")
 
 # %%
 scalar_train_set, scalar_val_set, scalar_test_set = DLDataset.from_cleaned_csv(
-    cleaned_csv,
+    cfg.preprocessing.processed_csv,
     target_loader=scalar_db_loader,
     cache=True,
 )
@@ -483,7 +473,7 @@ del y_train_scalar, y_val_scalar, y_test_scalar, y_val_pred_scalar
 
 # %%
 vector_train_set, vector_val_set, vector_test_set = DLDataset.from_cleaned_csv(
-    cleaned_csv,
+    cfg.preprocessing.processed_csv,
     target_loader=vector_db_loader,
     cache=True,
 )
@@ -825,15 +815,13 @@ if (
 
 polynomial_step = polynomial_model.pipeline.named_steps["polynomial"]
 expanded_feature_count = polynomial_step.n_output_features_
-print("Polynomial validation sweep:")
-print(polynomial_validation_results)
+print(f"Polynomial validation sweep:\n{polynomial_validation_results}")
 
 # %%
 print(f"Best polynomial degree: {best_polynomial_degree}")
 print(f"Best polynomial alpha: {best_polynomial_alpha:g}")
 print(f"Selected expanded polynomial feature count: {expanded_feature_count}")
-print("Selected polynomial pipeline:")
-print(polynomial_model.pipeline)
+print(f"Selected polynomial pipeline:\n{polynomial_model.pipeline}")
 
 # %% [markdown]
 # 1. **Degree 5 is selected in the current run**

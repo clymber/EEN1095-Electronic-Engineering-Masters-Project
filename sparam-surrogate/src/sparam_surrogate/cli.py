@@ -25,7 +25,7 @@ from pathlib import Path
 
 import sparam_surrogate.config.mylogging as mylogging
 from sparam_surrogate import __app_name__, __version__, utils
-from sparam_surrogate.config import load_config
+from sparam_surrogate.config import SurrogateConfig
 from sparam_surrogate.data import MLDatasetBuilder, RawData
 
 
@@ -249,23 +249,23 @@ def main() -> int:
                 logger.info("Extracted %s to %s", cli.infile, dest)
                 return 0
             case "preprocess":
-                cfg = load_config()
+                cfg = SurrogateConfig.from_csv()
                 nports = (
                     cli.nports
                     if cli.nports is not None
-                    else int(cfg["dataset"]["nports"])
+                    else cfg.dataset.nports
                 )
                 val_fraction = (
                     cli.val_fraction
                     if cli.val_fraction is not None
-                    else float(cfg["training"]["val_fraction"])
+                    else cfg.preprocessing.val_fraction
                 )
                 test_fraction = (
                     cli.test_fraction
                     if cli.test_fraction is not None
-                    else float(cfg["training"]["test_fraction"])
+                    else cfg.preprocessing.test_fraction
                 )
-                seed = cli.seed if cli.seed is not None else int(cfg["project"]["seed"])
+                seed = cli.seed if cli.seed is not None else cfg.project.seed
                 raw_data = RawData(cli.input_dir, nports=nports)
                 builder = MLDatasetBuilder(raw_data, cli.output_dir)
                 builder.split(

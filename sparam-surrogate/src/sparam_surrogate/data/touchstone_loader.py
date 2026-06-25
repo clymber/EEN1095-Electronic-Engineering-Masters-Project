@@ -2,7 +2,6 @@
 Lazy Touchstone target loading for TensorFlow dataset mapping.
 """
 
-import json
 from collections.abc import Iterable, Mapping
 from functools import lru_cache
 from pathlib import Path
@@ -11,7 +10,7 @@ from typing import Any, Literal
 import numpy as np
 import skrf as rf
 
-from sparam_surrogate.config import PROJECT_ROOT, load_config
+from sparam_surrogate.config import PROJECT_ROOT, SurrogateConfig
 
 
 class TouchstoneLoader:
@@ -27,7 +26,7 @@ class TouchstoneLoader:
     def __init__(
         self,
         mode: Literal["scalar", "vector", "smatrix"],
-        config: Mapping[str, Any] | Path | str | None = None,
+        config: SurrogateConfig | Path | str | None = None,
         representation: Literal["db", "il", "real_imag", "complex"] = "db",
         cache_size: int = 256,
     ) -> None:
@@ -38,8 +37,7 @@ class TouchstoneLoader:
         reads all configured port pairs. S-matrix mode returns the flattened
         full S-parameter matrix.
         """
-        self.mode = self._normalise_mode(mode)
-        self.config = self._load_config(config)
+        self.mode: str = self._normalise_mode(mode)
         self.project_root = PROJECT_ROOT.resolve()
         self.representation = str(representation)
         self.cache_size = int(cache_size)
@@ -50,8 +48,9 @@ class TouchstoneLoader:
                 "representation must be 'db', 'il', 'real_imag', or 'complex'."
             )
 
-        self.nports = self._configured_nports()
-        self.port_pairs = self._configured_port_pairs()
+        cfg = self._load_config(config)
+        self.nports = cfg.dataset.nports
+        self.port_pairs = cfg.dataset.ports
         self._cached_network = lru_cache(maxsize=self.cache_size)(self._read_network)
 
     @property
@@ -167,54 +166,14 @@ class TouchstoneLoader:
 
     def _load_config(
         self,
-        config: Mapping[str, Any] | Path | str | None,
-    ) -> dict[str, Any]:
+        config: SurrogateConfig | Path | str | None,
+    ) -> SurrogateConfig:
         """
-        Load configuration from a mapping, JSON path, or project defaults.
+        Load configuration from a typed config, JSON path, or project defaults.
         """
-        if config is None:
-            return load_config()
-        if isinstance(config, Mapping):
-            return dict(config)
-        path = Path(config)
-        with path.open("r", encoding="utf-8") as config_file:
-            return json.load(config_file)
-
-    def _configured_port_pairs(self) -> tuple[tuple[int, int], ...]:
-        """
-        Validate and return configured one-based port pairs.
-        """
-        raw_pairs = self.config.get("dataset", {}).get("ports", [])
-        pairs: list[tuple[int, int]] = []
-        for raw_pair in raw_pairs:
-            if len(raw_pair) != 2:
-                raise ValueError("Each configured port pair must contain two values.")
-            receiver, source = int(raw_pair[0]), int(raw_pair[1])
-            if receiver <= 0 or source <= 0:
-                raise ValueError("Configured port pairs must use one-based indices.")
-            if receiver > self.nports or source > self.nports:
-                raise ValueError(
-                    f"Configured port pair {(receiver, source)} exceeds "
-                    f"dataset.nports={self.nports}."
-                )
-            pairs.append((receiver, source))
-        if self.mode in {"scalar", "vector"} and not pairs:
-            raise ValueError(
-                "Scalar and vector modes require dataset.ports in configuration."
-            )
-        return tuple(pairs)
-
-    def _configured_nports(self) -> int:
-        """
-        Return the configured Touchstone port count.
-        """
-        raw_nports = self.config.get("dataset", {}).get("nports")
-        if raw_nports is None:
-            raise ValueError("dataset.nports must be configured.")
-        nports = int(raw_nports)
-        if nports <= 0:
-            raise ValueError("dataset.nports must be positive.")
-        return nports
+        if isinstance(config, SurrogateConfig):
+            return config
+        return SurrogateConfig.from_csv(config)
 
     def _resolve_path(self, row_metadata: Mapping[str, Any]) -> Path:
         """
