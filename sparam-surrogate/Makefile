@@ -40,22 +40,24 @@ $(NOTEBOOK_STAMP_DIR):
 	mkdir -p $@
 
 $(NOTEBOOK_DIR)/%.ipynb: $(NOTEBOOK_DIR)/%.py
-	jupytext --sync $<
+	source ./env_setup.sh && jupytext --sync $<
 
 $(NOTEBOOK_STAMP_DIR)/%.executed: $(NOTEBOOK_DIR)/%.ipynb | $(NOTEBOOK_STAMP_DIR)
-	SPARAM_SURROGATE_PROGRESS=final jupyter nbconvert $< \
+	SPARAM_SURROGATE_PROGRESS=final source ./env_setup.sh && jupyter nbconvert $< \
 		--to notebook \
 		--execute \
 		--inplace \
+		--ExecutePreprocessor.kernel_name="$${NOTEBOOK_KERNEL}" \
 		$(NOTEBOOK_EXECUTE_FLAGS) \
 		$(NOTEBOOK_STREAM_FLAGS)
 	touch $@
 
 $(REPORT_DIR)/%.pdf: $(NOTEBOOK_STAMP_DIR)/%.executed $(TEMPLATE_FILES) $(THIS_MAKEFILE) | $(REPORT_DIR)
-	jupyter nbconvert $(NOTEBOOK_DIR)/$*.ipynb \
+	source ./env_setup.sh && jupyter nbconvert $(NOTEBOOK_DIR)/$*.ipynb \
 		--to webpdf \
 		$(WEBPDF_FLAGS) \
 		$(NOTEBOOK_STREAM_FLAGS) \
+		--ExecutePreprocessor.kernel_name="$${NOTEBOOK_KERNEL}" \
 		--TagRemovePreprocessor.enabled=True \
 		--TagRemovePreprocessor.remove_input_tags=remove-input \
 		--template tight \
