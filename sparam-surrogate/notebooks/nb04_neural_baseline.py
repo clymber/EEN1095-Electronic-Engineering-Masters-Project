@@ -42,7 +42,7 @@ from sklearn.preprocessing import StandardScaler
 
 from sparam_surrogate.config import SurrogateConfig
 from sparam_surrogate.data import DLDataset, TouchstoneLoader, random_simu_indices
-from sparam_surrogate.models import SparamModel
+from sparam_surrogate.models import PowersOnlyPolynomialFeatures, SparamModel
 from sparam_surrogate.utils.model_prediction_plots import plot_design_prediction_curves
 from sparam_surrogate.utils.non_neural_modelling_utils import (
     per_target_metrics,
@@ -94,6 +94,7 @@ REDUCE_LR_PATIENCE = 6
 REDUCE_LR_FACTOR = 0.5
 MIN_LEARNING_RATE = 1e-6
 MAX_EPOCHS = 100
+POLYNOMIAL_NEURAL_DEGREE = 5
 # Keras accepts float callback deltas, but Pyright infers int from the
 # EarlyStopping runtime default of 0.
 CALLBACK_MIN_DELTA: Any = 1e-4
@@ -162,9 +163,7 @@ if Y_test.shape[1] != len(vector_target_names):
     raise RuntimeError("Test targets do not match configured target names.")
 
 # %%
-print(f"Vector Touchstone cache before clearing: {vector_db_loader.cache_info()}")
 vector_db_loader.clear_cache()
-print(f"Vector Touchstone cache after clearing: {vector_db_loader.cache_info()}")
 
 
 # %% [markdown]
@@ -362,7 +361,184 @@ class NeuralVectorBaseline(SparamModel):
         return self.model
 
 
-def plot_training_history(history: keras.callbacks.History) -> Figure:
+class PolynomialNeuralVectorBaseline(SparamModel):
+    """
+    Keras MLP trained on powers-only polynomial feature expansions.
+    """
+
+    name = "polynomial_neural_mlp"
+
+    def __init__(
+        self,
+        *,
+        polynomial_degree: int = POLYNOMIAL_NEURAL_DEGREE,
+        batch_size: int = BATCH_SIZE,
+        epochs: int = MAX_EPOCHS,
+        prediction_batch_size: int = PREDICTION_BATCH_SIZE,
+        learning_rate: float = LEARNING_RATE,
+        gradient_clip_norm: float = GRADIENT_CLIP_NORM,
+        early_stopping_patience: int = EARLY_STOPPING_PATIENCE,
+        reduce_lr_patience: int = REDUCE_LR_PATIENCE,
+        reduce_lr_factor: float = REDUCE_LR_FACTOR,
+        min_learning_rate: float = MIN_LEARNING_RATE,
+        random_state: int = random_seed,
+    ) -> None:
+        """
+        Store training controls and polynomial preprocessing state.
+        """
+        self.polynomial_degree = int(polynomial_degree)
+        self.batch_size = int(batch_size)
+        self.epochs = int(epochs)
+        self.prediction_batch_size = int(prediction_batch_size)
+        self.learning_rate = float(learning_rate)
+        self.gradient_clip_norm = float(gradient_clip_norm)
+        self.early_stopping_patience = int(early_stopping_patience)
+        self.reduce_lr_patience = int(reduce_lr_patience)
+        self.reduce_lr_factor = float(reduce_lr_factor)
+        self.min_learning_rate = float(min_learning_rate)
+        self.random_state = int(random_state)
+        self.input_scaler = StandardScaler()
+        self.polynomial_features = PowersOnlyPolynomialFeatures(
+            degree=self.polynomial_degree
+        )
+        self.expanded_feature_scaler = StandardScaler()
+        self.y_scaler = StandardScaler()
+        self.model: keras.Model | None = None
+        self.history: keras.callbacks.History | None = None
+        self.expanded_feature_count_: int | None = None
+
+    def model_name(self) -> str:
+        """
+        Return the plot label for the polynomial neural baseline.
+        """
+        return "Polynomial Neural MLP"
+
+    def _fit_transform_features(
+        self,
+        X: np.ndarray,  # pylint: disable=invalid-name
+    ) -> np.ndarray:
+        """
+        Fit the polynomial preprocessing chain and return scaled features.
+        """
+        X_input_scaled = self.input_scaler.fit_transform(  # noqa: N806
+            np.asarray(X, dtype=float)
+        )
+        X_expanded = self.polynomial_features.fit_transform(  # noqa: N806
+            X_input_scaled
+        )
+        self.expanded_feature_count_ = int(X_expanded.shape[1])
+        return self.expanded_feature_scaler.fit_transform(X_expanded).astype(
+            np.float32
+        )
+
+    def _transform_features(
+        self,
+        X: np.ndarray,  # pylint: disable=invalid-name
+    ) -> np.ndarray:
+        """
+        Apply the fitted polynomial preprocessing chain to new features.
+        """
+        X_input_scaled = self.input_scaler.transform(  # noqa: N806
+            np.asarray(X, dtype=float)
+        )
+        X_expanded = self.polynomial_features.transform(X_input_scaled)  # noqa: N806
+        return self.expanded_feature_scaler.transform(X_expanded).astype(np.float32)
+
+    def fit(
+        self,
+        X_train: np.ndarray,  # pylint: disable=invalid-name
+        y_train: np.ndarray,
+        X_val: np.ndarray | None = None,  # pylint: disable=invalid-name
+        y_val: np.ndarray | None = None,
+        verbose: str | int = 2,
+    ) -> "PolynomialNeuralVectorBaseline":
+        """
+        Fit the neural baseline using polynomial features and scaled targets.
+        """
+        if X_val is None or y_val is None:
+            raise ValueError("PolynomialNeuralVectorBaseline requires validation data.")
+
+        keras.utils.set_random_seed(self.random_state)
+        X_train_scaled = self._fit_transform_features(X_train)  # noqa: N806
+        X_val_scaled = self._transform_features(X_val)  # noqa: N806
+        y_train_scaled = self.y_scaler.fit_transform(
+            np.asarray(y_train, dtype=float)
+        ).astype(np.float32)
+        y_val_scaled = self.y_scaler.transform(np.asarray(y_val, dtype=float)).astype(
+            np.float32
+        )
+
+        self.model = build_vector_mlp(
+            input_width=X_train_scaled.shape[1],
+            output_width=y_train_scaled.shape[1],
+        )
+        self.model.compile(
+            optimizer=keras.optimizers.Adam(
+                learning_rate=self.learning_rate,
+                clipnorm=self.gradient_clip_norm,
+            ),
+            loss="mse",
+            steps_per_execution=8,
+        )
+
+        self.history = self.model.fit(
+            X_train_scaled,
+            y_train_scaled,
+            validation_data=(X_val_scaled, y_val_scaled),
+            batch_size=self.batch_size,
+            epochs=self.epochs,
+            callbacks=[
+                keras.callbacks.TerminateOnNaN(),
+                keras.callbacks.ReduceLROnPlateau(
+                    monitor="val_loss",
+                    factor=self.reduce_lr_factor,
+                    patience=self.reduce_lr_patience,
+                    min_delta=CALLBACK_MIN_DELTA,
+                    min_lr=self.min_learning_rate,
+                    verbose=1,
+                ),
+                keras.callbacks.EarlyStopping(
+                    monitor="val_loss",
+                    patience=self.early_stopping_patience,
+                    min_delta=CALLBACK_MIN_DELTA,
+                    restore_best_weights=True,
+                    verbose=1,
+                ),
+            ],
+            shuffle=True,
+            verbose=verbose,  # type: ignore[assignment]
+        )
+        return self
+
+    def predict(self, X: np.ndarray) -> np.ndarray:  # pylint: disable=invalid-name
+        """
+        Return inverse-transformed dB predictions from the fitted Keras model.
+        """
+        model = self.keras_model
+        X_scaled = self._transform_features(X)  # noqa: N806
+        y_pred_scaled = model.predict(
+            X_scaled,
+            batch_size=self.prediction_batch_size,
+            verbose=0,  # type: ignore[assignment]
+        )
+        return self.y_scaler.inverse_transform(np.asarray(y_pred_scaled, dtype=float))
+
+    @property
+    def keras_model(self) -> keras.Model:
+        """
+        Return the fitted Keras model.
+        """
+        if self.model is None:
+            raise RuntimeError(
+                "PolynomialNeuralVectorBaseline must be fitted before prediction."
+            )
+        return self.model
+
+
+def plot_training_history(
+    history: keras.callbacks.History,
+    model_name: str = "Neural MLP",
+) -> Figure:
     """
     Plot scaled-unit training and validation MSE histories.
     """
@@ -381,7 +557,7 @@ def plot_training_history(history: keras.callbacks.History) -> Figure:
         zorder=3,
         label=f"best val epoch {best_epoch}",
     )
-    ax.set_title("Neural MLP Training History")
+    ax.set_title(f"{model_name} Training History")
     ax.set_xlabel("Epoch")
     ax.set_ylabel("MSE loss (scaled target units)")
     ax.grid(True, alpha=0.3)
@@ -543,3 +719,116 @@ print("|" + "|".join(f"{best_epoch:>7}" for best_epoch in best_epochs) + "|")
 # |     22|     62|     73|     15|     12|     13|      7|      5|
 # |     93|     40|     40|     15|     13|      6|      4|      2|
 # |     73|     62|     83|     32|     94|     32|     22|      4|
+
+# %% [markdown]
+# ## Polynomial Neural Variant
+#
+# This follow-up trains the same MLP on the powers-only polynomial feature
+# representation used by the `nb03` Polynomial Ridge baseline. The raw
+# design-frequency features are scaled first, expanded as
+# `[x, x^2, ..., x^5]` without cross terms, then scaled again before Keras sees
+# them. Target scaling, callbacks, optimizer settings, and train/validation/test
+# splits stay aligned with the raw-feature neural baseline.
+
+# %%
+polynomial_neural_model = PolynomialNeuralVectorBaseline()
+polynomial_neural_model.fit(X_train, Y_train, X_val, Y_val)
+
+# %%
+if polynomial_neural_model.expanded_feature_count_ is None:
+    raise RuntimeError("Polynomial neural model did not record feature count.")
+
+print(
+    "Polynomial neural expanded feature count: "
+    f"{X_train.shape[1]} -> {polynomial_neural_model.expanded_feature_count_}"
+)
+polynomial_neural_model.keras_model.summary()
+print("Keras history losses are MSE values in scaled target units.")
+
+# %%
+if polynomial_neural_model.history is None:
+    raise RuntimeError("Polynomial neural model did not record training history.")
+
+fig_polynomial_neural_training_history = plot_training_history(
+    polynomial_neural_model.history,
+    polynomial_neural_model.model_name(),
+)
+
+# %%
+fig_random_polynomial_neural_design_curves = plot_design_prediction_curves(
+    polynomial_neural_model,
+    vector_test_set,
+    vector_db_loader,
+    selected_simu_indices,
+)
+
+# %% [markdown]
+# ### Polynomial Neural Evaluation
+#
+# `PolynomialNeuralVectorBaseline.predict()` applies the train-fitted input
+# scaler, polynomial expansion, expanded-feature scaler, and target inverse
+# transform. The metrics below are therefore reported in original dB units.
+
+# %%
+# pylint: disable=invalid-name
+Y_train_pred_poly_nn = polynomial_neural_model.predict(X_train)
+Y_val_pred_poly_nn = polynomial_neural_model.predict(X_val)
+Y_test_pred_poly_nn = polynomial_neural_model.predict(X_test)
+# pylint: enable=invalid-name
+
+assert Y_test_pred_poly_nn.shape == Y_test.shape
+
+polynomial_neural_metrics = pd.DataFrame(
+    [
+        {"split": "train", **regression_metrics(Y_train, Y_train_pred_poly_nn)},
+        {"split": "validation", **regression_metrics(Y_val, Y_val_pred_poly_nn)},
+        {"split": "test", **regression_metrics(Y_test, Y_test_pred_poly_nn)},
+    ]
+)
+
+per_target_polynomial_neural_metrics = per_target_metrics(
+    Y_test,
+    Y_test_pred_poly_nn,
+    vector_target_names,
+)
+
+polynomial_neural_negative_count = int(np.sum(Y_test_pred_poly_nn < 0.0))
+polynomial_neural_negative_ratio = (
+    polynomial_neural_negative_count / Y_test_pred_poly_nn.size
+)
+polynomial_neural_minimum_il = float(np.min(Y_test_pred_poly_nn))
+
+print("Polynomial Neural MLP vector metrics:", polynomial_neural_metrics, sep="\n")
+print(
+    "\nPolynomial Neural MLP per-target test metrics:",
+    per_target_polynomial_neural_metrics,
+    sep="\n",
+)
+print(f"\nNegative IL prediction count: {polynomial_neural_negative_count:,}")
+print(f"Negative IL prediction ratio: {polynomial_neural_negative_ratio:.4%}")
+print(f"Minimum predicted IL: {polynomial_neural_minimum_il:.4f} dB")
+
+# %%
+neural_test_metrics = neural_metrics.loc[neural_metrics["split"] == "test"].iloc[0]
+polynomial_neural_test_metrics = polynomial_neural_metrics.loc[
+    polynomial_neural_metrics["split"] == "test"
+].iloc[0]
+
+neural_variant_comparison = pd.DataFrame(
+    [
+        {"model": "Vector Ridge", "MAE": 7.4740, "RMSE": 11.0796},
+        {"model": "Polynomial Ridge", "MAE": 7.4269, "RMSE": 11.0532},
+        {
+            "model": "Neural MLP",
+            "MAE": float(neural_test_metrics["MAE"]),
+            "RMSE": float(neural_test_metrics["RMSE"]),
+        },
+        {
+            "model": "Polynomial Neural MLP",
+            "MAE": float(polynomial_neural_test_metrics["MAE"]),
+            "RMSE": float(polynomial_neural_test_metrics["RMSE"]),
+        },
+    ]
+)
+
+print("Neural variant test comparison:", neural_variant_comparison, sep="\n")
