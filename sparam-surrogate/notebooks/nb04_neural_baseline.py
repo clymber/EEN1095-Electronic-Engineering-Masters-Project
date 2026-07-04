@@ -23,8 +23,6 @@ Train a fundamental neural-network insertion-loss baseline.
 # %aimport -numpy
 
 # ruff: noqa: E402 -- Configure filtered notebook output before remaining imports.
-from typing import Any
-
 from sparam_surrogate.config import configure_stdio_relative_path
 
 # Display paths relative to project root or user home.
@@ -35,14 +33,22 @@ import keras
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-from keras import Input, layers
 from matplotlib import pyplot as plt
-from matplotlib.figure import Figure
-from sklearn.preprocessing import StandardScaler
 
 from sparam_surrogate.config import SurrogateConfig
 from sparam_surrogate.data import DLDataset, TouchstoneLoader, random_simu_indices
-from sparam_surrogate.models import PowersOnlyPolynomialFeatures, SparamModel
+from sparam_surrogate.models.neural_mlp import (
+    BATCH_SIZE,
+    EARLY_STOPPING_PATIENCE,
+    GRADIENT_CLIP_NORM,
+    LEARNING_RATE,
+    MAX_EPOCHS,
+    MIN_LEARNING_RATE,
+    REDUCE_LR_FACTOR,
+    REDUCE_LR_PATIENCE,
+    PolynomialVectorMLP,
+    VectorMLP,
+)
 from sparam_surrogate.utils.model_prediction_plots import plot_design_prediction_curves
 from sparam_surrogate.utils.non_neural_modelling_utils import (
     per_target_metrics,
@@ -83,21 +89,6 @@ from sparam_surrogate.utils.non_neural_modelling_utils import (
 cfg = SurrogateConfig.from_csv()
 random_seed = cfg.project.seed
 keras.utils.set_random_seed(random_seed)
-
-# MAX_EPOCHS = cfg.training.epochs
-PREDICTION_BATCH_SIZE = 4096
-BATCH_SIZE = 512
-LEARNING_RATE = 3e-5
-GRADIENT_CLIP_NORM = 0.5
-EARLY_STOPPING_PATIENCE = 18
-REDUCE_LR_PATIENCE = 6
-REDUCE_LR_FACTOR = 0.5
-MIN_LEARNING_RATE = 1e-6
-MAX_EPOCHS = 100
-POLYNOMIAL_NEURAL_DEGREE = 5
-# Keras accepts float callback deltas, but Pyright infers int from the
-# EarlyStopping runtime default of 0.
-CALLBACK_MIN_DELTA: Any = 1e-4
 
 print(f"Name of raw dataset: {cfg.dataset.name}")
 print(f"Raw data directory: {cfg.dataset.path}")
@@ -167,403 +158,12 @@ vector_db_loader.clear_cache()
 
 
 # %% [markdown]
-# ## 2. Model Definition
+# ## 2. Model Classes
 #
-# `NeuralVectorBaseline` subclasses the same `SparamModel` interface used by the
-# non-neural baselines. This means common helpers can call `predict`,
-# `evaluate`, and `model_name` without special cases.
-
-# %%
-def build_vector_mlp(input_width: int, output_width: int) -> keras.Model:
-    inputs = Input(
-        shape=(input_width,),
-        name="design_frequency_features",
-    )
-
-    hidden = layers.Dense(
-        128,
-        activation="relu",
-        kernel_initializer="he_normal",
-        bias_initializer="zeros",
-        name="dense_128_a",
-    )(inputs)
-
-    hidden = layers.Dense(
-        128,
-        activation="relu",
-        kernel_initializer="he_normal",
-        bias_initializer="zeros",
-        name="dense_128_b",
-    )(hidden)
-
-    hidden = layers.Dense(
-        64,
-        activation="relu",
-        kernel_initializer="he_normal",
-        bias_initializer="zeros",
-        name="dense_64",
-    )(hidden)
-
-    outputs = layers.Dense(
-        output_width,
-        activation="linear",
-        kernel_initializer=keras.initializers.RandomNormal(
-            mean=0.0,
-            stddev=1e-2
-        ), # type: ignore[arg-type]
-        bias_initializer="zeros",
-        name="s_db_outputs",
-    )(hidden)
-
-    return keras.Model(
-        inputs=inputs,
-        outputs=outputs,
-        name="vector_mlp_baseline",
-    )
-
-
-class NeuralVectorBaseline(SparamModel):
-    """
-    Keras MLP wrapper implementing the common surrogate model interface.
-    """
-
-    name = "neural_mlp"
-
-    def __init__(
-        self,
-        *,
-        batch_size: int = BATCH_SIZE,
-        epochs: int = MAX_EPOCHS,
-        prediction_batch_size: int = PREDICTION_BATCH_SIZE,
-        learning_rate: float = LEARNING_RATE,
-        gradient_clip_norm: float = GRADIENT_CLIP_NORM,
-        early_stopping_patience: int = EARLY_STOPPING_PATIENCE,
-        reduce_lr_patience: int = REDUCE_LR_PATIENCE,
-        reduce_lr_factor: float = REDUCE_LR_FACTOR,
-        min_learning_rate: float = MIN_LEARNING_RATE,
-        random_state: int = random_seed,
-    ) -> None:
-        """
-        Store training controls and scaler state.
-        """
-        self.batch_size = int(batch_size)
-        self.epochs = int(epochs)
-        self.prediction_batch_size = int(prediction_batch_size)
-        self.learning_rate = float(learning_rate)
-        self.gradient_clip_norm = float(gradient_clip_norm)
-        self.early_stopping_patience = int(early_stopping_patience)
-        self.reduce_lr_patience = int(reduce_lr_patience)
-        self.reduce_lr_factor = float(reduce_lr_factor)
-        self.min_learning_rate = float(min_learning_rate)
-        self.random_state = int(random_state)
-        self.x_scaler = StandardScaler()
-        self.y_scaler = StandardScaler()
-        self.model: keras.Model | None = None
-        self.history: keras.callbacks.History | None = None
-
-    def model_name(self) -> str:
-        """
-        Return the plot label with the expected MLP capitalization.
-        """
-        return "Neural MLP"
-
-    def fit(
-        self,
-        X_train: np.ndarray,  # pylint: disable=invalid-name
-        y_train: np.ndarray,
-        X_val: np.ndarray | None = None,  # pylint: disable=invalid-name
-        y_val: np.ndarray | None = None,
-        verbose: str | int = 2,
-    ) -> "NeuralVectorBaseline":
-        """
-        Fit the neural baseline using scaled features and scaled targets.
-        """
-        if X_val is None or y_val is None:
-            raise ValueError("NeuralVectorBaseline requires validation data.")
-
-        keras.utils.set_random_seed(self.random_state)
-        X_train_scaled = self.x_scaler.fit_transform(  # pylint: disable=invalid-name
-            np.asarray(X_train, dtype=float)
-        ).astype(np.float32)
-        X_val_scaled = self.x_scaler.transform(  # pylint: disable=invalid-name
-            np.asarray(X_val, dtype=float)
-        ).astype(np.float32)
-        y_train_scaled = self.y_scaler.fit_transform(
-            np.asarray(y_train, dtype=float)
-        ).astype(np.float32)
-        y_val_scaled = self.y_scaler.transform(np.asarray(y_val, dtype=float)).astype(
-            np.float32
-        )
-
-        self.model = build_vector_mlp(
-            input_width=X_train_scaled.shape[1],
-            output_width=y_train_scaled.shape[1],
-        )
-        self.model.compile(
-            optimizer=keras.optimizers.Adam(
-                learning_rate=self.learning_rate,
-                clipnorm=self.gradient_clip_norm,
-            ),
-            loss="mse",
-            steps_per_execution=8,
-        )
-
-        self.history = self.model.fit(
-            X_train_scaled,
-            y_train_scaled,
-            validation_data=(X_val_scaled, y_val_scaled),
-            batch_size=self.batch_size,
-            epochs=self.epochs,
-            callbacks=[
-                keras.callbacks.TerminateOnNaN(),
-                keras.callbacks.ReduceLROnPlateau(
-                    monitor="val_loss",
-                    factor=self.reduce_lr_factor,
-                    patience=self.reduce_lr_patience,
-                    min_delta=CALLBACK_MIN_DELTA,
-                    min_lr=self.min_learning_rate,
-                    verbose=1,
-                ),
-                keras.callbacks.EarlyStopping(
-                    monitor="val_loss",
-                    patience=self.early_stopping_patience,
-                    min_delta=CALLBACK_MIN_DELTA,
-                    restore_best_weights=True,
-                    verbose=1,
-                ),
-            ],
-            shuffle=True,
-            verbose=verbose,  # type: ignore[assignment]
-        )
-        return self
-
-    def predict(self, X: np.ndarray) -> np.ndarray:  # pylint: disable=invalid-name
-        """
-        Return inverse-transformed dB predictions from the fitted Keras model.
-        """
-        X_scaled = self.x_scaler.transform(np.asarray(X, dtype=float)).astype(  # noqa: N806
-            np.float32
-        )
-        y_pred_scaled = self.keras_model.predict(
-            X_scaled,
-            batch_size=self.prediction_batch_size,
-            verbose=0,  # type: ignore[assignment]
-        )
-        return self.y_scaler.inverse_transform(np.asarray(y_pred_scaled, dtype=float))
-
-    @property
-    def keras_model(self) -> keras.Model:
-        """
-        Return the fitted Keras model.
-        """
-        if self.model is None:
-            raise RuntimeError("NeuralVectorBaseline must be fitted before prediction.")
-        return self.model
-
-
-class PolynomialNeuralVectorBaseline(SparamModel):
-    """
-    Keras MLP trained on powers-only polynomial feature expansions.
-    """
-
-    name = "polynomial_neural_mlp"
-
-    def __init__(
-        self,
-        *,
-        polynomial_degree: int = POLYNOMIAL_NEURAL_DEGREE,
-        batch_size: int = BATCH_SIZE,
-        epochs: int = MAX_EPOCHS,
-        prediction_batch_size: int = PREDICTION_BATCH_SIZE,
-        learning_rate: float = LEARNING_RATE,
-        gradient_clip_norm: float = GRADIENT_CLIP_NORM,
-        early_stopping_patience: int = EARLY_STOPPING_PATIENCE,
-        reduce_lr_patience: int = REDUCE_LR_PATIENCE,
-        reduce_lr_factor: float = REDUCE_LR_FACTOR,
-        min_learning_rate: float = MIN_LEARNING_RATE,
-        random_state: int = random_seed,
-    ) -> None:
-        """
-        Store training controls and polynomial preprocessing state.
-        """
-        self.polynomial_degree = int(polynomial_degree)
-        self.batch_size = int(batch_size)
-        self.epochs = int(epochs)
-        self.prediction_batch_size = int(prediction_batch_size)
-        self.learning_rate = float(learning_rate)
-        self.gradient_clip_norm = float(gradient_clip_norm)
-        self.early_stopping_patience = int(early_stopping_patience)
-        self.reduce_lr_patience = int(reduce_lr_patience)
-        self.reduce_lr_factor = float(reduce_lr_factor)
-        self.min_learning_rate = float(min_learning_rate)
-        self.random_state = int(random_state)
-        self.input_scaler = StandardScaler()
-        self.polynomial_features = PowersOnlyPolynomialFeatures(
-            degree=self.polynomial_degree
-        )
-        self.expanded_feature_scaler = StandardScaler()
-        self.y_scaler = StandardScaler()
-        self.model: keras.Model | None = None
-        self.history: keras.callbacks.History | None = None
-        self.expanded_feature_count_: int | None = None
-
-    def model_name(self) -> str:
-        """
-        Return the plot label for the polynomial neural baseline.
-        """
-        return "Polynomial Neural MLP"
-
-    def _fit_transform_features(
-        self,
-        X: np.ndarray,  # pylint: disable=invalid-name
-    ) -> np.ndarray:
-        """
-        Fit the polynomial preprocessing chain and return scaled features.
-        """
-        X_input_scaled = self.input_scaler.fit_transform(  # noqa: N806
-            np.asarray(X, dtype=float)
-        )
-        X_expanded = self.polynomial_features.fit_transform(  # noqa: N806
-            X_input_scaled
-        )
-        self.expanded_feature_count_ = int(X_expanded.shape[1])
-        return self.expanded_feature_scaler.fit_transform(X_expanded).astype(
-            np.float32
-        )
-
-    def _transform_features(
-        self,
-        X: np.ndarray,  # pylint: disable=invalid-name
-    ) -> np.ndarray:
-        """
-        Apply the fitted polynomial preprocessing chain to new features.
-        """
-        X_input_scaled = self.input_scaler.transform(  # noqa: N806
-            np.asarray(X, dtype=float)
-        )
-        X_expanded = self.polynomial_features.transform(X_input_scaled)  # noqa: N806
-        return self.expanded_feature_scaler.transform(X_expanded).astype(np.float32)
-
-    def fit(
-        self,
-        X_train: np.ndarray,  # pylint: disable=invalid-name
-        y_train: np.ndarray,
-        X_val: np.ndarray | None = None,  # pylint: disable=invalid-name
-        y_val: np.ndarray | None = None,
-        verbose: str | int = 2,
-    ) -> "PolynomialNeuralVectorBaseline":
-        """
-        Fit the neural baseline using polynomial features and scaled targets.
-        """
-        if X_val is None or y_val is None:
-            raise ValueError("PolynomialNeuralVectorBaseline requires validation data.")
-
-        keras.utils.set_random_seed(self.random_state)
-        X_train_scaled = self._fit_transform_features(X_train)  # noqa: N806
-        X_val_scaled = self._transform_features(X_val)  # noqa: N806
-        y_train_scaled = self.y_scaler.fit_transform(
-            np.asarray(y_train, dtype=float)
-        ).astype(np.float32)
-        y_val_scaled = self.y_scaler.transform(np.asarray(y_val, dtype=float)).astype(
-            np.float32
-        )
-
-        self.model = build_vector_mlp(
-            input_width=X_train_scaled.shape[1],
-            output_width=y_train_scaled.shape[1],
-        )
-        self.model.compile(
-            optimizer=keras.optimizers.Adam(
-                learning_rate=self.learning_rate,
-                clipnorm=self.gradient_clip_norm,
-            ),
-            loss="mse",
-            steps_per_execution=8,
-        )
-
-        self.history = self.model.fit(
-            X_train_scaled,
-            y_train_scaled,
-            validation_data=(X_val_scaled, y_val_scaled),
-            batch_size=self.batch_size,
-            epochs=self.epochs,
-            callbacks=[
-                keras.callbacks.TerminateOnNaN(),
-                keras.callbacks.ReduceLROnPlateau(
-                    monitor="val_loss",
-                    factor=self.reduce_lr_factor,
-                    patience=self.reduce_lr_patience,
-                    min_delta=CALLBACK_MIN_DELTA,
-                    min_lr=self.min_learning_rate,
-                    verbose=1,
-                ),
-                keras.callbacks.EarlyStopping(
-                    monitor="val_loss",
-                    patience=self.early_stopping_patience,
-                    min_delta=CALLBACK_MIN_DELTA,
-                    restore_best_weights=True,
-                    verbose=1,
-                ),
-            ],
-            shuffle=True,
-            verbose=verbose,  # type: ignore[assignment]
-        )
-        return self
-
-    def predict(self, X: np.ndarray) -> np.ndarray:  # pylint: disable=invalid-name
-        """
-        Return inverse-transformed dB predictions from the fitted Keras model.
-        """
-        model = self.keras_model
-        X_scaled = self._transform_features(X)  # noqa: N806
-        y_pred_scaled = model.predict(
-            X_scaled,
-            batch_size=self.prediction_batch_size,
-            verbose=0,  # type: ignore[assignment]
-        )
-        return self.y_scaler.inverse_transform(np.asarray(y_pred_scaled, dtype=float))
-
-    @property
-    def keras_model(self) -> keras.Model:
-        """
-        Return the fitted Keras model.
-        """
-        if self.model is None:
-            raise RuntimeError(
-                "PolynomialNeuralVectorBaseline must be fitted before prediction."
-            )
-        return self.model
-
-
-def plot_training_history(
-    history: keras.callbacks.History,
-    model_name: str = "Neural MLP",
-) -> Figure:
-    """
-    Plot scaled-unit training and validation MSE histories.
-    """
-    history_frame = pd.DataFrame(history.history)
-    best_epoch = int(history_frame["val_loss"].idxmin()) + 1
-    best_val_loss = float(history_frame["val_loss"].min())
-    fig, ax = plt.subplots(figsize=(8, 4.5))
-    ax.plot(history_frame.index + 1, history_frame["loss"], label="train loss")
-    ax.plot(history_frame.index + 1, history_frame["val_loss"], label="val loss")
-    ax.axvline(best_epoch, color="black", linestyle="--", linewidth=1.0, alpha=0.6)
-    ax.scatter(
-        [best_epoch],
-        [best_val_loss],
-        color="black",
-        s=30,
-        zorder=3,
-        label=f"best val epoch {best_epoch}",
-    )
-    ax.set_title(f"{model_name} Training History")
-    ax.set_xlabel("Epoch")
-    ax.set_ylabel("MSE loss (scaled target units)")
-    ax.grid(True, alpha=0.3)
-    ax.legend()
-    fig.tight_layout()
-    return fig
+# Reusable neural model classes live in `src/sparam_surrogate/models/`.
+# `VectorMLP` and `PolynomialVectorMLP` subclass the common `SparamModel`
+# interface, so shared helpers can call `predict`, `evaluate`, and
+# `model_name` without special cases.
 
 
 # %% [markdown]
@@ -574,7 +174,7 @@ def plot_training_history(
 # tables below use inverse-transformed predictions.
 
 # %%
-neural_model = NeuralVectorBaseline()
+neural_model = VectorMLP(random_state=random_seed)
 neural_model.fit(X_train, Y_train, X_val, Y_val)
 
 # %%
@@ -585,7 +185,7 @@ print("Keras history losses are MSE values in scaled target units.")
 if neural_model.history is None:
     raise RuntimeError("Neural model did not record training history.")
 
-fig_training_history = plot_training_history(neural_model.history)
+fig_training_history = neural_model.plot_training_history()
 
 # %%
 selected_simu_indices = random_simu_indices(vector_test_set, 5, seed=random_seed)
@@ -599,7 +199,7 @@ fig_random_neural_design_curves = plot_design_prediction_curves(
 # %% [markdown]
 # ## 4. Neural Baseline Evaluation
 #
-# `NeuralVectorBaseline.predict()` transforms features with the train-fitted
+# `VectorMLP.predict()` transforms features with the train-fitted
 # input scaler, calls the Keras model, and inverse-transforms the six scaled
 # outputs back to dB. The metrics below are therefore directly comparable to
 # the non-neural dB-space metrics in `nb03`.
@@ -642,12 +242,13 @@ print(f"Minimum predicted IL: {minimum_predicted_il:.4f} dB")
 
 # %%
 sample_sizes = [256*4, 256*8, 256*16, 256*32, 256*40, 256*64, 256*128, 256*256]
-small_models: list[NeuralVectorBaseline] = [
-    NeuralVectorBaseline(
+small_models: list[VectorMLP] = [
+    VectorMLP(
         batch_size=512,
         epochs=100,
         learning_rate=1e-4,
         gradient_clip_norm=1.0,
+        random_state=random_seed,
     )
     for _ in sample_sizes
 ]
@@ -655,12 +256,12 @@ small_models: list[NeuralVectorBaseline] = [
 
 def fit_small_model(
     n_samples: int,
-    small_model: NeuralVectorBaseline,
-) -> tuple[int, NeuralVectorBaseline]:
+    small_model: VectorMLP,
+) -> tuple[int, VectorMLP]:
     """
     Fit one small neural baseline and return it with its sample count.
     """
-    print(f"\nTraining NeuralVectorBaseline with {n_samples} samples...")
+    print(f"\nTraining VectorMLP with {n_samples} samples...")
 
     X_small = X_train[:n_samples]
     Y_small = Y_train[:n_samples]
@@ -683,12 +284,14 @@ for n_samples, small_model in zip(sample_sizes, small_models, strict=True):
         time_end = pd.Timestamp.now()
 
         elapsed_time = time_end - time_begin
-        print(f"Completed NeuralVectorBaseline with {n_samples} samples in {elapsed_time}.")
+        print(f"Completed VectorMLP with {n_samples} samples in {elapsed_time}.")
 
         if small_model.history is None:
-            raise RuntimeError(f"Small model {n_samples} did not record training history.")
+            raise RuntimeError(
+                f"Small model {n_samples} did not record training history."
+            )
         print(f"Plotting training history for small model with {n_samples} samples...")
-        fig_training_history = plot_training_history(small_model.history)
+        fig_training_history = small_model.plot_training_history()
         plt.show()
     except Exception as exc:
         raise RuntimeError(
@@ -731,7 +334,7 @@ print("|" + "|".join(f"{best_epoch:>7}" for best_epoch in best_epochs) + "|")
 # splits stay aligned with the raw-feature neural baseline.
 
 # %%
-polynomial_neural_model = PolynomialNeuralVectorBaseline()
+polynomial_neural_model = PolynomialVectorMLP(random_state=random_seed)
 polynomial_neural_model.fit(X_train, Y_train, X_val, Y_val)
 
 # %%
@@ -749,10 +352,7 @@ print("Keras history losses are MSE values in scaled target units.")
 if polynomial_neural_model.history is None:
     raise RuntimeError("Polynomial neural model did not record training history.")
 
-fig_polynomial_neural_training_history = plot_training_history(
-    polynomial_neural_model.history,
-    polynomial_neural_model.model_name(),
-)
+fig_polynomial_mlp_history = polynomial_neural_model.plot_training_history()
 
 # %%
 fig_random_polynomial_neural_design_curves = plot_design_prediction_curves(
@@ -765,7 +365,7 @@ fig_random_polynomial_neural_design_curves = plot_design_prediction_curves(
 # %% [markdown]
 # ### Polynomial Neural Evaluation
 #
-# `PolynomialNeuralVectorBaseline.predict()` applies the train-fitted input
+# `PolynomialVectorMLP.predict()` applies the train-fitted input
 # scaler, polynomial expansion, expanded-feature scaler, and target inverse
 # transform. The metrics below are therefore reported in original dB units.
 
