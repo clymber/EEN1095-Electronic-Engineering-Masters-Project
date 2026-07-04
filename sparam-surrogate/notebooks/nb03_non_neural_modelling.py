@@ -32,11 +32,10 @@ from sparam_surrogate.config import configure_stdio_relative_path
 configure_stdio_relative_path()
 
 # %%
-import numpy as np
 import pandas as pd
 
 from sparam_surrogate.config import SurrogateConfig
-from sparam_surrogate.data import DLDataset, TouchstoneLoader
+from sparam_surrogate.data import DLDataset, TouchstoneLoader, random_simu_indices
 from sparam_surrogate.models import (
     RIDGE_ALPHA_GRID,
     PolynomialModel,
@@ -313,20 +312,6 @@ fig_scalar_distribution = plot_scalar_prediction_band_by_frequency(
 
 # %%
 # Randomly choose a list of simulation indices for plotting.
-def random_simu_indices(
-    dataset: DLDataset, n_simu: int, seed: int | None = None
-) -> np.ndarray:
-    """
-    Select a random subset of simulation indices from the test set.
-    """
-    test_simu_ids = np.asarray(dataset.dataframe["SIMU_INDEX"].drop_duplicates())
-    return np.random.default_rng(seed).choice(
-        test_simu_ids,
-        size=min(n_simu, len(test_simu_ids)),
-        replace=False,
-    )
-
-
 selected_simu_indices = random_simu_indices(scalar_test_set, 5, seed=random_seed)
 fig_random_scalar_design_curves = plot_design_prediction_curves(
     scalar_model,

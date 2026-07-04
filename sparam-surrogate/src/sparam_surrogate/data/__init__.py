@@ -7,6 +7,7 @@ from .ml_dataset_builder import MLDatasetBuilder
 from .pcb_dataset_eda import PcbDatasetEDA
 from .pcb_parameters import PcbParameters
 from .raw_data import RawData
+from .sampling import random_simu_indices
 from .touchstone_loader import TouchstoneLoader
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "PcbParameters",
     "RawData",
     "TouchstoneLoader",
+    "random_simu_indices",
 ]

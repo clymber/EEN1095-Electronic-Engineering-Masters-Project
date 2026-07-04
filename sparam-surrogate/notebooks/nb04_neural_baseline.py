@@ -41,7 +41,7 @@ from matplotlib.figure import Figure
 from sklearn.preprocessing import StandardScaler
 
 from sparam_surrogate.config import SurrogateConfig
-from sparam_surrogate.data import DLDataset, TouchstoneLoader
+from sparam_surrogate.data import DLDataset, TouchstoneLoader, random_simu_indices
 from sparam_surrogate.models import SparamModel
 from sparam_surrogate.utils.model_prediction_plots import plot_design_prediction_curves
 from sparam_surrogate.utils.non_neural_modelling_utils import (
@@ -388,20 +388,6 @@ def plot_training_history(history: keras.callbacks.History) -> Figure:
     ax.legend()
     fig.tight_layout()
     return fig
-
-
-def random_simu_indices(
-    dataset: DLDataset, n_simu: int, seed: int | None = None
-) -> np.ndarray:
-    """
-    Select a random subset of simulation indices from a dataset.
-    """
-    test_simu_ids = np.asarray(dataset.dataframe["SIMU_INDEX"].drop_duplicates())
-    return np.random.default_rng(seed).choice(
-        test_simu_ids,
-        size=min(n_simu, len(test_simu_ids)),
-        replace=False,
-    )
 
 
 # %% [markdown]
