@@ -5,6 +5,7 @@ Tests for powers-only polynomial surrogate models.
 import numpy as np
 import pytest
 
+from sparam_surrogate.config.surrogate_config import PolynomialRidgeModelConfig
 from sparam_surrogate.models import (
     POLYNOMIAL_ALPHA_GRID,
     POLYNOMIAL_DEGREE_GRID,
@@ -94,6 +95,20 @@ class TestPolynomialModel:
         )
         assert model.degrees == POLYNOMIAL_DEGREE_GRID
         assert model.alphas == POLYNOMIAL_ALPHA_GRID
+
+    def test_from_config_uses_configured_candidate_grid(self) -> None:
+        """
+        Model config objects initialize polynomial Ridge hyperparameters.
+        """
+        cfg = PolynomialRidgeModelConfig(
+            degrees=(2, 4),
+            alphas=(0.01, 0.2),
+        )
+
+        model = PolynomialModel.from_config(cfg)
+
+        assert model.degrees == cfg.degrees
+        assert model.alphas == cfg.alphas
 
     def test_fit_records_validation_results_and_predicts_vector_values(self) -> None:
         """

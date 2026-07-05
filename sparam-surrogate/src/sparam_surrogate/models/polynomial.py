@@ -5,7 +5,7 @@ Powers-only polynomial surrogate models.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import numpy as np
 import pandas as pd
@@ -17,6 +17,9 @@ from sklearn.utils.validation import check_array, check_is_fitted
 
 from sparam_surrogate.models.base import SparamModel
 from sparam_surrogate.utils.non_neural_modelling_utils import regression_metrics
+
+if TYPE_CHECKING:
+    from sparam_surrogate.config.surrogate_config import PolynomialRidgeModelConfig
 
 POLYNOMIAL_DEGREE_GRID = (3, 4, 5)
 POLYNOMIAL_ALPHA_GRID = (
@@ -83,6 +86,8 @@ def _build_polynomial_pipeline(degree: int, alpha: float) -> Pipeline:
     )
 
 
+PolynomialModelT = TypeVar("PolynomialModelT", bound="PolynomialModel")
+
 class PolynomialModel(SparamModel):
     """
     Vector-output powers-only polynomial Ridge model.
@@ -101,6 +106,16 @@ class PolynomialModel(SparamModel):
         self.validation_results: pd.DataFrame | None = None
         self.best_degree: int | None = None
         self.best_alpha: float | None = None
+
+    @classmethod
+    def from_config(
+        cls: type[PolynomialModelT],
+        cfg: PolynomialRidgeModelConfig,
+    ) -> PolynomialModelT:
+        """
+        Return a polynomial Ridge model initialized from typed configuration.
+        """
+        return cls(degrees=cfg.degrees, alphas=cfg.alphas)
 
     def fit(
         self,

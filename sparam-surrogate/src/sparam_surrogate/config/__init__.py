@@ -11,7 +11,12 @@ from .paths import (
     notebook_resource_path,
     relative_to_project_root,
 )
-from .surrogate_config import PathsConfig, PreprocessingConfig, SurrogateConfig
+from .surrogate_config import (
+    ModelsConfig,
+    PathsConfig,
+    PreprocessingConfig,
+    SurrogateConfig,
+)
 
 __all__ = [
     "PROJECT_ROOT",
@@ -25,6 +30,7 @@ __all__ = [
     "MarkdownLogger",
     "MarkdownFormatter",
     "load_config",
+    "ModelsConfig",
     "PreprocessingConfig",
     "PathsConfig",
     "SurrogateConfig",

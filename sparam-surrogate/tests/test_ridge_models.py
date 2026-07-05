@@ -5,6 +5,7 @@ Tests for Ridge surrogate model classes.
 import numpy as np
 import pytest
 
+from sparam_surrogate.config.surrogate_config import RidgeModelConfig
 from sparam_surrogate.models import ScalarRidgeModel, VectorRidgeModel
 
 
@@ -96,6 +97,16 @@ class TestScalarRidgeModel:
         with pytest.raises(RuntimeError, match="must be fitted"):
             model.predict(np.asarray([[0.0, 0.0]]))
 
+    def test_from_config_uses_configured_alpha_grid(self) -> None:
+        """
+        Model config objects initialize scalar Ridge hyperparameters.
+        """
+        cfg = RidgeModelConfig(alphas=(0.02, 0.2))
+
+        model = ScalarRidgeModel.from_config(cfg)
+
+        assert model.alphas == cfg.alphas
+
 
 class TestVectorRidgeModel:
     """
@@ -121,3 +132,13 @@ class TestVectorRidgeModel:
         assert len(model.validation_results) == len(alphas)
         assert prediction.shape == y_val.shape
         assert np.isfinite(prediction).all()
+
+    def test_from_config_uses_configured_alpha_grid(self) -> None:
+        """
+        Model config objects initialize vector Ridge hyperparameters.
+        """
+        cfg = RidgeModelConfig(alphas=(0.03, 0.3))
+
+        model = VectorRidgeModel.from_config(cfg)
+
+        assert model.alphas == cfg.alphas

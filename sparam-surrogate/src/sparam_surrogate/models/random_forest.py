@@ -5,7 +5,7 @@ Random Forest surrogate models.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import numpy as np
 import pandas as pd
@@ -13,6 +13,9 @@ from sklearn.ensemble import RandomForestRegressor
 
 from sparam_surrogate.models.base import SparamModel
 from sparam_surrogate.utils.non_neural_modelling_utils import regression_metrics
+
+if TYPE_CHECKING:
+    from sparam_surrogate.config.surrogate_config import RandomForestModelConfig
 
 # Number of trees fitted for each Random Forest candidate.
 RANDOM_FOREST_N_ESTIMATORS = 256
@@ -50,6 +53,8 @@ def _build_random_forest_regressor(
     )
 
 
+RandomForestModelT = TypeVar("RandomForestModelT", bound="RandomForestModel")
+
 class RandomForestModel(SparamModel):
     """
     Validation-selected Random Forest baseline for scalar or vector targets.
@@ -77,6 +82,22 @@ class RandomForestModel(SparamModel):
         self.validation_results: pd.DataFrame | None = None
         self.best_max_depth: int | None = None
         self.best_min_samples_leaf: int | None = None
+
+    @classmethod
+    def from_config(
+        cls: type[RandomForestModelT],
+        cfg: RandomForestModelConfig,
+    ) -> RandomForestModelT:
+        """
+        Return a Random Forest model initialized from typed configuration.
+        """
+        return cls(
+            n_estimators=cfg.n_estimators,
+            max_depths=cfg.max_depths,
+            min_samples_leafs=cfg.min_samples_leafs,
+            random_state=cfg.random_state,
+            n_jobs=cfg.n_jobs,
+        )
 
     def fit(
         self,
