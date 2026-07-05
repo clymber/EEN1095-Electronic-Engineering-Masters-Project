@@ -5,12 +5,23 @@ Lazy Touchstone target loading for TensorFlow dataset mapping.
 from collections.abc import Iterable, Mapping
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, NamedTuple
 
 import numpy as np
 import skrf as rf
 
 from sparam_surrogate.config import PROJECT_ROOT, SurrogateConfig
+
+
+class TouchstoneCacheInfo(NamedTuple):
+    """
+    Cache statistics for loaded Touchstone networks.
+    """
+
+    hits: int
+    misses: int
+    maxsize: int | None
+    currsize: int
 
 
 class TouchstoneLoader:
@@ -144,11 +155,17 @@ class TouchstoneLoader:
             return self._port_pair_target(network, frequency_index)
         return self._smatrix_target(network, frequency_index)
 
-    def cache_info(self) -> object:
+    def cache_info(self) -> TouchstoneCacheInfo:
         """
         Return current Touchstone file cache statistics.
         """
-        return self._cached_network.cache_info()
+        info = self._cached_network.cache_info()
+        return TouchstoneCacheInfo(
+            hits=int(info.hits),
+            misses=int(info.misses),
+            maxsize=info.maxsize,
+            currsize=int(info.currsize),
+        )
 
     def clear_cache(self) -> None:
         """
