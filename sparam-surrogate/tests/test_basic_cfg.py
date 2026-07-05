@@ -30,14 +30,14 @@ class TestBasicConfig:
             {
                 "project": {"name": "fake"},
                 "paths": {"data_root": "data"},
-                "training": {"epochs": 10},
+                "models": {"neural_mlp": {"epochs": 10}},
             }
         )
 
         cfg = load_config()
         assert isinstance(cfg, dict)
         assert cfg["project"]["name"] == "fake"
-        assert cfg["training"]["epochs"] == 10
+        assert cfg["models"]["neural_mlp"]["epochs"] == 10
         assert cfg["paths"]["data_root"] == str((tmp_path / "data").resolve())
 
     def test_override_with_local_cfg(self, tmp_path: Path, monkeypatch) -> None:
@@ -50,7 +50,7 @@ class TestBasicConfig:
             {
                 "project": {"name": "fake"},
                 "paths": {"data_root": "data"},
-                "training": {"epochs": 10},
+                "models": {"neural_mlp": {"epochs": 10}},
             }
         )
         self._write_json(
@@ -58,13 +58,13 @@ class TestBasicConfig:
             {
                 "project": {"name": "local_fake"},
                 "paths": {"data_root": "local_data"},
-                "training": {"epochs": 20},
+                "models": {"neural_mlp": {"epochs": 20}},
             }
         )
 
         cfg = load_config()
         assert cfg["project"]["name"] == "local_fake"
-        assert cfg["training"]["epochs"] == 20
+        assert cfg["models"]["neural_mlp"]["epochs"] == 20
 
     def test_nested_override_with_local_cfg(
         self,
@@ -119,7 +119,7 @@ class TestBasicConfig:
             {
                 "project": {"name": "fake"},
                 "paths": {"data_root": "data"},
-                "training": {"epochs": 10},
+                "models": {"neural_mlp": {"epochs": 10}},
             }
         )
         self._write_json(
@@ -127,7 +127,7 @@ class TestBasicConfig:
             {
                 "project": {"name": "local_fake"},
                 "paths": {"data_root": "local_data"},
-                "training": {"epochs": 20},
+                "models": {"neural_mlp": {"epochs": 20}},
             }
         )
         extra_cfg_path = tmp_path / "extra_config.json"
@@ -136,12 +136,12 @@ class TestBasicConfig:
             {
                 "project": {"name": "extra_fake"},
                 "paths": {"data_root": "extra_data"},
-                "training": {"epochs": 30},
+                "models": {"neural_mlp": {"epochs": 30}},
                 "other_setting": "value",
             }
         )
 
         cfg = load_config(extra_cfg_path)
         assert cfg["project"]["name"] == "extra_fake"
-        assert cfg["training"]["epochs"] == 30
+        assert cfg["models"]["neural_mlp"]["epochs"] == 30
         assert cfg["other_setting"] == "value"

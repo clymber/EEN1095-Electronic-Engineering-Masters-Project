@@ -97,7 +97,7 @@ statistics to validation and test rows.
 ```python
 train_ds = train_set.to_tf_dataset(
     map_func=scalar_loader,
-    batch_size=cfg.training.batch_size,
+    batch_size=cfg.models.neural_mlp.batch_size,
     shuffle=True,
 )
 ```

@@ -15,13 +15,13 @@ class TestSurrogateConfig:
     Unit tests for ``SurrogateConfig``.
     """
 
-    def test_from_csv_exposes_split_fractions_on_preprocessing(
+    def test_from_csv_exposes_split_fractions_only_on_preprocessing(
         self,
         tmp_path: Path,
         monkeypatch,
     ) -> None:
         """
-        Split fractions belong to preprocessing, not training.
+        Split fractions belong to preprocessing, with no top-level training.
         """
         monkeypatch.setattr(basic_cfg, "PROJECT_ROOT", tmp_path)
         self._write_json(tmp_path / "configs" / "default.json", self._config_data())
@@ -30,10 +30,7 @@ class TestSurrogateConfig:
 
         assert cfg.preprocessing.val_fraction == 0.2
         assert cfg.preprocessing.test_fraction == 0.1
-        assert cfg.training.batch_size == 16
-        assert cfg.training.epochs == 5
-        assert not hasattr(cfg.training, "val_fraction")
-        assert not hasattr(cfg.training, "test_fraction")
+        assert not hasattr(cfg, "training")
 
     def test_from_csv_exposes_model_config_values(
         self,
@@ -56,8 +53,11 @@ class TestSurrogateConfig:
         assert cfg.models.random_forest.min_samples_leafs == (1, 2)
         assert cfg.models.random_forest.n_estimators == 128
         assert cfg.models.neural_mlp.batch_size == 64
+        assert cfg.models.neural_mlp.epochs == 10
         assert cfg.models.neural_mlp.learning_rate == 0.0001
         assert cfg.models.polynomial_neural_mlp.polynomial_degree == 5
+        assert cfg.models.polynomial_neural_mlp.batch_size == 64
+        assert cfg.models.polynomial_neural_mlp.epochs == 10
         assert cfg.models.polynomial_neural_mlp.random_state == 123
 
     def test_from_csv_rejects_invalid_dataset_nports(
@@ -140,10 +140,6 @@ class TestSurrogateConfig:
                 "cleaned_csv": "cleaned.csv",
                 "val_fraction": 0.2,
                 "test_fraction": 0.1,
-            },
-            "training": {
-                "batch_size": 16,
-                "epochs": 5,
             },
             "models": {
                 "scalar_ridge": {

@@ -131,26 +131,6 @@ class PreprocessingConfig:
         )
 
 
-@dataclass(frozen=True)
-class TrainingConfig:
-    """
-    Typed configuration for model training.
-    """
-
-    batch_size: int = 32  #: Number of samples per training batch.
-    epochs: int = 100  #: Number of training epochs.
-
-    @classmethod
-    def resolve(cls, training_cfg: dict) -> "TrainingConfig":
-        """
-        Resolve training configuration.
-        """
-        return cls(
-            batch_size=int(training_cfg.get("batch_size", 32)),
-            epochs=int(training_cfg.get("epochs", 100)),
-        )
-
-
 def _to_float_tuple(values: Sequence[Any]) -> tuple[float, ...]:
     """
     Resolve configured values as a tuple of floats.
@@ -432,7 +412,6 @@ class SurrogateConfig:
     paths: PathsConfig  #: Resolved filesystem paths.
     dataset: DatasetConfig  #: Dataset loading settings.
     preprocessing: PreprocessingConfig  #: Data preprocessing settings.
-    training: TrainingConfig  #: Model training settings.
     models: ModelsConfig = field(default_factory=ModelsConfig)  #: Model settings.
 
     @classmethod
@@ -445,7 +424,6 @@ class SurrogateConfig:
         _paths = PathsConfig.resolve(_cfg["paths"])
         _dataset = DatasetConfig.resolve(_cfg["dataset"], _paths)
         _preproc = PreprocessingConfig.resolve(_cfg["preprocessing"], _paths)
-        _training = TrainingConfig.resolve(_cfg["training"])
         _models = ModelsConfig.resolve(_cfg.get("models", {}))
 
         return cls(
@@ -453,6 +431,5 @@ class SurrogateConfig:
             paths=_paths,
             dataset=_dataset,
             preprocessing=_preproc,
-            training=_training,
             models=_models,
         )

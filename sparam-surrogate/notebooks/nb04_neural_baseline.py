@@ -311,14 +311,6 @@ for n_samples, small_model in zip(sample_sizes, small_models, strict=True):
 print("|" + "|".join(f"{best_epoch:>7}" for best_epoch in best_epochs) + "|")
 
 # %% [markdown]
-# | 1024  | 2048  | 4096  | 8192  | 10240 | 16384 | 32768 | 65536 |
-# | ----- | ----- | ----- | ----- | ----- | ----- | ----- | ----- |
-# |    100|     69|     41|     19|     17|     10|      5|      4|
-# |     22|     62|     73|     15|     12|     13|      7|      5|
-# |     93|     40|     40|     15|     13|      6|      4|      2|
-# |     73|     62|     83|     32|     94|     32|     22|      4|
-
-# %% [markdown]
 # ## Polynomial Neural Variant
 #
 # This follow-up trains the same MLP on the powers-only polynomial feature

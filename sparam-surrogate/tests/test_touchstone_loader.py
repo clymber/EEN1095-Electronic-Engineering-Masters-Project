@@ -14,7 +14,6 @@ from sparam_surrogate.config.surrogate_config import (
     PreprocessingConfig,
     ProjectConfig,
     SurrogateConfig,
-    TrainingConfig,
 )
 from sparam_surrogate.data import TouchstoneLoader
 
@@ -71,7 +70,6 @@ def _config(ports: tuple[tuple[int, int], ...] | None = None) -> SurrogateConfig
             val_fraction=0.2,
             test_fraction=0.2,
         ),
-        training=TrainingConfig(batch_size=32, epochs=100),
     )
 
 
