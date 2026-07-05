@@ -5,6 +5,7 @@ Ridge-regression surrogate models.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import TYPE_CHECKING, TypeVar
 
 import numpy as np
 import pandas as pd
@@ -14,6 +15,9 @@ from sklearn.preprocessing import StandardScaler
 
 from sparam_surrogate.models.base import SparamModel
 from sparam_surrogate.utils.non_neural_modelling_utils import regression_metrics
+
+if TYPE_CHECKING:
+    from sparam_surrogate.config.surrogate_config import RidgeModelConfig
 
 RIDGE_ALPHA_GRID = (
     0.00001,
@@ -27,6 +31,8 @@ RIDGE_ALPHA_GRID = (
     1.0,
     10.0,
 )
+
+RidgeModelT = TypeVar("RidgeModelT", bound="RidgeModel")
 
 
 def _build_ridge_pipeline(alpha: float) -> Pipeline:
@@ -53,6 +59,13 @@ class RidgeModel(SparamModel):
         self.model: Pipeline | None = None
         self.validation_results: pd.DataFrame | None = None
         self.best_alpha: float | None = None
+
+    @classmethod
+    def from_config(cls: type[RidgeModelT], cfg: RidgeModelConfig) -> RidgeModelT:
+        """
+        Return a Ridge model initialized from typed model configuration.
+        """
+        return cls(alphas=cfg.alphas)
 
     def fit(
         self,

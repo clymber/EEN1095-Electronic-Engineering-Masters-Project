@@ -38,14 +38,6 @@ from matplotlib import pyplot as plt
 from sparam_surrogate.config import SurrogateConfig
 from sparam_surrogate.data import DLDataset, TouchstoneLoader, random_simu_indices
 from sparam_surrogate.models.neural_mlp import (
-    BATCH_SIZE,
-    EARLY_STOPPING_PATIENCE,
-    GRADIENT_CLIP_NORM,
-    LEARNING_RATE,
-    MAX_EPOCHS,
-    MIN_LEARNING_RATE,
-    REDUCE_LR_FACTOR,
-    REDUCE_LR_PATIENCE,
     PolynomialVectorMLP,
     VectorMLP,
 )
@@ -88,6 +80,8 @@ from sparam_surrogate.utils.non_neural_modelling_utils import (
 # %%
 cfg = SurrogateConfig.from_csv()
 random_seed = cfg.project.seed
+neural_mlp_config = cfg.models.neural_mlp
+polynomial_neural_mlp_config = cfg.models.polynomial_neural_mlp
 keras.utils.set_random_seed(random_seed)
 
 print(f"Name of raw dataset: {cfg.dataset.name}")
@@ -97,14 +91,15 @@ print(f"Configured IL port pairs: {cfg.dataset.ports}")
 print(f"TensorFlow version: {tf.__version__}")
 print(f"TensorFlow physical devices: {tf.config.list_physical_devices()}")
 print(f"Random seed: {random_seed}")
-print(f"Batch size: {BATCH_SIZE}")
-print(f"Max epochs: {MAX_EPOCHS}")
-print(f"Adam learning rate: {LEARNING_RATE:g}")
-print(f"Gradient clip norm: {GRADIENT_CLIP_NORM:g}")
-print(f"Early stopping patience: {EARLY_STOPPING_PATIENCE}")
-print(f"Reduce LR patience: {REDUCE_LR_PATIENCE}")
-print(f"Reduce LR factor: {REDUCE_LR_FACTOR:g}")
-print(f"Minimum learning rate: {MIN_LEARNING_RATE:g}")
+print(f"Batch size: {neural_mlp_config.batch_size}")
+print(f"Max epochs: {neural_mlp_config.epochs}")
+print(f"Adam learning rate: {neural_mlp_config.learning_rate:g}")
+print(f"Gradient clip norm: {neural_mlp_config.gradient_clip_norm:g}")
+print(f"Early stopping patience: {neural_mlp_config.early_stopping_patience}")
+print(f"Reduce LR patience: {neural_mlp_config.reduce_lr_patience}")
+print(f"Reduce LR factor: {neural_mlp_config.reduce_lr_factor:g}")
+print(f"Minimum learning rate: {neural_mlp_config.min_learning_rate:g}")
+print(f"Polynomial neural degree: {polynomial_neural_mlp_config.polynomial_degree}")
 
 # %% [markdown]
 # ## 1. Vector Data Loading
@@ -174,7 +169,7 @@ vector_db_loader.clear_cache()
 # tables below use inverse-transformed predictions.
 
 # %%
-neural_model = VectorMLP(random_state=random_seed)
+neural_model = VectorMLP.from_config(neural_mlp_config)
 neural_model.fit(X_train, Y_train, X_val, Y_val)
 
 # %%
@@ -329,12 +324,14 @@ print("|" + "|".join(f"{best_epoch:>7}" for best_epoch in best_epochs) + "|")
 # This follow-up trains the same MLP on the powers-only polynomial feature
 # representation used by the `nb03` Polynomial Ridge baseline. The raw
 # design-frequency features are scaled first, expanded as
-# `[x, x^2, ..., x^5]` without cross terms, then scaled again before Keras sees
-# them. Target scaling, callbacks, optimizer settings, and train/validation/test
-# splits stay aligned with the raw-feature neural baseline.
+# `[x, x^2, ...]` without cross terms, then scaled again before Keras sees them.
+# Target scaling, callbacks, optimizer settings, and train/validation/test splits
+# stay aligned with the raw-feature neural baseline.
 
 # %%
-polynomial_neural_model = PolynomialVectorMLP(random_state=random_seed)
+polynomial_neural_model = PolynomialVectorMLP.from_config(
+    polynomial_neural_mlp_config
+)
 polynomial_neural_model.fit(X_train, Y_train, X_val, Y_val)
 
 # %%

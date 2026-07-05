@@ -4,7 +4,7 @@ Neural MLP surrogate models.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import keras
 import numpy as np
@@ -13,6 +13,12 @@ from sklearn.preprocessing import StandardScaler
 
 from sparam_surrogate.models.neural import NeuralModel
 from sparam_surrogate.models.polynomial import PowersOnlyPolynomialFeatures
+
+if TYPE_CHECKING:
+    from sparam_surrogate.config.surrogate_config import (
+        NeuralMLPModelConfig,
+        PolynomialNeuralMLPModelConfig,
+    )
 
 PREDICTION_BATCH_SIZE = 4096
 BATCH_SIZE = 512
@@ -29,6 +35,8 @@ VECTOR_MLP_RANDOM_STATE = 128
 # Keras accepts float callback deltas, but Pyright infers int from the
 # EarlyStopping runtime default of 0.
 CALLBACK_MIN_DELTA: Any = 1e-4
+
+
 
 
 def build_vector_mlp(input_width: int, output_width: int) -> keras.Model:
@@ -82,6 +90,8 @@ def build_vector_mlp(input_width: int, output_width: int) -> keras.Model:
     )
 
 
+VectorMLPT = TypeVar("VectorMLPT", bound="VectorMLP")
+
 class VectorMLP(NeuralModel):
     """
     Keras MLP wrapper implementing the common surrogate model interface.
@@ -120,6 +130,24 @@ class VectorMLP(NeuralModel):
         self.y_scaler = StandardScaler()
         self.model: keras.Model | None = None
         self.history: keras.callbacks.History | None = None
+
+    @classmethod
+    def from_config(cls: type[VectorMLPT], cfg: NeuralMLPModelConfig) -> VectorMLPT:
+        """
+        Return a VectorMLP initialized from typed model configuration.
+        """
+        return cls(
+            batch_size=cfg.batch_size,
+            epochs=cfg.epochs,
+            prediction_batch_size=cfg.prediction_batch_size,
+            learning_rate=cfg.learning_rate,
+            gradient_clip_norm=cfg.gradient_clip_norm,
+            early_stopping_patience=cfg.early_stopping_patience,
+            reduce_lr_patience=cfg.reduce_lr_patience,
+            reduce_lr_factor=cfg.reduce_lr_factor,
+            min_learning_rate=cfg.min_learning_rate,
+            random_state=cfg.random_state,
+        )
 
     def model_name(self) -> str:
         """
@@ -222,6 +250,8 @@ class VectorMLP(NeuralModel):
         return self.model
 
 
+PolynomialVectorMLPT = TypeVar("PolynomialVectorMLPT", bound="PolynomialVectorMLP")
+
 class PolynomialVectorMLP(NeuralModel):
     """
     Keras MLP trained on powers-only polynomial feature expansions.
@@ -267,6 +297,28 @@ class PolynomialVectorMLP(NeuralModel):
         self.model: keras.Model | None = None
         self.history: keras.callbacks.History | None = None
         self.expanded_feature_count_: int | None = None
+
+    @classmethod
+    def from_config(
+        cls: type[PolynomialVectorMLPT],
+        cfg: PolynomialNeuralMLPModelConfig,
+    ) -> PolynomialVectorMLPT:
+        """
+        Return a PolynomialVectorMLP initialized from typed model configuration.
+        """
+        return cls(
+            polynomial_degree=cfg.polynomial_degree,
+            batch_size=cfg.batch_size,
+            epochs=cfg.epochs,
+            prediction_batch_size=cfg.prediction_batch_size,
+            learning_rate=cfg.learning_rate,
+            gradient_clip_norm=cfg.gradient_clip_norm,
+            early_stopping_patience=cfg.early_stopping_patience,
+            reduce_lr_patience=cfg.reduce_lr_patience,
+            reduce_lr_factor=cfg.reduce_lr_factor,
+            min_learning_rate=cfg.min_learning_rate,
+            random_state=cfg.random_state,
+        )
 
     def model_name(self) -> str:
         """

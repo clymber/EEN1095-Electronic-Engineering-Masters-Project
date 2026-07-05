@@ -8,6 +8,10 @@ from matplotlib.figure import Figure
 
 pytest.importorskip("keras")
 
+from sparam_surrogate.config.surrogate_config import (  # noqa: E402
+    NeuralMLPModelConfig,
+    PolynomialNeuralMLPModelConfig,
+)
 from sparam_surrogate.models.neural_mlp import (  # noqa: E402
     BATCH_SIZE,
     EARLY_STOPPING_PATIENCE,
@@ -87,6 +91,36 @@ class TestVectorMLP:
         assert model.min_learning_rate == MIN_LEARNING_RATE
         assert model.random_state == VECTOR_MLP_RANDOM_STATE
 
+    def test_from_config_uses_configured_training_controls(self) -> None:
+        """
+        Model config objects initialize raw-feature neural MLP controls.
+        """
+        cfg = NeuralMLPModelConfig(
+            batch_size=8,
+            epochs=2,
+            prediction_batch_size=16,
+            learning_rate=0.001,
+            gradient_clip_norm=1.5,
+            early_stopping_patience=4,
+            reduce_lr_patience=2,
+            reduce_lr_factor=0.25,
+            min_learning_rate=0.00001,
+            random_state=7,
+        )
+
+        model = VectorMLP.from_config(cfg)
+
+        assert model.batch_size == cfg.batch_size
+        assert model.epochs == cfg.epochs
+        assert model.prediction_batch_size == cfg.prediction_batch_size
+        assert model.learning_rate == cfg.learning_rate
+        assert model.gradient_clip_norm == cfg.gradient_clip_norm
+        assert model.early_stopping_patience == cfg.early_stopping_patience
+        assert model.reduce_lr_patience == cfg.reduce_lr_patience
+        assert model.reduce_lr_factor == cfg.reduce_lr_factor
+        assert model.min_learning_rate == cfg.min_learning_rate
+        assert model.random_state == cfg.random_state
+
     def test_model_name_keeps_report_label(self) -> None:
         """
         The renamed class keeps the existing notebook label.
@@ -163,6 +197,38 @@ class TestPolynomialVectorMLP:
         assert model.reduce_lr_factor == REDUCE_LR_FACTOR
         assert model.min_learning_rate == MIN_LEARNING_RATE
         assert model.random_state == VECTOR_MLP_RANDOM_STATE
+
+    def test_from_config_uses_configured_training_controls(self) -> None:
+        """
+        Model config objects initialize polynomial neural MLP controls.
+        """
+        cfg = PolynomialNeuralMLPModelConfig(
+            polynomial_degree=4,
+            batch_size=8,
+            epochs=2,
+            prediction_batch_size=16,
+            learning_rate=0.001,
+            gradient_clip_norm=1.5,
+            early_stopping_patience=4,
+            reduce_lr_patience=2,
+            reduce_lr_factor=0.25,
+            min_learning_rate=0.00001,
+            random_state=7,
+        )
+
+        model = PolynomialVectorMLP.from_config(cfg)
+
+        assert model.polynomial_degree == cfg.polynomial_degree
+        assert model.batch_size == cfg.batch_size
+        assert model.epochs == cfg.epochs
+        assert model.prediction_batch_size == cfg.prediction_batch_size
+        assert model.learning_rate == cfg.learning_rate
+        assert model.gradient_clip_norm == cfg.gradient_clip_norm
+        assert model.early_stopping_patience == cfg.early_stopping_patience
+        assert model.reduce_lr_patience == cfg.reduce_lr_patience
+        assert model.reduce_lr_factor == cfg.reduce_lr_factor
+        assert model.min_learning_rate == cfg.min_learning_rate
+        assert model.random_state == cfg.random_state
 
     def test_model_name_keeps_report_label(self) -> None:
         """

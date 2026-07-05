@@ -37,7 +37,6 @@ import pandas as pd
 from sparam_surrogate.config import SurrogateConfig
 from sparam_surrogate.data import DLDataset, TouchstoneLoader, random_simu_indices
 from sparam_surrogate.models import (
-    RIDGE_ALPHA_GRID,
     PolynomialModel,
     RandomForestModel,
     ScalarRidgeModel,
@@ -210,11 +209,12 @@ print(f"Scalar Touchstone cache after clearing: {scalar_db_loader.cache_info()}"
 # %% [markdown]
 # ### 1.3.1 Ridge Alpha Grid
 #
-# `RIDGE_ALPHA_GRID` is the small set of candidate Ridge regularisation strengths
-# tested before choosing the final baseline model:
+# The scalar Ridge alpha grid is configured in `configs/default.json` under
+# `models.scalar_ridge.alphas`:
 
 # %%
-print("RIDGE_ALPHA_GRID = ", *RIDGE_ALPHA_GRID)
+scalar_ridge_config = cfg.models.scalar_ridge
+print("Scalar Ridge alpha grid = ", *scalar_ridge_config.alphas)
 
 # %% [markdown]
 # In `scikit-learn`'s `Ridge`, this value is called `alpha`. It has the same role as
@@ -246,13 +246,13 @@ print("RIDGE_ALPHA_GRID = ", *RIDGE_ALPHA_GRID)
 # scaled feature matrix. The `alpha` value controls the L2 penalty strength.
 
 # %%
-example_scalar_model = ScalarRidgeModel(alphas=(RIDGE_ALPHA_GRID[0],))
+example_scalar_model = ScalarRidgeModel(alphas=(scalar_ridge_config.alphas[0],))
 print("Example instantiated model:")
 print(f"- name={example_scalar_model.name}")
 print(f"- alphas={example_scalar_model.alphas}")
 
 # %%
-scalar_model = ScalarRidgeModel()
+scalar_model = ScalarRidgeModel.from_config(scalar_ridge_config)
 scalar_model.fit(X_train_scalar, y_train_scalar, X_val_scalar, y_val_scalar)
 
 scalar_alpha_results = scalar_model.validation_results
@@ -541,7 +541,8 @@ print(f"Target names of vector model: {vector_target_names}")
 # the scalar modelling section.
 
 # %%
-vector_model = VectorRidgeModel()
+vector_ridge_config = cfg.models.vector_ridge
+vector_model = VectorRidgeModel.from_config(vector_ridge_config)
 vector_model.fit(X_train, Y_train, X_val, Y_val)
 
 vector_alpha_results = vector_model.validation_results
@@ -785,7 +786,8 @@ fig_vector_mae_frequency = plot_vector_mae_by_frequency(
 # ### 3.1 Train Polynomial Degree Sweep
 
 # %%
-polynomial_model = PolynomialModel()
+polynomial_ridge_config = cfg.models.polynomial_ridge
+polynomial_model = PolynomialModel.from_config(polynomial_ridge_config)
 polynomial_model.fit(X_train, Y_train, X_val, Y_val)
 
 polynomial_validation_results = polynomial_model.validation_results
@@ -1116,15 +1118,15 @@ fig_model_mae_comparison_frequency = plot_model_mae_comparison_by_frequency(
 # The purpose of this section is to test whether the curvature missed by
 # Polynomial Ridge is mainly caused by limited nonlinear model capacity. The
 # model uses the same vector target, train/validation/test split, and raw input
-# arrays as the previous vector baselines. The reusable class defaults to 256
-# trees, but this notebook uses 128 trees to keep the full 843,600-row training
-# split practical for repeated execution.
+# arrays as the previous vector baselines. The tree count and candidate leaf
+# settings are configured in `configs/default.json` under `models.random_forest`.
 
 # %% [markdown]
 # ### 4.1 Train Random Forest Baseline
 
 # %%
-random_forest_model = RandomForestModel(n_estimators=128, random_state=random_seed)
+random_forest_config = cfg.models.random_forest
+random_forest_model = RandomForestModel.from_config(random_forest_config)
 random_forest_model.fit(X_train, Y_train, X_val, Y_val)
 
 random_forest_validation_results = random_forest_model.validation_results
