@@ -2,6 +2,7 @@
 Output persistence helpers for model runs and derived artifacts.
 """
 
+from .models import ModelRegistry, ModelRegistryEntry
 from .runs import (
     KerasWrapperState,
     ModelMetadata,
@@ -14,6 +15,8 @@ from .runs import (
 
 __all__ = [
     "KerasWrapperState",
+    "ModelRegistry",
+    "ModelRegistryEntry",
     "ModelMetadata",
     "ModelRunArtifactManager",
     "create_run_dir",
