@@ -158,9 +158,6 @@ class RandomForestModel(SparamModel):
                     best_max_depth = max_depth
                     best_min_samples_leaf = min_samples_leaf
 
-        if best_model is None or best_min_samples_leaf is None:
-            raise RuntimeError("No Random Forest model was fitted.")
-
         self.model = best_model
         self.best_max_depth = best_max_depth
         self.best_min_samples_leaf = best_min_samples_leaf

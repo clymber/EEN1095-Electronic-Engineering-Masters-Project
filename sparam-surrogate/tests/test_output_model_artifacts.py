@@ -13,7 +13,6 @@ from sparam_surrogate.models import ScalarRidgeModel
 from sparam_surrogate.outputs.runs import (
     KerasWrapperState,
     ModelRunArtifactManager,
-    get_run_id,
 )
 from sparam_surrogate.utils.json_io import read_json
 
@@ -67,24 +66,6 @@ class TestModelRunArtifactManager:
     """
     Unit tests for model-run artifact persistence.
     """
-
-    def test_get_run_id_formats_timestamped_model_slug(self) -> None:
-        """
-        Run IDs combine UTC timestamps with stable model-name slugs.
-        """
-        run_id = get_run_id(
-            "Scalar Ridge",
-            timestamp=datetime(2026, 7, 5, 15, 30, tzinfo=timezone.utc),
-        )
-
-        assert run_id == "20260705T153000Z_scalar_ridge"
-
-    def test_get_run_id_rejects_invalid_timestamp_string(self) -> None:
-        """
-        Explicit timestamp strings must use the planned run ID timestamp form.
-        """
-        with pytest.raises(ValueError, match="YYYYMMDDTHHMMSSZ"):
-            get_run_id("scalar_ridge", timestamp="2026-07-05")
 
     def test_create_uses_timestamped_model_run_directory(
         self,

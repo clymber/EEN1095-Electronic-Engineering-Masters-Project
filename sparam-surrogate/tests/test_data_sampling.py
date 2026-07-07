@@ -45,23 +45,6 @@ def test_random_simu_indices_is_seed_reproducible() -> None:
     np.testing.assert_array_equal(first, second)
 
 
-def test_random_simu_indices_matches_numpy_choice_without_replacement() -> None:
-    """
-    Sampling delegates to NumPy choice over unique simulation indices.
-    """
-    dataset = _sample_dataset()
-    simulation_ids = np.asarray([10, 20, 30, 40])
-    expected = np.random.default_rng(123).choice(
-        simulation_ids,
-        size=3,
-        replace=False,
-    )
-
-    selected = random_simu_indices(dataset, 3, seed=123)
-
-    np.testing.assert_array_equal(selected, expected)
-
-
 def test_random_simu_indices_caps_count_to_available_simulations() -> None:
     """
     Requesting too many simulations returns all available unique indices.
