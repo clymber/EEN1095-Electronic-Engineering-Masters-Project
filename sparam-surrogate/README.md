@@ -57,7 +57,7 @@ RawData
 from sparam_surrogate.config import SurrogateConfig
 from sparam_surrogate.data import MLDatasetBuilder, RawData, TouchstoneLoader
 
-cfg = SurrogateConfig.from_csv()
+cfg = SurrogateConfig.from_config()
 
 raw_data = RawData(
     cfg.dataset.path,

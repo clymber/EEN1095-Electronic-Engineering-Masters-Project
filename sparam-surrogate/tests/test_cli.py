@@ -169,7 +169,7 @@ class TestCLI:
         FakeBuilder.instances = []
         FakeRawData.instances = []
         monkeypatch.setattr(
-            "sparam_surrogate.cli.SurrogateConfig.from_csv",
+            "sparam_surrogate.cli.SurrogateConfig.from_config",
             lambda: cfg,
         )
         monkeypatch.setattr("sparam_surrogate.cli.RawData", FakeRawData)

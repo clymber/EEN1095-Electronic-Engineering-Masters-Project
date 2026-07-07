@@ -40,7 +40,7 @@ from sparam_surrogate.data import (
 )
 from sparam_surrogate.utils.filesystem import directory_tree
 
-cfg = SurrogateConfig.from_csv()
+cfg = SurrogateConfig.from_config()
 
 # %% [markdown]
 # ## 1. Dataset Structure

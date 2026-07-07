@@ -74,7 +74,7 @@ from sparam_surrogate.utils.non_neural_modelling_utils import (
 # the `scikit-learn` Ridge baselines expect in-memory `NumPy` arrays.
 
 # %%
-cfg = SurrogateConfig.from_csv()
+cfg = SurrogateConfig.from_config()
 random_seed = cfg.project.seed
 scalar_db_loader = TouchstoneLoader("scalar", cfg, "db", 8)
 vector_db_loader = TouchstoneLoader("vector", cfg, "db", 8)

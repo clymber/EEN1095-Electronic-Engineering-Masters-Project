@@ -15,7 +15,7 @@ class TestSurrogateConfig:
     Unit tests for ``SurrogateConfig``.
     """
 
-    def test_from_csv_exposes_split_fractions_only_on_preprocessing(
+    def test_from_config_exposes_split_fractions_only_on_preprocessing(
         self,
         tmp_path: Path,
         monkeypatch,
@@ -26,13 +26,13 @@ class TestSurrogateConfig:
         monkeypatch.setattr(basic_cfg, "PROJECT_ROOT", tmp_path)
         self._write_json(tmp_path / "configs" / "default.json", self._config_data())
 
-        cfg = SurrogateConfig.from_csv()
+        cfg = SurrogateConfig.from_config()
 
         assert cfg.preprocessing.val_fraction == 0.2
         assert cfg.preprocessing.test_fraction == 0.1
         assert not hasattr(cfg, "training")
 
-    def test_from_csv_exposes_model_config_values(
+    def test_from_config_exposes_model_config_values(
         self,
         tmp_path: Path,
         monkeypatch,
@@ -43,7 +43,7 @@ class TestSurrogateConfig:
         monkeypatch.setattr(basic_cfg, "PROJECT_ROOT", tmp_path)
         self._write_json(tmp_path / "configs" / "default.json", self._config_data())
 
-        cfg = SurrogateConfig.from_csv()
+        cfg = SurrogateConfig.from_config()
 
         assert cfg.models.scalar_ridge.alphas == (0.001, 0.01)
         assert cfg.models.vector_ridge.alphas == (0.001, 0.01)
@@ -60,7 +60,61 @@ class TestSurrogateConfig:
         assert cfg.models.polynomial_neural_mlp.epochs == 10
         assert cfg.models.polynomial_neural_mlp.random_state == 123
 
-    def test_from_csv_rejects_invalid_dataset_nports(
+    def test_from_config_exposes_default_output_paths(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        """
+        Optional output paths default to the planned outputs hierarchy.
+        """
+        monkeypatch.setattr(basic_cfg, "PROJECT_ROOT", tmp_path)
+        self._write_json(tmp_path / "configs" / "default.json", self._config_data())
+
+        cfg = SurrogateConfig.from_config()
+
+        assert cfg.paths.outputs == tmp_path / "outputs"
+        assert cfg.paths.runs == tmp_path / "outputs" / "runs"
+        assert cfg.paths.models == tmp_path / "outputs" / "models"
+        assert cfg.paths.benchmarks == tmp_path / "outputs" / "benchmarks"
+        assert cfg.paths.logs == tmp_path / "outputs" / "logs"
+        assert cfg.paths.figures == tmp_path / "outputs" / "figures"
+        assert cfg.paths.reports == tmp_path / "outputs" / "reports"
+
+    def test_from_config_exposes_configured_output_paths(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        """
+        Configured output paths override the default output hierarchy.
+        """
+        monkeypatch.setattr(basic_cfg, "PROJECT_ROOT", tmp_path)
+        cfg_data = self._config_data()
+        cfg_data["paths"].update(
+            {
+                "outputs": "artifacts",
+                "runs": "artifacts/model-runs",
+                "models": "artifacts/model-index",
+                "benchmarks": "artifacts/comparisons",
+                "logs": "artifacts/logs",
+                "figures": "artifacts/figures",
+                "reports": "artifacts/reports",
+            }
+        )
+        self._write_json(tmp_path / "configs" / "default.json", cfg_data)
+
+        cfg = SurrogateConfig.from_config()
+
+        assert cfg.paths.outputs == tmp_path / "artifacts"
+        assert cfg.paths.runs == tmp_path / "artifacts" / "model-runs"
+        assert cfg.paths.models == tmp_path / "artifacts" / "model-index"
+        assert cfg.paths.benchmarks == tmp_path / "artifacts" / "comparisons"
+        assert cfg.paths.logs == tmp_path / "artifacts" / "logs"
+        assert cfg.paths.figures == tmp_path / "artifacts" / "figures"
+        assert cfg.paths.reports == tmp_path / "artifacts" / "reports"
+
+    def test_from_config_rejects_invalid_dataset_nports(
         self,
         tmp_path: Path,
         monkeypatch,
@@ -74,13 +128,13 @@ class TestSurrogateConfig:
         self._write_json(tmp_path / "configs" / "default.json", cfg_data)
 
         try:
-            SurrogateConfig.from_csv()
+            SurrogateConfig.from_config()
         except ValueError as exc:
             assert "dataset.nports must be positive" in str(exc)
         else:
             raise AssertionError("Expected invalid nports to raise ValueError.")
 
-    def test_from_csv_rejects_invalid_dataset_port_pair(
+    def test_from_config_rejects_invalid_dataset_port_pair(
         self,
         tmp_path: Path,
         monkeypatch,
@@ -94,13 +148,13 @@ class TestSurrogateConfig:
         self._write_json(tmp_path / "configs" / "default.json", cfg_data)
 
         try:
-            SurrogateConfig.from_csv()
+            SurrogateConfig.from_config()
         except ValueError as exc:
             assert "exceeds dataset.nports" in str(exc)
         else:
             raise AssertionError("Expected invalid port pair to raise ValueError.")
 
-    def test_from_csv_rejects_wrong_length_dataset_port_pair(
+    def test_from_config_rejects_wrong_length_dataset_port_pair(
         self,
         tmp_path: Path,
         monkeypatch,
@@ -114,7 +168,7 @@ class TestSurrogateConfig:
         self._write_json(tmp_path / "configs" / "default.json", cfg_data)
 
         try:
-            SurrogateConfig.from_csv()
+            SurrogateConfig.from_config()
         except ValueError as exc:
             assert "must contain two ports" in str(exc)
         else:

@@ -190,7 +190,7 @@ class TouchstoneLoader:
         """
         if isinstance(config, SurrogateConfig):
             return config
-        return SurrogateConfig.from_csv(config)
+        return SurrogateConfig.from_config(config)
 
     def _resolve_path(self, row_metadata: Mapping[str, Any]) -> Path:
         """

@@ -436,11 +436,11 @@ class SurrogateConfig:
     models: ModelsConfig = field(default_factory=ModelsConfig)  #: Model settings.
 
     @classmethod
-    def from_csv(cls, cfg_csv: Path | str | None = None) -> "SurrogateConfig":
+    def from_config(cls, cfg_path: Path | str | None = None) -> "SurrogateConfig":
         """
         Create a SurrogateConfig instance from project configuration files.
         """
-        _cfg = load_config(cfg_csv)
+        _cfg = load_config(cfg_path)
         _project = ProjectConfig.resolve(_cfg["project"])
         _paths = PathsConfig.resolve(_cfg["paths"])
         _dataset = DatasetConfig.resolve(_cfg["dataset"], _paths)
