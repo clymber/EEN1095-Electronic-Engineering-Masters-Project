@@ -9,6 +9,16 @@ from typing import Any
 
 from .paths import PROJECT_ROOT
 
+DEFAULT_OUTPUT_ROOT = "outputs"
+DEFAULT_OUTPUT_CHILDREN = (
+    "benchmarks",
+    "logs",
+    "figures",
+    "models",
+    "reports",
+    "runs",
+)
+
 
 def _deep_update(base: MutableMapping[str, Any], override: dict) -> None:
     """
@@ -20,6 +30,16 @@ def _deep_update(base: MutableMapping[str, Any], override: dict) -> None:
             _deep_update(base_value, value)
         else:
             base[key] = value
+
+
+def _add_output_path_defaults(paths_cfg: MutableMapping[str, Any]) -> None:
+    """
+    Add default generated-output paths when configs omit them.
+    """
+    outputs = paths_cfg.setdefault("outputs", DEFAULT_OUTPUT_ROOT)
+    outputs_path = Path(outputs)
+    for child in DEFAULT_OUTPUT_CHILDREN:
+        paths_cfg.setdefault(child, str(outputs_path / child))
 
 
 def load_config(extra_cfg_path: str | Path | None = None) -> dict:
@@ -54,6 +74,8 @@ def load_config(extra_cfg_path: str | Path | None = None) -> dict:
         with extra_cfg_path.open("r", encoding="utf-8") as f:
             extra_cfg = json.load(f)
             _deep_update(cfg, extra_cfg)
+
+    _add_output_path_defaults(cfg.setdefault("paths", {}))
 
     # Resolve relative paths against project root
     for key, value in cfg.get("paths", {}).items():

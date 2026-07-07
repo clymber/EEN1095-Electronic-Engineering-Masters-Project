@@ -35,6 +35,13 @@ class PathsConfig:
 
     raw_data: Path  #: Directory containing raw input data.
     processed_data: Path  #: Directory for generated processed data.
+    outputs: Path = Path("outputs")  #: Root directory for generated artifacts.
+    benchmarks: Path = Path("outputs/benchmarks")  #: Benchmark summary directory.
+    logs: Path = Path("outputs/logs")  #: Log output directory.
+    figures: Path = Path("outputs/figures")  #: Figure output directory.
+    models: Path = Path("outputs/models")  #: Model registry pointer directory.
+    reports: Path = Path("outputs/reports")  #: Report output directory.
+    runs: Path = Path("outputs/runs")  #: Persisted model-run directory.
 
     @classmethod
     def resolve(cls, paths_cfg: dict) -> "PathsConfig":
@@ -43,10 +50,24 @@ class PathsConfig:
         """
         _raw_data = Path(paths_cfg["raw_data"])
         _processed_data = Path(paths_cfg["processed_data"])
+        _outputs = Path(paths_cfg.get("outputs", "outputs"))
+        _benchmarks = Path(paths_cfg.get("benchmarks", _outputs / "benchmarks"))
+        _logs = Path(paths_cfg.get("logs", _outputs / "logs"))
+        _figures = Path(paths_cfg.get("figures", _outputs / "figures"))
+        _models = Path(paths_cfg.get("models", _outputs / "models"))
+        _reports = Path(paths_cfg.get("reports", _outputs / "reports"))
+        _runs = Path(paths_cfg.get("runs", _outputs / "runs"))
 
         return cls(
             raw_data=_raw_data.resolve(),
             processed_data=_processed_data.resolve(),
+            outputs=_outputs.resolve(),
+            benchmarks=_benchmarks.resolve(),
+            logs=_logs.resolve(),
+            figures=_figures.resolve(),
+            models=_models.resolve(),
+            reports=_reports.resolve(),
+            runs=_runs.resolve(),
         )
 
 
