@@ -4,6 +4,7 @@ Output persistence helpers for model runs and derived artifacts.
 
 from .runs import (
     KerasWrapperState,
+    ModelMetadata,
     ModelRunArtifactManager,
     create_run_dir,
     get_run_id,
@@ -13,6 +14,7 @@ from .runs import (
 
 __all__ = [
     "KerasWrapperState",
+    "ModelMetadata",
     "ModelRunArtifactManager",
     "create_run_dir",
     "get_run_id",
