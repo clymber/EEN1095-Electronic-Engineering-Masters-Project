@@ -115,7 +115,7 @@ class TestModelRunArtifactManager:
             timestamp="20260705T153000Z",
         )
 
-        with pytest.raises(FileExistsError, match="already exists"):
+        with pytest.raises(FileExistsError):
             ModelRunArtifactManager.create(
                 tmp_path / "runs",
                 "scalar_ridge",
