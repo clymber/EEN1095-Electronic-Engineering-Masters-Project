@@ -5,6 +5,7 @@ Run-directory artifact helpers for fitted surrogate models.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from importlib import import_module
@@ -14,6 +15,7 @@ from typing import Any, ClassVar, cast
 from joblib import dump, load
 
 from sparam_surrogate.models.base import SparamModel
+from sparam_surrogate.utils.json_io import json_ready, write_json
 
 # Filename for full scikit-learn-style wrapper artifacts.
 MODEL_JOBLIB = "model.joblib"
@@ -23,6 +25,9 @@ MODEL_KERAS = "model.keras"
 
 # Filename for non-Keras neural wrapper state.
 PREPROCESSORS_JOBLIB = "preprocessors.joblib"
+
+# Filename for human-readable model artifact metadata.
+METADATA_JSON = "metadata.json"
 
 # Required run timestamp form: YYYYMMDDTHHMMSSZ.
 TIMESTAMP_PATTERN = re.compile(r"^\d{8}T\d{6}Z$")
@@ -56,11 +61,20 @@ class ModelRunArtifactManager:
             run_dir=run_dir,
         )
 
-    def save_model(self, model: SparamModel) -> dict[str, Path]:
+    def save_model(
+        self,
+        model: SparamModel,
+        *,
+        data_interface: Mapping[str, Any] | None = None,
+    ) -> dict[str, Path]:
         """
         Save one fitted model artifact family into this run directory.
         """
-        return save_model_artifact(model, self.run_dir)
+        return save_model_artifact(
+            model,
+            self.run_dir,
+            data_interface=data_interface,
+        )
 
     def load_model(self) -> SparamModel:
         """
@@ -110,7 +124,7 @@ class KerasWrapperState:
         Return wrapper state extracted from a fitted neural model.
         """
         return cls(
-            class_path=cls._object_path(type(model)),
+            class_path=ModelMetadata.model_class_path(model),
             constructor_params={
                 name: getattr(model, name)
                 for name in cls.CONSTRUCTOR_ATTRS
@@ -154,13 +168,121 @@ class KerasWrapperState:
             )
         return wrapper
 
-    @staticmethod
-    def _object_path(obj: type) -> str:
-        """
-        Return the import path for a top-level class.
-        """
-        return f"{obj.__module__}.{obj.__qualname__}"
 
+@dataclass(frozen=True)
+class ModelMetadata:
+    """
+    Human-readable metadata for one persisted model artifact family.
+    """
+
+    run_id: str  # Directory name and stable identifier for this model run.
+    model: dict[str, Any]  # Model identity, framework family, and artifact type.
+    artifacts: dict[str, str]  # Run-relative artifact filenames by logical role.
+    data_interface: Mapping[str, Any] | None = None  # Optional feature/target context.
+    selected_hyperparameters: Mapping[str, Any] | None = None  # Fitted choices.
+    training_controls: Mapping[str, Any] | None = None  # Neural training settings.
+
+    # Metadata schema version written into every metadata.json file.
+    SCHEMA_VERSION: ClassVar[int] = 1
+
+    # Fitted hyperparameter attributes exposed by current model wrappers.
+    SELECTED_HYPERPARAMETER_ATTRS: ClassVar[tuple[str, ...]] = (
+        "best_alpha",
+        "best_degree",
+        "best_max_depth",
+        "best_min_samples_leaf",
+    )
+
+    @classmethod
+    def from_model(
+        cls,
+        model: SparamModel,
+        run_dir: Path,
+        artifact_paths: Mapping[str, Path],
+        *,
+        data_interface: Mapping[str, Any] | None,
+    ) -> ModelMetadata:
+        """
+        Build metadata from a saved model and its artifact paths.
+        """
+        is_neural = _is_neural_wrapper(model)
+        selected_hyperparameters = cls._selected_hyperparameters(model)
+        training_controls = cls._training_controls(model) if is_neural else {}
+        return cls(
+            run_id=run_dir.name,
+            model={
+                "artifact_type": (
+                    "keras_with_wrapper_state" if is_neural else "joblib_wrapper"
+                ),
+                "class_path": cls.model_class_path(model),
+                "family": "keras" if is_neural else "sklearn",
+                "label": model.model_name(),
+                "name": model.name,
+            },
+            artifacts={
+                name: path.relative_to(run_dir).as_posix()
+                for name, path in artifact_paths.items()
+            },
+            data_interface=data_interface,
+            selected_hyperparameters=selected_hyperparameters or None,
+            training_controls=training_controls or None,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """
+        Return this metadata as a JSON-ready dictionary.
+        """
+        metadata: dict[str, Any] = {
+            "artifacts": self.artifacts,
+            "model": self.model,
+            "run_id": self.run_id,
+            "schema_version": self.SCHEMA_VERSION,
+        }
+        if self.data_interface is not None:
+            metadata["data_interface"] = dict(self.data_interface)
+        if self.selected_hyperparameters is not None:
+            metadata["selected_hyperparameters"] = dict(
+                self.selected_hyperparameters
+            )
+        if self.training_controls is not None:
+            metadata["training_controls"] = dict(self.training_controls)
+        return json_ready(metadata)
+
+    def save(self, path: Path | str) -> None:
+        """
+        Save this metadata as stable, human-readable JSON.
+        """
+        write_json(path, self.to_dict())
+
+    @staticmethod
+    def model_class_path(model: SparamModel) -> str:
+        """
+        Return the import path for a model wrapper class.
+        """
+        model_type = type(model)
+        return f"{model_type.__module__}.{model_type.__qualname__}"
+
+    @classmethod
+    def _selected_hyperparameters(cls, model: SparamModel) -> dict[str, Any]:
+        """
+        Return selected fitted hyperparameters when wrappers expose them.
+        """
+        return {
+            name: getattr(model, name)
+            for name in cls.SELECTED_HYPERPARAMETER_ATTRS
+            if hasattr(model, name) and getattr(model, name) is not None
+        }
+
+    @staticmethod
+    def _training_controls(model: SparamModel) -> dict[str, Any]:
+        """
+        Return neural training controls stored on the wrapper.
+        """
+        return {
+            name: getattr(model, name)
+            for name in KerasWrapperState.CONSTRUCTOR_ATTRS
+            if hasattr(model, name)
+        }
 
 def create_run_dir(
     runs_root: Path | str,
@@ -205,7 +327,6 @@ def get_run_id(
             timestamp = timestamp.replace(tzinfo=timezone.utc)
         return timestamp.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
-
     def _slugify_model_name(model_name: str) -> str:
         """
         Return a stable lowercase slug for a model name.
@@ -218,7 +339,12 @@ def get_run_id(
     return f"{_format_timestamp(timestamp)}_{_slugify_model_name(model_name)}"
 
 
-def save_model_artifact(model: SparamModel, run_dir: Path | str) -> dict[str, Path]:
+def save_model_artifact(
+    model: SparamModel,
+    run_dir: Path | str,
+    *,
+    data_interface: Mapping[str, Any] | None = None,
+) -> dict[str, Path]:
     """
     Save a fitted model artifact family into an existing run directory.
     """
@@ -228,11 +354,21 @@ def save_model_artifact(model: SparamModel, run_dir: Path | str) -> dict[str, Pa
     _ensure_fitted(model)
 
     if _is_neural_wrapper(model):
-        return _save_neural_artifacts(model, destination)
+        artifact_paths = _save_neural_artifacts(model, destination)
+    else:
+        model_path = destination / MODEL_JOBLIB
+        dump(model, model_path)
+        artifact_paths = {"model": model_path}
 
-    model_path = destination / MODEL_JOBLIB
-    dump(model, model_path)
-    return {"model": model_path}
+    metadata_path = destination / METADATA_JSON
+    metadata = ModelMetadata.from_model(
+        model,
+        destination,
+        artifact_paths,
+        data_interface=data_interface,
+    )
+    metadata.save(metadata_path)
+    return {"metadata": metadata_path, **artifact_paths}
 
 
 def load_model_artifact(run_dir: Path | str) -> SparamModel:
@@ -272,6 +408,7 @@ def _ensure_no_existing_artifacts(run_dir: Path) -> None:
             run_dir / MODEL_JOBLIB,
             run_dir / MODEL_KERAS,
             run_dir / PREPROCESSORS_JOBLIB,
+            run_dir / METADATA_JSON,
         )
         if path.exists()
     ]
