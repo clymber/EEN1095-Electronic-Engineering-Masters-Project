@@ -4,10 +4,9 @@ Run-directory artifact helpers for fitted surrogate models.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from importlib import import_module
 from pathlib import Path
 from typing import Any, ClassVar, cast
@@ -15,6 +14,7 @@ from typing import Any, ClassVar, cast
 from joblib import dump, load
 
 from sparam_surrogate.models.base import SparamModel
+from sparam_surrogate.outputs.naming import get_run_id
 from sparam_surrogate.utils.json_io import json_ready, write_json
 
 # Filename for full scikit-learn-style wrapper artifacts.
@@ -28,9 +28,6 @@ PREPROCESSORS_JOBLIB = "preprocessors.joblib"
 
 # Filename for human-readable model artifact metadata.
 METADATA_JSON = "metadata.json"
-
-# Required run timestamp form: YYYYMMDDTHHMMSSZ.
-TIMESTAMP_PATTERN = re.compile(r"^\d{8}T\d{6}Z$")
 
 
 @dataclass(frozen=True)
@@ -284,6 +281,7 @@ class ModelMetadata:
             if hasattr(model, name)
         }
 
+
 def create_run_dir(
     runs_root: Path | str,
     model_name: str,
@@ -302,41 +300,6 @@ def create_run_dir(
     except FileExistsError as exc:
         raise FileExistsError(f"Run directory already exists: {run_dir}") from exc
     return run_dir
-
-
-def get_run_id(
-    model_name: str,
-    *,
-    timestamp: datetime | str | None = None,
-) -> str:
-    """
-    Return the timestamped run ID for a model name.
-    """
-
-    def _format_timestamp(timestamp: datetime | str | None) -> str:
-        """
-        Return a UTC timestamp formatted as ``YYYYMMDDTHHMMSSZ``.
-        """
-        if timestamp is None:
-            timestamp = datetime.now(timezone.utc)
-        if isinstance(timestamp, str):
-            if not TIMESTAMP_PATTERN.match(timestamp):
-                raise ValueError("timestamp must match YYYYMMDDTHHMMSSZ.")
-            return timestamp
-        if timestamp.tzinfo is None:
-            timestamp = timestamp.replace(tzinfo=timezone.utc)
-        return timestamp.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-
-    def _slugify_model_name(model_name: str) -> str:
-        """
-        Return a stable lowercase slug for a model name.
-        """
-        slug = re.sub(r"[^A-Za-z0-9]+", "_", model_name.strip().lower()).strip("_")
-        if not slug:
-            raise ValueError("model_name must contain at least one alphanumeric value.")
-        return slug
-
-    return f"{_format_timestamp(timestamp)}_{_slugify_model_name(model_name)}"
 
 
 def save_model_artifact(
