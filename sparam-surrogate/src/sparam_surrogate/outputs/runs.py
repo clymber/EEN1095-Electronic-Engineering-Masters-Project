@@ -11,10 +11,12 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any, ClassVar, cast
 
+import pandas as pd
 from joblib import dump, load
 
 from sparam_surrogate.models.base import SparamModel
 from sparam_surrogate.outputs.naming import get_run_id
+from sparam_surrogate.utils.filesystem import ensure_dir
 from sparam_surrogate.utils.json_io import json_ready, write_json
 
 # Filename for full scikit-learn-style wrapper artifacts.
@@ -28,6 +30,15 @@ PREPROCESSORS_JOBLIB = "preprocessors.joblib"
 
 # Filename for human-readable model artifact metadata.
 METADATA_JSON = "metadata.json"
+
+# Filename for final model-run metrics.
+METRICS_JSON = "metrics.json"
+
+# Filename for validation-search or validation-sweep tables.
+VALIDATION_RESULTS_CSV = "validation_results.csv"
+
+# Filename for epoch-by-epoch neural training history.
+TRAINING_HISTORY_CSV = "training_history.csv"
 
 
 @dataclass(frozen=True)
@@ -78,6 +89,43 @@ class ModelRunArtifactManager:
         Load the model artifact stored in this run directory.
         """
         return load_model_artifact(self.run_dir)
+
+    def save_metrics(
+        self,
+        metrics: Mapping[str, Any],
+        *,
+        metric_units: Mapping[str, str] | None = None,
+    ) -> Path:
+        """
+        Save model-run metrics into this run directory.
+        """
+        return save_run_metrics(
+            self.run_dir,
+            metrics,
+            metric_units=metric_units,
+        )
+
+    def save_validation_results(
+        self,
+        results: Any | None = None,
+        *,
+        model: SparamModel | None = None,
+    ) -> Path:
+        """
+        Save validation sweep results into this run directory.
+        """
+        return save_run_validation_results(self.run_dir, results, model=model)
+
+    def save_training_history(
+        self,
+        history: Any | None = None,
+        *,
+        model: SparamModel | None = None,
+    ) -> Path:
+        """
+        Save training history into this run directory.
+        """
+        return save_run_training_history(self.run_dir, history, model=model)
 
 
 @dataclass(frozen=True)
@@ -159,11 +207,7 @@ class KerasWrapperState:
         for name, value in self.state_attrs.items():
             setattr(wrapper, name, value)
         cast(Any, wrapper).model = keras_model
-        if not isinstance(wrapper, SparamModel):
-            raise TypeError(
-                f"Restored wrapper is not an SparamModel: {self.class_path}"
-            )
-        return wrapper
+        return cast(SparamModel, wrapper)
 
 
 @dataclass(frozen=True)
@@ -282,6 +326,117 @@ class ModelMetadata:
         }
 
 
+@dataclass(frozen=True)
+class RunMetrics:
+    """
+    JSON metrics artifact for one persisted model run.
+    """
+
+    metrics: Mapping[str, Any]  # Split or aggregate metrics to persist.
+    metric_units: Mapping[str, str] | None = None  # Optional units by metric key.
+
+    # Metrics schema version written into every metrics.json file.
+    SCHEMA_VERSION: ClassVar[int] = 1
+
+    def to_dict(self) -> dict[str, Any]:
+        """
+        Return this metrics artifact as a JSON-ready dictionary.
+        """
+        data: dict[str, Any] = {
+            "metrics": dict(self.metrics),
+            "schema_version": self.SCHEMA_VERSION,
+        }
+        if self.metric_units is not None:
+            data["metric_units"] = dict(self.metric_units)
+        return json_ready(data)
+
+    def save(self, path: Path | str) -> None:
+        """
+        Save metrics as stable, human-readable JSON.
+        """
+        write_json(path, self.to_dict())
+
+
+@dataclass(frozen=True)
+class ValidationResults:
+    """
+    Tabular validation sweep artifact for one persisted model run.
+    """
+
+    table: pd.DataFrame
+
+    @classmethod
+    def from_model(cls, model: SparamModel) -> ValidationResults:
+        """
+        Build validation results from a fitted model wrapper.
+        """
+        results = getattr(model, "validation_results", None)
+        if results is None:
+            raise ValueError(f"{model.name} has no validation_results to save.")
+        return cls.from_value(results)
+
+    @classmethod
+    def from_value(cls, value: Any) -> ValidationResults:
+        """
+        Build validation results from a dataframe-like value.
+        """
+        table = value.copy() if isinstance(value, pd.DataFrame) else pd.DataFrame(value)
+        if table.empty:
+            raise ValueError("validation_results must contain at least one row.")
+        return cls(table=table)
+
+    def save(self, path: Path | str) -> None:
+        """
+        Save validation results as CSV without the dataframe index.
+        """
+        self.table.to_csv(path, index=False)
+
+
+@dataclass(frozen=True)
+class TrainingHistory:
+    """
+    Tabular training history artifact for one persisted model run.
+    """
+
+    table: pd.DataFrame
+
+    @classmethod
+    def from_model(cls, model: SparamModel) -> TrainingHistory:
+        """
+        Build training history from a fitted model wrapper.
+        """
+        history = getattr(model, "history", None)
+        if history is None:
+            raise ValueError(f"{model.name} has no training history to save.")
+        return cls.from_value(history)
+
+    @classmethod
+    def from_value(cls, value: Any) -> TrainingHistory:
+        """
+        Build training history from a Keras History, mapping, or dataframe.
+        """
+        if isinstance(value, pd.DataFrame):
+            table = value.copy()
+        elif isinstance(value, Mapping):
+            table = pd.DataFrame(value)
+        elif hasattr(value, "history"):
+            table = pd.DataFrame(cast(Any, value).history)
+        else:
+            table = pd.DataFrame(value)
+
+        if table.empty:
+            raise ValueError("training_history must contain at least one row.")
+        if "epoch" not in table.columns:
+            table.insert(0, "epoch", range(1, len(table) + 1))
+        return cls(table=table)
+
+    def save(self, path: Path | str) -> None:
+        """
+        Save training history as CSV without the dataframe index.
+        """
+        self.table.to_csv(path, index=False)
+
+
 def create_run_dir(
     runs_root: Path | str,
     model_name: str,
@@ -291,14 +446,9 @@ def create_run_dir(
     """
     Create and return a timestamped model-run directory.
     """
-    root = Path(runs_root)
-    run_id = get_run_id(model_name, timestamp=timestamp)
-    run_dir = root / run_id
-    root.mkdir(parents=True, exist_ok=True)
-    try:
-        run_dir.mkdir()
-    except FileExistsError as exc:
-        raise FileExistsError(f"Run directory already exists: {run_dir}") from exc
+    root = ensure_dir(runs_root)
+    run_dir = root / get_run_id(model_name, timestamp=timestamp)
+    run_dir.mkdir()
     return run_dir
 
 
@@ -311,8 +461,7 @@ def save_model_artifact(
     """
     Save a fitted model artifact family into an existing run directory.
     """
-    destination = Path(run_dir)
-    destination.mkdir(parents=True, exist_ok=True)
+    destination = ensure_dir(run_dir)
     _ensure_no_existing_artifacts(destination)
     _ensure_fitted(model)
 
@@ -332,6 +481,64 @@ def save_model_artifact(
     )
     metadata.save(metadata_path)
     return {"metadata": metadata_path, **artifact_paths}
+
+
+def save_run_metrics(
+    run_dir: Path | str,
+    metrics: Mapping[str, Any],
+    *,
+    metric_units: Mapping[str, str] | None = None,
+) -> Path:
+    """
+    Save run metrics into an existing run directory.
+    """
+    destination = ensure_dir(run_dir)
+    path = destination / METRICS_JSON
+    _ensure_missing(path)
+    RunMetrics(metrics=metrics, metric_units=metric_units).save(path)
+    return path
+
+
+def save_run_validation_results(
+    run_dir: Path | str,
+    results: Any | None = None,
+    *,
+    model: SparamModel | None = None,
+) -> Path:
+    """
+    Save validation sweep results into an existing run directory.
+    """
+    destination = ensure_dir(run_dir)
+    path = destination / VALIDATION_RESULTS_CSV
+    _ensure_missing(path)
+    artifact = (
+        ValidationResults.from_model(model)
+        if model is not None
+        else ValidationResults.from_value(results)
+    )
+    artifact.save(path)
+    return path
+
+
+def save_run_training_history(
+    run_dir: Path | str,
+    history: Any | None = None,
+    *,
+    model: SparamModel | None = None,
+) -> Path:
+    """
+    Save training history into an existing run directory.
+    """
+    destination = ensure_dir(run_dir)
+    path = destination / TRAINING_HISTORY_CSV
+    _ensure_missing(path)
+    artifact = (
+        TrainingHistory.from_model(model)
+        if model is not None
+        else TrainingHistory.from_value(history)
+    )
+    artifact.save(path)
+    return path
 
 
 def load_model_artifact(run_dir: Path | str) -> SparamModel:
@@ -378,6 +585,14 @@ def _ensure_no_existing_artifacts(run_dir: Path) -> None:
     if existing:
         names = ", ".join(path.name for path in existing)
         raise FileExistsError(f"Model artifact already exists: {names}")
+
+
+def _ensure_missing(path: Path) -> None:
+    """
+    Fail clearly when an artifact path already exists.
+    """
+    if path.exists():
+        raise FileExistsError(f"Run artifact already exists: {path.name}")
 
 
 def _ensure_fitted(model: SparamModel) -> None:
@@ -430,7 +645,5 @@ def _import_object(import_path: str) -> type:
     Import and return an object from a dotted import path.
     """
     module_path, _, object_name = import_path.rpartition(".")
-    if not module_path or not object_name:
-        raise ValueError(f"Invalid import path: {import_path}")
     module = import_module(module_path)
     return getattr(module, object_name)

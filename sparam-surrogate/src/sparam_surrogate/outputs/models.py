@@ -4,7 +4,7 @@ Model registry helpers for latest, selected, and history pointer files.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, MutableMapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -16,7 +16,12 @@ from sparam_surrogate.outputs.naming import (
     created_at_from_run_id,
     slugify_model_name,
 )
-from sparam_surrogate.outputs.runs import METADATA_JSON, load_model_artifact
+from sparam_surrogate.outputs.runs import (
+    METADATA_JSON,
+    METRICS_JSON,
+    load_model_artifact,
+)
+from sparam_surrogate.utils.filesystem import ensure_dir
 from sparam_surrogate.utils.json_io import read_json, write_json
 
 # Registry file containing newest known run pointers by model name.
@@ -27,9 +32,6 @@ SELECTED_JSON = "selected.json"
 
 # Registry file containing known persisted run history.
 REGISTRY_JSON = "registry.json"
-
-# Future metrics artifact location recorded before metrics are implemented.
-METRICS_JSON = "metrics.json"
 
 
 @dataclass(frozen=True)
@@ -66,11 +68,9 @@ class ModelRegistryEntry:
 
         metadata_path = run_path / METADATA_JSON
         metadata = read_json(metadata_path)
-        model_info = _require_mapping(metadata, "model", metadata_path)
-        artifacts = _require_mapping(metadata, "artifacts", metadata_path)
-        artifact_name = artifacts.get("model")
-        if not isinstance(artifact_name, str):
-            raise KeyError(f"metadata artifacts must include a model entry: {run_path}")
+        model_info = metadata["model"]
+        artifacts = metadata["artifacts"]
+        artifact_name = artifacts["model"]
 
         artifact_path = run_path / artifact_name
         if not artifact_path.is_file():
@@ -172,12 +172,11 @@ class ModelRegistry:
         """
         Register a saved run and update latest, selected, and history files.
         """
-        self.models_root.mkdir(parents=True, exist_ok=True)
+        ensure_dir(self.models_root)
         entry = ModelRegistryEntry.from_run_dir(
             run_dir,
             project_root=self.project_root,
         )
-        self._validate_entry(entry)
         self._upsert_history(entry)
         self._update_latest(entry)
         self._initialize_selected(entry)
@@ -212,7 +211,6 @@ class ModelRegistry:
         """
         Load the model artifact pointed to by a registry entry.
         """
-        self._validate_entry(entry)
         return load_model_artifact(self.resolve_path(entry.run_path))
 
     def resolve_path(self, path: Path | str) -> Path:
@@ -255,15 +253,7 @@ class ModelRegistry:
         """
         model_key = slugify_model_name(model_name)
         index = self._read_model_index(path)
-        models = _require_mapping(index, "models", path)
-        if model_key not in models:
-            raise KeyError(f"No registry entry for model: {model_key}")
-        entry_data = models[model_key]
-        if not isinstance(entry_data, Mapping):
-            raise TypeError(f"Registry entry is not an object: {model_key}")
-        entry = ModelRegistryEntry.from_dict(entry_data)
-        self._validate_entry(entry)
-        return entry
+        return ModelRegistryEntry.from_dict(index["models"][model_key])
 
     def _set_model_index_entry(
         self,
@@ -274,8 +264,7 @@ class ModelRegistry:
         Set one model entry in a latest or selected index file.
         """
         index = self._read_model_index(path)
-        models = _require_mutable_mapping(index, "models", path)
-        models[entry.model_name] = entry.to_dict()
+        index["models"][entry.model_name] = entry.to_dict()
         write_json(path, index)
 
     def _update_latest(self, entry: ModelRegistryEntry) -> None:
@@ -283,7 +272,7 @@ class ModelRegistry:
         Update latest.json when an entry is newer than the current pointer.
         """
         index = self._read_model_index(self.latest_path)
-        models = _require_mutable_mapping(index, "models", self.latest_path)
+        models = index["models"]
         current = models.get(entry.model_name)
         if not isinstance(current, Mapping):
             models[entry.model_name] = entry.to_dict()
@@ -298,7 +287,7 @@ class ModelRegistry:
         Initialize selected.json for models that do not have a selected run.
         """
         index = self._read_model_index(self.selected_path)
-        models = _require_mutable_mapping(index, "models", self.selected_path)
+        models = index["models"]
         if entry.model_name not in models:
             models[entry.model_name] = entry.to_dict()
         write_json(self.selected_path, index)
@@ -309,13 +298,9 @@ class ModelRegistry:
         """
         history = self._read_history()
         runs = history["runs"]
-        if not isinstance(runs, list):
-            raise TypeError(f"registry runs must be a list: {self.registry_path}")
 
         replacement = entry.to_dict()
         for index, entry_data in enumerate(runs):
-            if not isinstance(entry_data, Mapping):
-                raise TypeError("registry run entries must be JSON objects.")
             existing = ModelRegistryEntry.from_dict(entry_data)
             same_model = existing.model_name == entry.model_name
             same_run = existing.run_id == entry.run_id
@@ -341,25 +326,6 @@ class ModelRegistry:
         if not self.registry_path.exists():
             return {"runs": [], "schema_version": self.SCHEMA_VERSION}
         return read_json(self.registry_path)
-
-    def _validate_entry(self, entry: ModelRegistryEntry) -> None:
-        """
-        Fail if a registry entry points to missing required artifacts.
-        """
-        run_path = self.resolve_path(entry.run_path)
-        artifact_path = self.resolve_path(entry.artifact_path)
-        metadata_path = self.resolve_path(entry.metadata_path)
-        if not run_path.is_dir():
-            raise FileNotFoundError(f"Registry run path does not exist: {run_path}")
-        if not artifact_path.is_file():
-            raise FileNotFoundError(
-                f"Registry artifact path does not exist: {artifact_path}"
-            )
-        if not metadata_path.is_file():
-            raise FileNotFoundError(
-                f"Registry metadata path does not exist: {metadata_path}"
-            )
-
 
 def _default_project_root(models_root: Path) -> Path:
     """
@@ -387,31 +353,3 @@ def _is_entry_newer_or_equal(
     if candidate.created_at is None or current.created_at is None:
         return candidate.run_id >= current.run_id
     return candidate.created_at >= current.created_at
-
-
-def _require_mapping(
-    data: Mapping[str, Any],
-    key: str,
-    source: Path,
-) -> Mapping[str, Any]:
-    """
-    Return a nested mapping from JSON data, or fail clearly.
-    """
-    value = data.get(key)
-    if not isinstance(value, Mapping):
-        raise TypeError(f"Expected JSON object at {key!r} in {source}")
-    return value
-
-
-def _require_mutable_mapping(
-    data: Mapping[str, Any],
-    key: str,
-    source: Path,
-) -> MutableMapping[str, Any]:
-    """
-    Return a nested mutable JSON object, or fail clearly.
-    """
-    value = data.get(key)
-    if not isinstance(value, MutableMapping):
-        raise TypeError(f"Expected mutable JSON object at {key!r} in {source}")
-    return value
