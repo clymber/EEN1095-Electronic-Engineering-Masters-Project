@@ -58,7 +58,7 @@ REBUILD_CLEANED_CSV = False
 configure_stdio_relative_path()
 
 # %%
-cfg = SurrogateConfig.from_csv()
+cfg = SurrogateConfig.from_config()
 print(f"Name of raw dataset: {cfg.dataset.name}")
 
 raw_data_dir = cfg.dataset.path

@@ -249,7 +249,7 @@ def main() -> int:
                 logger.info("Extracted %s to %s", cli.infile, dest)
                 return 0
             case "preprocess":
-                cfg = SurrogateConfig.from_csv()
+                cfg = SurrogateConfig.from_config()
                 nports = (
                     cli.nports
                     if cli.nports is not None

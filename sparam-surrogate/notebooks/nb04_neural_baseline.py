@@ -78,7 +78,7 @@ from sparam_surrogate.utils.non_neural_modelling_utils import (
 # before plotting.
 
 # %%
-cfg = SurrogateConfig.from_csv()
+cfg = SurrogateConfig.from_config()
 random_seed = cfg.project.seed
 neural_mlp_config = cfg.models.neural_mlp
 polynomial_neural_mlp_config = cfg.models.polynomial_neural_mlp
