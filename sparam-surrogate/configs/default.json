@@ -9,10 +9,12 @@
         "interim_data": "data/interim",
         "processed_data": "data/processed",
         "outputs": "outputs",
+        "benchmarks": "outputs/benchmarks",
         "logs": "outputs/logs",
         "figures": "outputs/figures",
         "models": "outputs/models",
-        "reports": "outputs/reports"
+        "reports": "outputs/reports",
+        "runs": "outputs/runs"
     },
     "dataset": {
         "name": "linkOn8CavityStackBetween10x10Array_19_08_2021",

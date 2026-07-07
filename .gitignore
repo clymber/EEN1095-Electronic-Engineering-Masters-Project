@@ -7,7 +7,7 @@ sparam-surrogate/configs/local.json
 
 # Local logging and temporary files.
 sparam-surrogate/.notebook-stamps/
-sparam-surrogate/outputs/logs
+sparam-surrogate/outputs/
 sparam-surrogate/reports/pdf/
 sparam-surrogate/reports/html/
 
