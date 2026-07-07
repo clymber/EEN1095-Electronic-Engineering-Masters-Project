@@ -4,7 +4,7 @@ Run-directory artifact helpers for fitted surrogate models.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from importlib import import_module
@@ -17,7 +17,7 @@ from joblib import dump, load
 from sparam_surrogate.models.base import SparamModel
 from sparam_surrogate.outputs.naming import get_run_id
 from sparam_surrogate.utils.filesystem import ensure_dir
-from sparam_surrogate.utils.json_io import json_ready, write_json
+from sparam_surrogate.utils.json_io import json_ready, read_json, write_json
 
 # Filename for full scikit-learn-style wrapper artifacts.
 MODEL_JOBLIB = "model.joblib"
@@ -30,6 +30,9 @@ PREPROCESSORS_JOBLIB = "preprocessors.joblib"
 
 # Filename for human-readable model artifact metadata.
 METADATA_JSON = "metadata.json"
+
+# Filename for the run-local artifact index.
+MANIFEST_JSON = "manifest.json"
 
 # Filename for final model-run metrics.
 METRICS_JSON = "metrics.json"
@@ -126,6 +129,19 @@ class ModelRunArtifactManager:
         Save training history into this run directory.
         """
         return save_run_training_history(self.run_dir, history, model=model)
+
+    def save_manifest(
+        self,
+        *,
+        completed_steps: Iterable[str] = (),
+    ) -> Path:
+        """
+        Save the run-local manifest for artifacts currently on disk.
+        """
+        return save_run_manifest(
+            self.run_dir,
+            completed_steps=completed_steps,
+        )
 
 
 @dataclass(frozen=True)
@@ -324,6 +340,96 @@ class ModelMetadata:
             for name in KerasWrapperState.CONSTRUCTOR_ATTRS
             if hasattr(model, name)
         }
+
+
+@dataclass(frozen=True)
+class RunManifest:
+    """
+    Minimal index for artifacts in one run directory.
+    """
+
+    run_id: str  # Directory name and stable identifier for this model run.
+    artifacts: Mapping[str, str]  # Run-relative artifact filenames by role.
+    completed_steps: tuple[str, ...] = ()  # Workflow steps completed so far.
+    model: Mapping[str, Any] | None = None  # Optional model identity block.
+
+    # Manifest schema version written into every manifest.json file.
+    SCHEMA_VERSION: ClassVar[int] = 1
+
+    # Known artifact files included when they already exist on disk.
+    ARTIFACT_FILENAMES: ClassVar[tuple[tuple[str, str], ...]] = (
+        ("metadata", METADATA_JSON),
+        ("model", MODEL_JOBLIB),
+        ("model", MODEL_KERAS),
+        ("preprocessors", PREPROCESSORS_JOBLIB),
+        ("metrics", METRICS_JSON),
+        ("validation_results", VALIDATION_RESULTS_CSV),
+        ("training_history", TRAINING_HISTORY_CSV),
+    )
+
+    @classmethod
+    def from_run_dir(
+        cls,
+        run_dir: Path | str,
+        *,
+        completed_steps: Iterable[str] = (),
+    ) -> RunManifest:
+        """
+        Build a manifest from artifacts currently present in a run directory.
+        """
+        source = Path(run_dir)
+        return cls(
+            run_id=source.name,
+            artifacts=cls._existing_artifacts(source),
+            completed_steps=tuple(completed_steps),
+            model=cls._model_from_metadata(source),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """
+        Return this manifest as a JSON-ready dictionary.
+        """
+        manifest: dict[str, Any] = {
+            "artifacts": dict(self.artifacts),
+            "completed_steps": list(self.completed_steps),
+            "run_id": self.run_id,
+            "schema_version": self.SCHEMA_VERSION,
+        }
+        if self.model is not None:
+            manifest["model"] = dict(self.model)
+        return json_ready(manifest)
+
+    def save(self, path: Path | str) -> None:
+        """
+        Save this manifest as stable, human-readable JSON.
+        """
+        write_json(path, self.to_dict())
+
+    @classmethod
+    def _existing_artifacts(cls, run_dir: Path) -> dict[str, str]:
+        """
+        Return run-relative paths for known artifacts that already exist.
+        """
+        artifacts: dict[str, str] = {}
+        for role, filename in cls.ARTIFACT_FILENAMES:
+            if (run_dir / filename).is_file():
+                artifacts[role] = filename
+        return artifacts
+
+    @staticmethod
+    def _model_from_metadata(run_dir: Path) -> dict[str, Any] | None:
+        """
+        Return the model identity block from metadata.json when available.
+        """
+        metadata_path = run_dir / METADATA_JSON
+        if not metadata_path.is_file():
+            return None
+
+        metadata = read_json(metadata_path)
+        model_info = metadata.get("model")
+        if isinstance(model_info, Mapping):
+            return dict(model_info)
+        return None
 
 
 @dataclass(frozen=True)
@@ -538,6 +644,35 @@ def save_run_training_history(
         else TrainingHistory.from_value(history)
     )
     artifact.save(path)
+    return path
+
+
+def build_run_manifest(
+    run_dir: Path | str,
+    *,
+    completed_steps: Iterable[str] = (),
+) -> dict[str, Any]:
+    """
+    Build a minimal manifest for artifacts currently present in a run directory.
+    """
+    return RunManifest.from_run_dir(
+        run_dir,
+        completed_steps=completed_steps,
+    ).to_dict()
+
+
+def save_run_manifest(
+    run_dir: Path | str,
+    *,
+    completed_steps: Iterable[str] = (),
+) -> Path:
+    """
+    Save a minimal manifest for artifacts currently present in a run directory.
+    """
+    destination = ensure_dir(run_dir)
+    path = destination / MANIFEST_JSON
+    _ensure_missing(path)
+    RunManifest.from_run_dir(destination, completed_steps=completed_steps).save(path)
     return path
 
 
