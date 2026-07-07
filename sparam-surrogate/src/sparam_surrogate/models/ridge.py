@@ -99,9 +99,6 @@ class RidgeModel(SparamModel):
                 best_model = model
                 best_alpha = float(alpha)
 
-        if best_model is None or best_alpha is None:
-            raise RuntimeError("No Ridge model was fitted.")
-
         self.model = best_model
         self.best_alpha = best_alpha
         self.validation_results = pd.DataFrame(rows)

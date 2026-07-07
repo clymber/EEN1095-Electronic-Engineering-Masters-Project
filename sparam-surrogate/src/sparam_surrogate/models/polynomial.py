@@ -161,9 +161,6 @@ class PolynomialModel(SparamModel):
                     best_degree = int(degree)
                     best_alpha = float(alpha)
 
-        if best_model is None or best_degree is None or best_alpha is None:
-            raise RuntimeError("No polynomial model was fitted.")
-
         self.model = best_model
         self.best_degree = best_degree
         self.best_alpha = best_alpha

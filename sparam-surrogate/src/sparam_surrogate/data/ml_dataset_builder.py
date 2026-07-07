@@ -130,8 +130,6 @@ class MLDatasetBuilder:
             seed=seed,
         )
         cleaned[self.SPLIT_COLUMN] = cleaned[self.SIMULATION_COLUMN].map(split_by_index)
-        if cleaned[self.SPLIT_COLUMN].isna().any():
-            raise ValueError("Every SIMU_INDEX must receive a split label.")
         cleaned = self._validate_cleaned_dataframe(cleaned, require_split=True)
         self._write_cleaned(cleaned)
         return (
