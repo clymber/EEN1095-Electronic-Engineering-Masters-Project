@@ -4,16 +4,19 @@ Run-directory artifact helpers for fitted surrogate models.
 
 from __future__ import annotations
 
+import platform as runtime_platform
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from importlib import import_module
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any, ClassVar, cast
 
 import pandas as pd
 from joblib import dump, load
 
+from sparam_surrogate.config.surrogate_config import SurrogateConfig
 from sparam_surrogate.models.base import SparamModel
 from sparam_surrogate.outputs.naming import get_run_id
 from sparam_surrogate.utils.filesystem import ensure_dir
@@ -34,6 +37,21 @@ METADATA_JSON = "metadata.json"
 # Filename for the run-local artifact index.
 MANIFEST_JSON = "manifest.json"
 
+# Filename for the resolved configuration snapshot.
+CONFIG_RESOLVED_JSON = "config_resolved.json"
+
+# Filename for the runtime environment snapshot.
+ENVIRONMENT_JSON = "environment.json"
+
+# Filename for train/validation/test split summary rows.
+SPLIT_SUMMARY_CSV = "split_summary.csv"
+
+# Directory for run-local figures.
+FIGURES_DIR = "figures"
+
+# Reserved directory for future prediction artifacts.
+PREDICTIONS_DIR = "predictions"
+
 # Filename for final model-run metrics.
 METRICS_JSON = "metrics.json"
 
@@ -42,6 +60,15 @@ VALIDATION_RESULTS_CSV = "validation_results.csv"
 
 # Filename for epoch-by-epoch neural training history.
 TRAINING_HISTORY_CSV = "training_history.csv"
+
+# Distribution names captured in environment.json when available.
+ENVIRONMENT_PACKAGES = {
+    "numpy": "numpy",
+    "pandas": "pandas",
+    "scikit-learn": "scikit-learn",
+    "keras": "keras",
+    "tensorflow": "tensorflow",
+}
 
 
 @dataclass(frozen=True)
@@ -352,12 +379,18 @@ class RunManifest:
     artifacts: Mapping[str, str]  # Run-relative artifact filenames by role.
     completed_steps: tuple[str, ...] = ()  # Workflow steps completed so far.
     model: Mapping[str, Any] | None = None  # Optional model identity block.
+    figures: Mapping[str, str] | None = None  # Saved figures by short role.
 
     # Manifest schema version written into every manifest.json file.
     SCHEMA_VERSION: ClassVar[int] = 1
 
     # Known artifact files included when they already exist on disk.
     ARTIFACT_FILENAMES: ClassVar[tuple[tuple[str, str], ...]] = (
+        ("config", CONFIG_RESOLVED_JSON),
+        ("environment", ENVIRONMENT_JSON),
+        ("split_summary", SPLIT_SUMMARY_CSV),
+        ("figures", FIGURES_DIR),
+        ("predictions", PREDICTIONS_DIR),
         ("metadata", METADATA_JSON),
         ("model", MODEL_JOBLIB),
         ("model", MODEL_KERAS),
@@ -383,6 +416,7 @@ class RunManifest:
             artifacts=cls._existing_artifacts(source),
             completed_steps=tuple(completed_steps),
             model=cls._model_from_metadata(source),
+            figures=cls._saved_figures(source),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -397,6 +431,8 @@ class RunManifest:
         }
         if self.model is not None:
             manifest["model"] = dict(self.model)
+        if self.figures:
+            manifest["figures"] = dict(self.figures)
         return json_ready(manifest)
 
     def save(self, path: Path | str) -> None:
@@ -412,7 +448,7 @@ class RunManifest:
         """
         artifacts: dict[str, str] = {}
         for role, filename in cls.ARTIFACT_FILENAMES:
-            if (run_dir / filename).is_file():
+            if (run_dir / filename).exists():
                 artifacts[role] = filename
         return artifacts
 
@@ -430,6 +466,22 @@ class RunManifest:
         if isinstance(model_info, Mapping):
             return dict(model_info)
         return None
+
+    @staticmethod
+    def _saved_figures(run_dir: Path) -> dict[str, str] | None:
+        """
+        Return saved PNG figures keyed by filename stem.
+        """
+        figures_dir = run_dir / FIGURES_DIR
+        if not figures_dir.is_dir():
+            return None
+
+        figures = {
+            path.stem: f"{FIGURES_DIR}/{path.name}"
+            for path in sorted(figures_dir.glob("*.png"))
+            if path.is_file()
+        }
+        return figures or None
 
 
 @dataclass(frozen=True)
@@ -647,18 +699,102 @@ def save_run_training_history(
     return path
 
 
-def build_run_manifest(
-    run_dir: Path | str,
+def build_resolved_config(config: SurrogateConfig) -> dict[str, Any]:
+    """
+    Build the JSON-ready resolved configuration snapshot.
+    """
+    return json_ready(
+        {
+            "config": asdict(config),
+            "schema_version": 1,
+        }
+    )
+
+
+def save_run_config(run_dir: Path | str, config: SurrogateConfig) -> Path:
+    """
+    Save the resolved configuration snapshot into an existing run directory.
+    """
+    destination = ensure_dir(run_dir)
+    path = destination / CONFIG_RESOLVED_JSON
+    _ensure_missing(path)
+    write_json(path, build_resolved_config(config))
+    return path
+
+
+def build_environment_metadata(
     *,
-    completed_steps: Iterable[str] = (),
+    package_names: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """
-    Build a minimal manifest for artifacts currently present in a run directory.
+    Build runtime environment metadata for a persisted run.
     """
-    return RunManifest.from_run_dir(
-        run_dir,
-        completed_steps=completed_steps,
-    ).to_dict()
+    packages = _package_versions(package_names or ENVIRONMENT_PACKAGES)
+    return {
+        "packages": packages,
+        "platform": {
+            "machine": runtime_platform.machine(),
+            "platform": runtime_platform.platform(),
+            "system": runtime_platform.system(),
+        },
+        "python": {
+            "implementation": runtime_platform.python_implementation(),
+            "version": runtime_platform.python_version(),
+        },
+        "schema_version": 1,
+    }
+
+
+def save_run_environment(run_dir: Path | str) -> Path:
+    """
+    Save runtime environment metadata into an existing run directory.
+    """
+    destination = ensure_dir(run_dir)
+    path = destination / ENVIRONMENT_JSON
+    _ensure_missing(path)
+    write_json(path, build_environment_metadata())
+    return path
+
+
+def save_run_split_summary(run_dir: Path | str, summary: Any) -> Path:
+    """
+    Save a train/validation/test split summary into an existing run directory.
+    """
+    destination = ensure_dir(run_dir)
+    path = destination / SPLIT_SUMMARY_CSV
+    _ensure_missing(path)
+    _split_summary_table(summary).to_csv(path, index=False)
+    return path
+
+
+def create_run_artifact_dirs(run_dir: Path | str) -> dict[str, Path]:
+    """
+    Create run-local figure and reserved prediction directories.
+    """
+    destination = ensure_dir(run_dir)
+    return {
+        "figures": ensure_dir(destination / FIGURES_DIR),
+        "predictions": ensure_dir(destination / PREDICTIONS_DIR),
+    }
+
+
+def save_run_figure(
+    run_dir: Path | str,
+    figure: Any,
+    filename: Path | str,
+    *,
+    dpi: int = 150,
+) -> Path:
+    """
+    Save a matplotlib-like figure under the run-local figures directory.
+    """
+    figures_dir = ensure_dir(Path(run_dir) / FIGURES_DIR)
+    figure_path = figures_dir / Path(filename).name
+    if not figure_path.suffix:
+        figure_path = figure_path.with_suffix(".png")
+    _ensure_missing(figure_path)
+    figure.savefig(figure_path, dpi=dpi, bbox_inches="tight")
+    return figure_path
 
 
 def save_run_manifest(
@@ -720,6 +856,34 @@ def _ensure_no_existing_artifacts(run_dir: Path) -> None:
     if existing:
         names = ", ".join(path.name for path in existing)
         raise FileExistsError(f"Model artifact already exists: {names}")
+
+
+def _package_versions(package_names: Mapping[str, str]) -> dict[str, str]:
+    """
+    Return installed package versions keyed by display name.
+    """
+    packages: dict[str, str] = {}
+    for display_name, distribution_name in package_names.items():
+        try:
+            packages[display_name] = version(distribution_name)
+        except PackageNotFoundError:
+            continue
+    return packages
+
+
+def _split_summary_table(summary: Any) -> pd.DataFrame:
+    """
+    Return split summary data as a dataframe.
+    """
+    if isinstance(summary, pd.DataFrame):
+        return summary.copy()
+    if isinstance(summary, Mapping):
+        rows = [
+            {"split": split_name, **dict(split_summary)}
+            for split_name, split_summary in summary.items()
+        ]
+        return pd.DataFrame(rows)
+    return pd.DataFrame(summary)
 
 
 def _ensure_missing(path: Path) -> None:
