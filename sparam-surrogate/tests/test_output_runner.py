@@ -145,11 +145,21 @@ def test_runner_persists_full_workflow_and_refreshes_benchmarks(
             "target_scope": "vector",
             "target_units": "dB",
         },
+        extra_metrics={
+            "per_target": {
+                "S7_1_DB": {
+                    "validation": {"MAE": 0.01, "RMSE": 0.02},
+                    "test": {"MAE": 0.03, "RMSE": 0.04},
+                }
+            }
+        },
         metric_units={"MAE": "dB", "RMSE": "dB"},
     )
 
     run_dir = cfg.paths.runs / "20260705T153000Z_scalar_ridge"
+    saved_metrics = read_json(run_dir / "metrics.json")["metrics"]
     assert paths["model"] == run_dir / "model.joblib"
+    assert saved_metrics["per_target"]["S7_1_DB"]["test"]["MAE"] == 0.03
     assert (run_dir / "config_resolved.json").is_file()
     assert (run_dir / "environment.json").is_file()
     assert (run_dir / "validation_results.csv").is_file()
@@ -161,6 +171,12 @@ def test_runner_persists_full_workflow_and_refreshes_benchmarks(
     ).is_file()
     assert (
         cfg.paths.benchmarks / "vector_magnitude_db_selected.csv"
+    ).is_file()
+    assert (
+        cfg.paths.benchmarks / "s7_1_magnitude_db_latest.csv"
+    ).is_file()
+    assert (
+        cfg.paths.benchmarks / "s7_1_magnitude_db_selected.csv"
     ).is_file()
     assert read_json(run_dir / "manifest.json")["completed_steps"] == [
         "train",

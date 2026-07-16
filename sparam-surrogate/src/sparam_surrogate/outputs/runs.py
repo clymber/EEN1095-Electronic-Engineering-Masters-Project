@@ -16,6 +16,7 @@ from typing import Any, ClassVar, cast
 import pandas as pd
 from joblib import dump, load
 
+from sparam_surrogate.config.paths import relative_to_project_root
 from sparam_surrogate.config.surrogate_config import SurrogateConfig
 from sparam_surrogate.models.base import SparamModel
 from sparam_surrogate.outputs.naming import get_run_id
@@ -156,6 +157,18 @@ class ModelRunArtifactManager:
         Save training history into this run directory.
         """
         return save_run_training_history(self.run_dir, history, model=model)
+
+    def save_figure(
+        self,
+        figure: Any,
+        filename: Path | str,
+        *,
+        dpi: int = 150,
+    ) -> Path:
+        """
+        Save a matplotlib-like figure into this run directory.
+        """
+        return save_run_figure(self.run_dir, figure, filename, dpi=dpi)
 
     def save_manifest(
         self,
@@ -703,9 +716,28 @@ def build_resolved_config(config: SurrogateConfig) -> dict[str, Any]:
     """
     Build the JSON-ready resolved configuration snapshot.
     """
+    project_root = config.paths.outputs.parent
+    resolved_config = asdict(config)
+    resolved_config["paths"] = {
+        name: relative_to_project_root(path, project_root=project_root)
+        for name, path in resolved_config["paths"].items()
+    }
+    resolved_config["dataset"]["path"] = relative_to_project_root(
+        config.dataset.path,
+        project_root=project_root,
+    )
+    resolved_config["dataset"]["parameter_csv"] = relative_to_project_root(
+        config.dataset.parameter_csv,
+        project_root=project_root,
+    )
+    resolved_config["preprocessing"]["processed_csv"] = relative_to_project_root(
+        config.preprocessing.processed_csv,
+        project_root=project_root,
+    )
+
     return json_ready(
         {
-            "config": asdict(config),
+            "config": resolved_config,
             "schema_version": 1,
         }
     )

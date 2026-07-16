@@ -15,6 +15,7 @@ from sparam_surrogate.config.surrogate_config import (
 from sparam_surrogate.outputs.runs import (
     ModelRunArtifactManager,
     build_environment_metadata,
+    build_resolved_config,
     create_run_artifact_dirs,
     save_run_config,
     save_run_environment,
@@ -78,9 +79,41 @@ def test_save_config_writes_json_ready_resolved_config(tmp_path: Path) -> None:
     assert path == manager.run_dir / "config_resolved.json"
     assert data["schema_version"] == 1
     assert data["config"]["project"] == {"name": "demo-project", "seed": 123}
-    assert data["config"]["paths"]["runs"].endswith("outputs/runs")
+    assert data["config"]["paths"]["runs"] == "outputs/runs"
+    assert data["config"]["dataset"]["parameter_csv"] == (
+        "data/raw/demo-dataset/params.csv"
+    )
     assert data["config"]["dataset"]["ports"] == [[1, 2]]
     assert data["config"]["preprocessing"]["val_fraction"] == 0.2
+
+
+def test_build_resolved_config_writes_project_relative_paths(
+    tmp_path: Path,
+) -> None:
+    """
+    Resolved config snapshots shorten paths beneath the project root.
+    """
+    data = build_resolved_config(_config(tmp_path))
+    config = data["config"]
+
+    assert config["paths"] == {
+        "benchmarks": "outputs/benchmarks",
+        "figures": "outputs/figures",
+        "logs": "outputs/logs",
+        "models": "outputs/models",
+        "outputs": "outputs",
+        "processed_data": "data/processed",
+        "raw_data": "data/raw",
+        "reports": "outputs/reports",
+        "runs": "outputs/runs",
+    }
+    assert config["dataset"]["path"] == "data/raw/demo-dataset"
+    assert config["dataset"]["parameter_csv"] == (
+        "data/raw/demo-dataset/params.csv"
+    )
+    assert config["preprocessing"]["processed_csv"] == (
+        "data/processed/cleaned.csv"
+    )
 
 
 def test_save_environment_writes_runtime_versions(tmp_path: Path) -> None:
