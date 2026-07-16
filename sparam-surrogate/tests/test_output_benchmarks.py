@@ -117,6 +117,13 @@ def _vector_path(outputs_root: Path, selection: str) -> Path:
     return outputs_root / "benchmarks" / f"vector_magnitude_db_{selection}.csv"
 
 
+def _s7_path(outputs_root: Path, selection: str) -> Path:
+    """
+    Return the S7_1 benchmark path for a selection.
+    """
+    return outputs_root / "benchmarks" / f"s7_1_magnitude_db_{selection}.csv"
+
+
 def test_refresh_latest_benchmarks_writes_and_replaces_vector_row(
     tmp_path: Path,
 ) -> None:
@@ -217,6 +224,60 @@ def test_refresh_benchmarks_writes_s7_and_per_target_summaries(
         {
             "model_name": "scalar_ridge",
             "target_name": "S7_1_DB",
+            "val_mae_db": 0.11,
+            "val_rmse_db": 0.33,
+            "test_mae_db": 0.22,
+            "test_rmse_db": 0.44,
+            "run_id": manager.run_id,
+        }
+    ]
+
+
+def test_refresh_benchmarks_writes_s7_row_for_vector_per_target_metrics(
+    tmp_path: Path,
+) -> None:
+    """
+    Vector runs contribute S7_1 summaries from per-target metrics.
+    """
+    outputs_root = tmp_path / "outputs"
+    metrics = {
+        **METRICS_A,
+        "per_target": {
+            "S7_1_DB": {
+                "validation": {"MAE": 0.11, "RMSE": 0.33},
+                "test": {"MAE": 0.22, "RMSE": 0.44},
+            },
+            "S8_2_DB": {
+                "validation": {"MAE": 0.15, "RMSE": 0.35},
+                "test": {"MAE": 0.25, "RMSE": 0.45},
+            },
+        },
+    }
+    manager = _save_run(
+        outputs_root,
+        "20260705T153000Z",
+        metrics=metrics,
+        target_scope="vector",
+        target_names=["S7_1_DB", "S8_2_DB"],
+    )
+    registry = _registry(outputs_root, tmp_path)
+    registry.register_run(manager.run_dir)
+
+    paths = refresh_benchmarks(
+        outputs_root / "benchmarks",
+        registry,
+        "scalar_ridge",
+        selection="latest",
+    )
+
+    assert [path.name for path in paths] == [
+        "vector_magnitude_db_latest.csv",
+        "s7_1_magnitude_db_latest.csv",
+        "per_target_magnitude_db_latest.csv",
+    ]
+    assert _rows(_s7_path(outputs_root, "latest")) == [
+        {
+            "model_name": "scalar_ridge",
             "val_mae_db": 0.11,
             "val_rmse_db": 0.33,
             "test_mae_db": 0.22,

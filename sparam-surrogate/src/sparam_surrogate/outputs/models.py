@@ -6,7 +6,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from functools import partial
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -81,16 +80,26 @@ class ModelRegistryEntry:
         if isinstance(data_interface, Mapping):
             dataset_name = data_interface.get("dataset_name")
 
-        project_relative = partial(relative_to_project_root, project_root=project_root)
-
         return cls(
             run_id=run_path.name,
             model_name=str(model_info["name"]),
             model_family=str(model_info["family"]),
-            run_path=project_relative(run_path),
-            artifact_path=project_relative(artifact_path),
-            metadata_path=project_relative(metadata_path),
-            metrics_path=project_relative(run_path / METRICS_JSON),
+            run_path=relative_to_project_root(
+                run_path,
+                project_root=project_root,
+            ),
+            artifact_path=relative_to_project_root(
+                artifact_path,
+                project_root=project_root,
+            ),
+            metadata_path=relative_to_project_root(
+                metadata_path,
+                project_root=project_root,
+            ),
+            metrics_path=relative_to_project_root(
+                run_path / METRICS_JSON,
+                project_root=project_root,
+            ),
             created_at=created_at_from_run_id(run_path.name),
             dataset_name=_optional_str(dataset_name),
             artifact_type=_optional_str(model_info.get("artifact_type")),

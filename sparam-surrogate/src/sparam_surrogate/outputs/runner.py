@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Generic, TypeVar, cast
 
 from sparam_surrogate.config.surrogate_config import SurrogateConfig
 from sparam_surrogate.models.base import SparamModel
@@ -18,11 +18,12 @@ from sparam_surrogate.outputs.runs import (
     create_run_artifact_dirs,
     save_run_config,
     save_run_environment,
-    save_run_figure,
 )
 
+ModelT = TypeVar("ModelT", bound=SparamModel)
 
-class ModelRunRunner:
+
+class ModelRunRunner(Generic[ModelT]):
     """
     Coordinate train, validate, test, persist, and benchmark refresh steps.
     """
@@ -30,7 +31,7 @@ class ModelRunRunner:
     def __init__(
         self,
         cfg: SurrogateConfig,
-        model: SparamModel,
+        model: ModelT,
         *,
         timestamp: datetime | str | None = None,
         project_root: Path | str | None = None,
@@ -39,7 +40,7 @@ class ModelRunRunner:
         Create a runner with a fresh run directory.
         """
         self.cfg = cfg
-        self.model = model
+        self.model: ModelT = model
         self.manager = ModelRunArtifactManager.create(
             cfg.paths.runs,
             model.name,
@@ -48,9 +49,9 @@ class ModelRunRunner:
         if project_root is None:
             project_root = cfg.paths.outputs.parent
         self.registry = ModelRegistry(cfg.paths.models, project_root=project_root)
-        self.validation_metrics = None
-        self.test_metrics = None
-        self.completed_steps = []
+        self.validation_metrics: dict[str, float] | None = None
+        self.test_metrics: dict[str, float] | None = None
+        self.completed_steps: list[str] = []
 
     def train(
         self,
@@ -58,7 +59,7 @@ class ModelRunRunner:
         y_train: Any,
         X_val: Any | None = None,  # pylint: disable=invalid-name
         y_val: Any | None = None,
-    ) -> SparamModel:
+    ) -> ModelT:
         """
         Fit the model and record the train step.
         """
@@ -74,9 +75,10 @@ class ModelRunRunner:
         """
         Evaluate validation metrics and record the validate step.
         """
-        self.validation_metrics = self.model.evaluate(X_val, y_val)
+        metrics = self.model.evaluate(X_val, y_val)
+        self.validation_metrics = metrics
         self._record_step("validate")
-        return self.validation_metrics
+        return metrics
 
     def test(
         self,
@@ -86,14 +88,16 @@ class ModelRunRunner:
         """
         Evaluate test metrics and record the test step.
         """
-        self.test_metrics = self.model.evaluate(X_test, y_test)
+        metrics = self.model.evaluate(X_test, y_test)
+        self.test_metrics = metrics
         self._record_step("test")
-        return self.test_metrics
+        return metrics
 
     def persist(
         self,
         *,
         data_interface: Mapping[str, Any] | None = None,
+        extra_metrics: Mapping[str, Any] | None = None,
         metric_units: Mapping[str, str] | None = None,
         refresh_benchmarks: bool = True,
     ) -> dict[str, Path]:
@@ -115,18 +119,21 @@ class ModelRunRunner:
             artifact_paths["training_history"] = (
                 self.manager.save_training_history(model=self.model)
             )
-            figure_path = _save_training_history_figure(
-                self.model,
-                self.manager.run_dir,
-            )
+            figure_path = self._save_training_history_figure()
             if figure_path is not None:
                 artifact_paths["training_history_figure"] = figure_path
 
-        metrics: dict[str, dict[str, float]] = {}
+        metrics: dict[str, Any] = {}
         if self.validation_metrics is not None:
             metrics["validation"] = self.validation_metrics
         if self.test_metrics is not None:
             metrics["test"] = self.test_metrics
+        if extra_metrics is not None:
+            duplicate_keys = set(metrics).intersection(extra_metrics)
+            if duplicate_keys:
+                names = ", ".join(sorted(duplicate_keys))
+                raise ValueError(f"extra_metrics duplicates run metrics: {names}")
+            metrics.update(extra_metrics)
         if metrics:
             artifact_paths["metrics"] = self.manager.save_metrics(
                 metrics,
@@ -161,23 +168,19 @@ class ModelRunRunner:
         if step not in self.completed_steps:
             self.completed_steps.append(step)
 
+    def _save_training_history_figure(self) -> Path | None:
+        """
+        Save a training-history figure when the model exposes a plot method.
+        """
+        plot_training_history = getattr(self.model, "plot_training_history", None)
+        if not callable(plot_training_history):
+            return None
 
-def _save_training_history_figure(
-    model: SparamModel,
-    run_dir: Path,
-) -> Path | None:
-    """
-    Save a training-history figure when the model exposes a plot method.
-    """
-    plot_training_history = getattr(model, "plot_training_history", None)
-    if not callable(plot_training_history):
-        return None
+        from matplotlib import pyplot as plt
+        from matplotlib.figure import Figure
 
-    from matplotlib import pyplot as plt
-    from matplotlib.figure import Figure
-
-    fig = cast(Figure, plot_training_history())
-    try:
-        return save_run_figure(run_dir, fig, "training_history.png")
-    finally:
-        plt.close(fig)
+        fig = cast(Figure, plot_training_history())
+        try:
+            return self.manager.save_figure(fig, "training_history.png")
+        finally:
+            plt.close(fig)

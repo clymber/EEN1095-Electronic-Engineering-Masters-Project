@@ -123,14 +123,15 @@ def _benchmark_rows(
     metadata = read_json(metadata_path) if metadata_path.is_file() else {}
     rows_by_benchmark: dict[str, list[dict[str, Any]]] = {}
     aggregate_row = _aggregate_row(entry, metrics)
+    per_target_rows = _per_target_rows(entry, metrics)
 
     if aggregate_row is not None and _is_vector_benchmark(metadata):
         rows_by_benchmark[VECTOR_MAGNITUDE_DB] = [aggregate_row]
 
-    if aggregate_row is not None and _is_s7_1_benchmark(metadata):
-        rows_by_benchmark[S7_1_MAGNITUDE_DB] = [aggregate_row]
+    s7_1_row = _s7_1_row(metadata, aggregate_row, per_target_rows)
+    if s7_1_row is not None:
+        rows_by_benchmark[S7_1_MAGNITUDE_DB] = [s7_1_row]
 
-    per_target_rows = _per_target_rows(entry, metrics)
     if per_target_rows:
         rows_by_benchmark[PER_TARGET_MAGNITUDE_DB] = per_target_rows
 
@@ -178,6 +179,27 @@ def _per_target_rows(
         row["target_name"] = str(target_name)
         rows.append(row)
     return rows
+
+
+def _s7_1_row(
+    metadata: Mapping[str, Any],
+    aggregate_row: dict[str, Any] | None,
+    per_target_rows: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """
+    Return one S7_1 benchmark row from per-target or scalar aggregate metrics.
+    """
+    for row in per_target_rows:
+        if _is_s7_1_target(row.get("target_name")):
+            return {
+                key: value
+                for key, value in row.items()
+                if key != "target_name"
+            }
+
+    if aggregate_row is not None and _is_s7_1_benchmark(metadata):
+        return aggregate_row
+    return None
 
 
 def _metric_value(

@@ -42,6 +42,8 @@ from sparam_surrogate.models import (
     ScalarRidgeModel,
     VectorRidgeModel,
 )
+from sparam_surrogate.outputs.runner import ModelRunRunner
+from sparam_surrogate.utils.json_io import read_json
 from sparam_surrogate.utils.model_prediction_plots import (
     plot_design_model_comparison_curves,
     plot_design_prediction_curves,
@@ -59,6 +61,25 @@ from sparam_surrogate.utils.non_neural_modelling_utils import (
     plot_vector_true_vs_predicted,
     regression_metrics,
 )
+
+
+def per_target_split_metrics(
+    validation_metrics: pd.DataFrame,
+    test_metrics: pd.DataFrame,
+) -> dict[str, dict[str, dict[str, float]]]:
+    """
+    Return run metrics keyed by target name and split.
+    """
+    validation_by_target = validation_metrics.set_index("target")
+    test_by_target = test_metrics.set_index("target")
+    return {
+        str(target_name): {
+            "validation": validation_by_target.loc[target_name].to_dict(),
+            "test": test_by_target.loc[target_name].to_dict(),
+        }
+        for target_name in validation_by_target.index
+    }
+
 
 # %% [markdown]
 # # Non-Neural Network Modelling
@@ -85,6 +106,9 @@ vector_target_names = tuple(vector_db_loader.target_names)
 print(f"Name of raw dataset: {cfg.dataset.name}")
 print(f"Raw data directory: {cfg.dataset.path}")
 print(f"Processed directory: {cfg.paths.processed_data}")
+print(f"Run output directory: {cfg.paths.runs}")
+print(f"Model registry directory: {cfg.paths.models}")
+print(f"Benchmark directory: {cfg.paths.benchmarks}")
 print("Configured IL port pairs: ", *cfg.dataset.ports)
 print(f"Scalar target: {scalar_target_name}")
 print("Vector target names:", *vector_target_names, sep=", ")
@@ -110,6 +134,13 @@ scalar_train_set, scalar_val_set, scalar_test_set = DLDataset.from_cleaned_csv(
     target_loader=scalar_db_loader,
     cache=True,
 )
+scalar_data_interface = {
+    "dataset_name": cfg.dataset.name,
+    "input_features": scalar_train_set.feature_columns,
+    "target_names": (scalar_target_name,),
+    "target_scope": "scalar",
+    "target_units": "dB",
+}
 
 print(f"Number of scalar model training   samples: {len(scalar_train_set)}")
 print(f"Number of scalar model validation samples: {len(scalar_val_set)}")
@@ -252,8 +283,16 @@ print(f"- name={example_scalar_model.name}")
 print(f"- alphas={example_scalar_model.alphas}")
 
 # %%
-scalar_model = ScalarRidgeModel.from_config(scalar_ridge_config)
-scalar_model.fit(X_train_scalar, y_train_scalar, X_val_scalar, y_val_scalar)
+scalar_runner = ModelRunRunner(
+    cfg,
+    ScalarRidgeModel.from_config(scalar_ridge_config),
+)
+scalar_model = scalar_runner.train(
+    X_train_scalar,
+    y_train_scalar,
+    X_val_scalar,
+    y_val_scalar,
+)
 
 scalar_alpha_results = scalar_model.validation_results
 best_scalar_alpha = scalar_model.best_alpha
@@ -271,13 +310,15 @@ print(f"- Selected scalar regressor: {scalar_model.pipeline.named_steps['model']
 # ### 1.4 Evaluate On Held-Out Test Data
 
 # %%
-y_val_pred_scalar = scalar_model.predict(X_val_scalar)
+scalar_validation_metrics = scalar_runner.validate(X_val_scalar, y_val_scalar)
+scalar_test_metrics = scalar_runner.test(X_test_scalar, y_test_scalar)
+
 y_test_pred_scalar = scalar_model.predict(X_test_scalar)
 
 scalar_metrics = pd.DataFrame(
     [
-        {"split": "validation", **regression_metrics(y_val_scalar, y_val_pred_scalar)},
-        {"split": "test", **regression_metrics(y_test_scalar, y_test_pred_scalar)},
+        {"split": "validation", **scalar_validation_metrics},
+        {"split": "test", **scalar_test_metrics},
     ]
 )
 print(scalar_metrics)
@@ -400,8 +441,9 @@ fig_scalar_mae_frequency = plot_scalar_mae_by_frequency(
 # %% [markdown]
 # 1. **Error increases with frequency**
 #
-#    The MAE rises from about 1 dB at low frequency to about 13–14 dB near 100 GHz. This
-#    shows that the model performs much better at low frequency than at high frequency.
+#    The MAE rises from about 1 dB at low frequency to about 13–14 dB near
+#    100 GHz. This shows that the model performs much better at low frequency
+#    than at high frequency.
 #
 # 2. **High-frequency prediction is the main weakness**
 #
@@ -431,6 +473,36 @@ fig_scalar_mae_frequency = plot_scalar_mae_by_frequency(
 # clearly with frequency. A nonlinear model is needed to improve high-frequency
 # prediction.
 
+# %%
+scalar_runner.manager.save_figure(
+    fig_scalar_distribution,
+    "prediction_band_by_frequency.png",
+)
+scalar_runner.manager.save_figure(
+    fig_random_scalar_design_curves,
+    "selected_design_curves_magnitude_db.png",
+)
+scalar_runner.manager.save_figure(
+    fig_scalar_scatter,
+    "true_vs_predicted.png",
+)
+scalar_runner.manager.save_figure(
+    fig_scalar_mae_frequency,
+    "mae_by_frequency.png",
+)
+
+scalar_artifact_paths = scalar_runner.persist(
+    data_interface=scalar_data_interface,
+    metric_units={"MAE": "dB", "RMSE": "dB"},
+)
+scalar_manifest = read_json(scalar_artifact_paths["manifest"])
+
+print(f"Scalar Ridge run directory: {scalar_runner.manager.run_dir}")
+print("Scalar Ridge artifacts:")
+for artifact_name, artifact_path in scalar_artifact_paths.items():
+    print(f"- {artifact_name}: {artifact_path}")
+print("\nScalar Ridge manifest figures:", scalar_manifest.get("figures", {}))
+
 # %% [markdown]
 # The scalar experiment is now complete. Its figures and predictions are retained,
 # but the large scalar dataset and feature arrays are released before loading the
@@ -440,7 +512,7 @@ fig_scalar_mae_frequency = plot_scalar_mae_by_frequency(
 # %%
 del scalar_train_set, scalar_val_set, scalar_test_set
 del X_train_scalar, X_val_scalar, X_test_scalar
-del y_train_scalar, y_val_scalar, y_test_scalar, y_val_pred_scalar
+del y_train_scalar, y_val_scalar, y_test_scalar
 
 # %% [markdown]
 # ## 2. Vector Insertion Loss Baseline
@@ -462,6 +534,13 @@ vector_train_set, vector_val_set, vector_test_set = DLDataset.from_cleaned_csv(
     target_loader=vector_db_loader,
     cache=True,
 )
+vector_data_interface = {
+    "dataset_name": cfg.dataset.name,
+    "input_features": vector_train_set.feature_columns,
+    "target_names": vector_target_names,
+    "target_scope": "vector",
+    "target_units": "dB",
+}
 
 print(f"Number of training   samples: {len(vector_train_set)}")
 print(f"Number of validation samples: {len(vector_val_set)}")
@@ -542,8 +621,11 @@ print(f"Target names of vector model: {vector_target_names}")
 
 # %%
 vector_ridge_config = cfg.models.vector_ridge
-vector_model = VectorRidgeModel.from_config(vector_ridge_config)
-vector_model.fit(X_train, Y_train, X_val, Y_val)
+vector_runner = ModelRunRunner(
+    cfg,
+    VectorRidgeModel.from_config(vector_ridge_config),
+)
+vector_model = vector_runner.train(X_train, Y_train, X_val, Y_val)
 
 vector_alpha_results = vector_model.validation_results
 best_vector_alpha = vector_model.best_alpha
@@ -589,16 +671,32 @@ print(f"Selected vector regressor: {vector_model.pipeline.named_steps['model']}"
 # ### 2.4 Vector Ridge Model Evaluation
 
 # %%
+vector_validation_metrics = vector_runner.validate(X_val, Y_val)
+vector_test_metrics = vector_runner.test(X_test, Y_test)
+
 Y_val_pred = vector_model.predict(X_val)  # pylint: disable=invalid-name
 Y_test_pred = vector_model.predict(X_test)  # pylint: disable=invalid-name
 
 vector_metrics = pd.DataFrame(
     [
-        {"split": "validation", **regression_metrics(Y_val, Y_val_pred)},
-        {"split": "test", **regression_metrics(Y_test, Y_test_pred)},
+        {"split": "validation", **vector_validation_metrics},
+        {"split": "test", **vector_test_metrics},
     ]
 )
-per_target_test_metrics = per_target_metrics(Y_test, Y_test_pred, vector_target_names)
+per_target_validation_metrics = per_target_metrics(
+    Y_val,
+    Y_val_pred,
+    vector_target_names,
+)
+per_target_test_metrics = per_target_metrics(
+    Y_test,
+    Y_test_pred,
+    vector_target_names,
+)
+vector_per_target_run_metrics = per_target_split_metrics(
+    per_target_validation_metrics,
+    per_target_test_metrics,
+)
 
 print("Overall vector metrics:", vector_metrics, sep="\n")
 print("\nPer-port-pair test metrics:", per_target_test_metrics, sep="\n")
@@ -742,8 +840,8 @@ fig_vector_mae_frequency = plot_vector_mae_by_frequency(
 # 1. **Error increases with frequency**
 #
 #    The MAE is low at the beginning of the frequency range, around `1 dB`, but rises
-#    steadily to about `13–14 dB` near `100 GHz`. This shows that the Vector Ridge model
-#    becomes less accurate as frequency increases.
+#    steadily to about `13–14 dB` near `100 GHz`. This shows that the Vector
+#    Ridge model becomes less accurate as frequency increases.
 #
 # 2. **All six links follow almost the same error trend**
 #
@@ -763,6 +861,37 @@ fig_vector_mae_frequency = plot_vector_mae_by_frequency(
 #    strongly with frequency. A more expressive nonlinear model is needed to improve
 #    prediction accuracy, especially in the high-frequency region.
 #
+
+# %%
+vector_runner.manager.save_figure(
+    fig_vector_distributions,
+    "prediction_bands_by_frequency.png",
+)
+vector_runner.manager.save_figure(
+    fig_random_vector_design_curves,
+    "selected_design_curves_magnitude_db.png",
+)
+vector_runner.manager.save_figure(
+    fig_vector_scatter,
+    "true_vs_predicted.png",
+)
+vector_runner.manager.save_figure(
+    fig_vector_mae_frequency,
+    "mae_by_frequency.png",
+)
+
+vector_artifact_paths = vector_runner.persist(
+    data_interface=vector_data_interface,
+    extra_metrics={"per_target": vector_per_target_run_metrics},
+    metric_units={"MAE": "dB", "RMSE": "dB"},
+)
+vector_manifest = read_json(vector_artifact_paths["manifest"])
+
+print(f"Vector Ridge run directory: {vector_runner.manager.run_dir}")
+print("Vector Ridge artifacts:")
+for artifact_name, artifact_path in vector_artifact_paths.items():
+    print(f"- {artifact_name}: {artifact_path}")
+print("\nVector Ridge manifest figures:", vector_manifest.get("figures", {}))
 
 # %% [markdown]
 # ## 3. Polynomial Vector Baseline
@@ -787,8 +916,11 @@ fig_vector_mae_frequency = plot_vector_mae_by_frequency(
 
 # %%
 polynomial_ridge_config = cfg.models.polynomial_ridge
-polynomial_model = PolynomialModel.from_config(polynomial_ridge_config)
-polynomial_model.fit(X_train, Y_train, X_val, Y_val)
+polynomial_runner = ModelRunRunner(
+    cfg,
+    PolynomialModel.from_config(polynomial_ridge_config),
+)
+polynomial_model = polynomial_runner.train(X_train, Y_train, X_val, Y_val)
 
 polynomial_validation_results = polynomial_model.validation_results
 best_polynomial_degree = polynomial_model.best_degree
@@ -840,13 +972,16 @@ print(f"Selected polynomial pipeline:\n{polynomial_model.pipeline}")
 # ### 3.2 Polynomial Evaluation
 
 # %%
+polynomial_validation_metrics = polynomial_runner.validate(X_val, Y_val)
+polynomial_test_metrics = polynomial_runner.test(X_test, Y_test)
+
 Y_val_pred_poly = polynomial_model.predict(X_val)  # pylint: disable=invalid-name
 Y_test_pred_poly = polynomial_model.predict(X_test)  # pylint: disable=invalid-name
 
 polynomial_metrics = pd.DataFrame(
     [
-        {"split": "validation", **regression_metrics(Y_val, Y_val_pred_poly)},
-        {"split": "test", **regression_metrics(Y_test, Y_test_pred_poly)},
+        {"split": "validation", **polynomial_validation_metrics},
+        {"split": "test", **polynomial_test_metrics},
     ]
 )
 
@@ -874,6 +1009,15 @@ per_target_polynomial_metrics = per_target_metrics(
     Y_test,
     Y_test_pred_poly,
     vector_target_names,
+)
+per_target_polynomial_validation_metrics = per_target_metrics(
+    Y_val,
+    Y_val_pred_poly,
+    vector_target_names,
+)
+polynomial_per_target_run_metrics = per_target_split_metrics(
+    per_target_polynomial_validation_metrics,
+    per_target_polynomial_metrics,
 )
 per_target_polynomial_comparison = per_target_polynomial_metrics.copy()
 per_target_polynomial_comparison.insert(0, "model", "Polynomial")
@@ -991,6 +1135,36 @@ fig_model_mae_comparison_frequency = plot_model_mae_comparison_by_frequency(
 # shape shows that a more expressive nonlinear model is still needed for
 # substantial improvement.
 #
+
+# %%
+polynomial_runner.manager.save_figure(
+    fig_polynomial_distributions,
+    "prediction_bands_by_frequency.png",
+)
+polynomial_runner.manager.save_figure(
+    fig_random_polynomial_design_curves,
+    "selected_design_curves_magnitude_db.png",
+)
+polynomial_runner.manager.save_figure(
+    fig_model_mae_comparison_frequency,
+    "ridge_polynomial_mae_by_frequency.png",
+)
+
+polynomial_artifact_paths = polynomial_runner.persist(
+    data_interface=vector_data_interface,
+    extra_metrics={"per_target": polynomial_per_target_run_metrics},
+    metric_units={"MAE": "dB", "RMSE": "dB"},
+)
+polynomial_manifest = read_json(polynomial_artifact_paths["manifest"])
+
+print(f"Polynomial Ridge run directory: {polynomial_runner.manager.run_dir}")
+print("Polynomial Ridge artifacts:")
+for artifact_name, artifact_path in polynomial_artifact_paths.items():
+    print(f"- {artifact_name}: {artifact_path}")
+print(
+    "\nPolynomial Ridge manifest figures:",
+    polynomial_manifest.get("figures", {}),
+)
 
 # %% [markdown]
 # ### 3.5 Why Polynomial Ridge Only Gives A Limited Improvement
@@ -1126,8 +1300,11 @@ fig_model_mae_comparison_frequency = plot_model_mae_comparison_by_frequency(
 
 # %%
 random_forest_config = cfg.models.random_forest
-random_forest_model = RandomForestModel.from_config(random_forest_config)
-random_forest_model.fit(X_train, Y_train, X_val, Y_val)
+random_forest_runner = ModelRunRunner(
+    cfg,
+    RandomForestModel.from_config(random_forest_config),
+)
+random_forest_model = random_forest_runner.train(X_train, Y_train, X_val, Y_val)
 
 random_forest_validation_results = random_forest_model.validation_results
 if random_forest_validation_results is None:
@@ -1140,16 +1317,33 @@ print(f"Selected Random Forest model:\n{random_forest_model.regressor}")
 # ### 4.2 Random Forest Evaluation
 
 # %%
-Y_train_pred_rf = random_forest_model.predict(X_train)  # pylint: disable=invalid-name
+random_forest_train_metrics = random_forest_model.evaluate(X_train, Y_train)
+random_forest_validation_metrics = random_forest_runner.validate(X_val, Y_val)
+random_forest_test_metrics = random_forest_runner.test(X_test, Y_test)
+
 Y_val_pred_rf = random_forest_model.predict(X_val)  # pylint: disable=invalid-name
 Y_test_pred_rf = random_forest_model.predict(X_test)  # pylint: disable=invalid-name
 
 random_forest_metrics = pd.DataFrame(
     [
-        {"split": "train", **regression_metrics(Y_train, Y_train_pred_rf)},
-        {"split": "validation", **regression_metrics(Y_val, Y_val_pred_rf)},
-        {"split": "test", **regression_metrics(Y_test, Y_test_pred_rf)},
+        {"split": "train", **random_forest_train_metrics},
+        {"split": "validation", **random_forest_validation_metrics},
+        {"split": "test", **random_forest_test_metrics},
     ]
+)
+per_target_random_forest_validation_metrics = per_target_metrics(
+    Y_val,
+    Y_val_pred_rf,
+    vector_target_names,
+)
+per_target_random_forest_metrics = per_target_metrics(
+    Y_test,
+    Y_test_pred_rf,
+    vector_target_names,
+)
+random_forest_per_target_run_metrics = per_target_split_metrics(
+    per_target_random_forest_validation_metrics,
+    per_target_random_forest_metrics,
 )
 
 print(f"Random Forest vector metrics:\n{random_forest_metrics}")
@@ -1418,3 +1612,89 @@ fig_s7_four_model_distributions = plot_shared_target_prediction_bands(
 # strengthens the case for a model class that can preserve the richer response
 # shape while improving pointwise generalisation.
 #
+
+# %%
+random_forest_runner.manager.save_figure(
+    fig_random_forest_scatter,
+    "true_vs_predicted.png",
+)
+random_forest_runner.manager.save_figure(
+    fig_random_forest_distributions,
+    "prediction_bands_by_frequency.png",
+)
+random_forest_runner.manager.save_figure(
+    fig_vector_model_mae_comparison_frequency,
+    "vector_model_mae_by_frequency.png",
+)
+random_forest_runner.manager.save_figure(
+    fig_polynomial_random_forest_design_comparison,
+    "polynomial_random_forest_design_comparison.png",
+)
+random_forest_runner.manager.save_figure(
+    fig_s7_four_model_mae_frequency,
+    "s7_1_four_model_mae_by_frequency.png",
+)
+random_forest_runner.manager.save_figure(
+    fig_s7_four_model_distributions,
+    "s7_1_four_model_prediction_bands.png",
+)
+
+random_forest_artifact_paths = random_forest_runner.persist(
+    data_interface=vector_data_interface,
+    extra_metrics={"per_target": random_forest_per_target_run_metrics},
+    metric_units={"MAE": "dB", "RMSE": "dB"},
+)
+random_forest_manifest = read_json(random_forest_artifact_paths["manifest"])
+
+print(f"Random Forest run directory: {random_forest_runner.manager.run_dir}")
+print("Random Forest artifacts:")
+for artifact_name, artifact_path in random_forest_artifact_paths.items():
+    print(f"- {artifact_name}: {artifact_path}")
+print(
+    "\nRandom Forest manifest figures:",
+    random_forest_manifest.get("figures", {}),
+)
+
+# %% [markdown]
+# ## Persisted Output Summary
+#
+# The notebook now writes into the planned output hierarchy:
+#
+# - `outputs/runs/<run_id>/` for immutable run artifacts.
+# - `outputs/models/*.json` for latest and selected model pointers.
+# - `outputs/benchmarks/*.csv` for comparison rows.
+
+# %%
+latest_model_registry = read_json(cfg.paths.models / "latest.json")
+selected_model_registry = read_json(cfg.paths.models / "selected.json")
+s7_latest_benchmark_path = cfg.paths.benchmarks / "s7_1_magnitude_db_latest.csv"
+s7_selected_benchmark_path = (
+    cfg.paths.benchmarks / "s7_1_magnitude_db_selected.csv"
+)
+vector_latest_benchmark_path = (
+    cfg.paths.benchmarks / "vector_magnitude_db_latest.csv"
+)
+vector_selected_benchmark_path = (
+    cfg.paths.benchmarks / "vector_magnitude_db_selected.csv"
+)
+
+print("Latest model registry entries:")
+print(sorted(latest_model_registry.get("models", {})))
+print("\nSelected model registry entries:")
+print(sorted(selected_model_registry.get("models", {})))
+
+if s7_latest_benchmark_path.is_file():
+    print("\nLatest S7_1 benchmark:")
+    print(pd.read_csv(s7_latest_benchmark_path))
+
+if s7_selected_benchmark_path.is_file():
+    print("\nSelected S7_1 benchmark:")
+    print(pd.read_csv(s7_selected_benchmark_path))
+
+if vector_latest_benchmark_path.is_file():
+    print("\nLatest vector benchmark:")
+    print(pd.read_csv(vector_latest_benchmark_path))
+
+if vector_selected_benchmark_path.is_file():
+    print("\nSelected vector benchmark:")
+    print(pd.read_csv(vector_selected_benchmark_path))

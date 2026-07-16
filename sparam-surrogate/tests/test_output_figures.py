@@ -54,6 +54,23 @@ def test_save_figure_writes_non_empty_png(tmp_path: Path) -> None:
     assert path.stat().st_size > 0
 
 
+def test_manager_save_figure_uses_run_directory(tmp_path: Path) -> None:
+    """
+    The artifact manager saves figures into its own run directory.
+    """
+    manager = _manager(tmp_path)
+    fig = _figure()
+
+    try:
+        path = manager.save_figure(fig, "validation_curves")
+    finally:
+        plt.close(fig)
+
+    assert path == manager.run_dir / "figures" / "validation_curves.png"
+    assert path.is_file()
+    assert path.stat().st_size > 0
+
+
 def test_manifest_discovers_saved_figures(tmp_path: Path) -> None:
     """
     Manifest records figure roles from saved PNG filenames.

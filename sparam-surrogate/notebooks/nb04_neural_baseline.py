@@ -41,11 +41,29 @@ from sparam_surrogate.models.neural_mlp import (
     PolynomialVectorMLP,
     VectorMLP,
 )
+from sparam_surrogate.outputs.runner import ModelRunRunner
+from sparam_surrogate.utils.json_io import read_json
 from sparam_surrogate.utils.model_prediction_plots import plot_design_prediction_curves
-from sparam_surrogate.utils.non_neural_modelling_utils import (
-    per_target_metrics,
-    regression_metrics,
-)
+from sparam_surrogate.utils.non_neural_modelling_utils import per_target_metrics
+
+
+def per_target_split_metrics(
+    validation_metrics: pd.DataFrame,
+    test_metrics: pd.DataFrame,
+) -> dict[str, dict[str, dict[str, float]]]:
+    """
+    Return run metrics keyed by target name and split.
+    """
+    validation_by_target = validation_metrics.set_index("target")
+    test_by_target = test_metrics.set_index("target")
+    return {
+        str(target_name): {
+            "validation": validation_by_target.loc[target_name].to_dict(),
+            "test": test_by_target.loc[target_name].to_dict(),
+        }
+        for target_name in validation_by_target.index
+    }
+
 
 # %% [markdown]
 # # Neural Network Vector Baseline
@@ -117,6 +135,13 @@ vector_train_set, vector_val_set, vector_test_set = DLDataset.from_cleaned_csv(
     target_loader=vector_db_loader,
     cache=True,
 )
+vector_data_interface = {
+    "dataset_name": cfg.dataset.name,
+    "input_features": vector_train_set.feature_columns,
+    "target_names": vector_target_names,
+    "target_scope": "vector",
+    "target_units": "dB",
+}
 
 print(f"Number of training   samples: {len(vector_train_set)}")
 print(f"Number of validation samples: {len(vector_val_set)}")
@@ -169,8 +194,8 @@ vector_db_loader.clear_cache()
 # tables below use inverse-transformed predictions.
 
 # %%
-neural_model = VectorMLP.from_config(neural_mlp_config)
-neural_model.fit(X_train, Y_train, X_val, Y_val)
+neural_runner = ModelRunRunner(cfg, VectorMLP.from_config(neural_mlp_config))
+neural_model = neural_runner.train(X_train, Y_train, X_val, Y_val)
 
 # %%
 neural_model.keras_model.summary()
@@ -190,6 +215,11 @@ fig_random_neural_design_curves = plot_design_prediction_curves(
     vector_db_loader,
     selected_simu_indices,
 )
+neural_design_curve_path = neural_runner.manager.save_figure(
+    fig_random_neural_design_curves,
+    "selected_design_curves_magnitude_db.png",
+)
+print(f"Saved Neural MLP design-curve plot: {neural_design_curve_path}")
 
 # %% [markdown]
 # ## 4. Neural Baseline Evaluation
@@ -200,8 +230,11 @@ fig_random_neural_design_curves = plot_design_prediction_curves(
 # the non-neural dB-space metrics in `nb03`.
 
 # %%
+neural_train_metrics = neural_model.evaluate(X_train, Y_train)
+neural_validation_metrics = neural_runner.validate(X_val, Y_val)
+neural_test_metrics = neural_runner.test(X_test, Y_test)
+
 # pylint: disable=invalid-name
-Y_train_pred_nn = neural_model.predict(X_train)
 Y_val_pred_nn = neural_model.predict(X_val)
 Y_test_pred_nn = neural_model.predict(X_test)
 # pylint: enable=invalid-name
@@ -210,9 +243,9 @@ assert Y_test_pred_nn.shape == Y_test.shape
 
 neural_metrics = pd.DataFrame(
     [
-        {"split": "train", **regression_metrics(Y_train, Y_train_pred_nn)},
-        {"split": "validation", **regression_metrics(Y_val, Y_val_pred_nn)},
-        {"split": "test", **regression_metrics(Y_test, Y_test_pred_nn)},
+        {"split": "train", **neural_train_metrics},
+        {"split": "validation", **neural_validation_metrics},
+        {"split": "test", **neural_test_metrics},
     ]
 )
 
@@ -220,6 +253,15 @@ per_target_neural_metrics = per_target_metrics(
     Y_test,
     Y_test_pred_nn,
     vector_target_names,
+)
+per_target_neural_validation_metrics = per_target_metrics(
+    Y_val,
+    Y_val_pred_nn,
+    vector_target_names,
+)
+neural_per_target_run_metrics = per_target_split_metrics(
+    per_target_neural_validation_metrics,
+    per_target_neural_metrics,
 )
 
 negative_prediction_count = int(np.sum(Y_test_pred_nn < 0.0))
@@ -231,6 +273,20 @@ print("\nNeural MLP per-target test metrics:", per_target_neural_metrics, sep="\
 print(f"\nNegative IL prediction count: {negative_prediction_count:,}")
 print(f"Negative IL prediction ratio: {negative_prediction_ratio:.4%}")
 print(f"Minimum predicted IL: {minimum_predicted_il:.4f} dB")
+
+# %%
+neural_artifact_paths = neural_runner.persist(
+    data_interface=vector_data_interface,
+    extra_metrics={"per_target": neural_per_target_run_metrics},
+    metric_units={"MAE": "dB", "RMSE": "dB"},
+)
+neural_manifest = read_json(neural_artifact_paths["manifest"])
+
+print(f"Neural MLP run directory: {neural_runner.manager.run_dir}")
+print("Neural MLP artifacts:")
+for artifact_name, artifact_path in neural_artifact_paths.items():
+    print(f"- {artifact_name}: {artifact_path}")
+print("\nNeural MLP manifest figures:", neural_manifest.get("figures", {}))
 
 # %% [markdown]
 # ## Small modelling experiments
@@ -321,10 +377,16 @@ print("|" + "|".join(f"{best_epoch:>7}" for best_epoch in best_epochs) + "|")
 # stay aligned with the raw-feature neural baseline.
 
 # %%
-polynomial_neural_model = PolynomialVectorMLP.from_config(
-    polynomial_neural_mlp_config
+polynomial_neural_runner = ModelRunRunner(
+    cfg,
+    PolynomialVectorMLP.from_config(polynomial_neural_mlp_config),
 )
-polynomial_neural_model.fit(X_train, Y_train, X_val, Y_val)
+polynomial_neural_model = polynomial_neural_runner.train(
+    X_train,
+    Y_train,
+    X_val,
+    Y_val,
+)
 
 # %%
 if polynomial_neural_model.expanded_feature_count_ is None:
@@ -350,6 +412,14 @@ fig_random_polynomial_neural_design_curves = plot_design_prediction_curves(
     vector_db_loader,
     selected_simu_indices,
 )
+polynomial_neural_design_curve_path = polynomial_neural_runner.manager.save_figure(
+    fig_random_polynomial_neural_design_curves,
+    "selected_design_curves_magnitude_db.png",
+)
+print(
+    "Saved Polynomial Neural MLP design-curve plot: "
+    f"{polynomial_neural_design_curve_path}"
+)
 
 # %% [markdown]
 # ### Polynomial Neural Evaluation
@@ -359,8 +429,17 @@ fig_random_polynomial_neural_design_curves = plot_design_prediction_curves(
 # transform. The metrics below are therefore reported in original dB units.
 
 # %%
+polynomial_neural_train_metrics = polynomial_neural_model.evaluate(
+    X_train,
+    Y_train,
+)
+polynomial_neural_validation_metrics = polynomial_neural_runner.validate(
+    X_val,
+    Y_val,
+)
+polynomial_neural_test_metrics = polynomial_neural_runner.test(X_test, Y_test)
+
 # pylint: disable=invalid-name
-Y_train_pred_poly_nn = polynomial_neural_model.predict(X_train)
 Y_val_pred_poly_nn = polynomial_neural_model.predict(X_val)
 Y_test_pred_poly_nn = polynomial_neural_model.predict(X_test)
 # pylint: enable=invalid-name
@@ -369,9 +448,9 @@ assert Y_test_pred_poly_nn.shape == Y_test.shape
 
 polynomial_neural_metrics = pd.DataFrame(
     [
-        {"split": "train", **regression_metrics(Y_train, Y_train_pred_poly_nn)},
-        {"split": "validation", **regression_metrics(Y_val, Y_val_pred_poly_nn)},
-        {"split": "test", **regression_metrics(Y_test, Y_test_pred_poly_nn)},
+        {"split": "train", **polynomial_neural_train_metrics},
+        {"split": "validation", **polynomial_neural_validation_metrics},
+        {"split": "test", **polynomial_neural_test_metrics},
     ]
 )
 
@@ -379,6 +458,15 @@ per_target_polynomial_neural_metrics = per_target_metrics(
     Y_test,
     Y_test_pred_poly_nn,
     vector_target_names,
+)
+per_target_polynomial_neural_validation_metrics = per_target_metrics(
+    Y_val,
+    Y_val_pred_poly_nn,
+    vector_target_names,
+)
+polynomial_neural_per_target_run_metrics = per_target_split_metrics(
+    per_target_polynomial_neural_validation_metrics,
+    per_target_polynomial_neural_metrics,
 )
 
 polynomial_neural_negative_count = int(np.sum(Y_test_pred_poly_nn < 0.0))
@@ -398,8 +486,30 @@ print(f"Negative IL prediction ratio: {polynomial_neural_negative_ratio:.4%}")
 print(f"Minimum predicted IL: {polynomial_neural_minimum_il:.4f} dB")
 
 # %%
-neural_test_metrics = neural_metrics.loc[neural_metrics["split"] == "test"].iloc[0]
-polynomial_neural_test_metrics = polynomial_neural_metrics.loc[
+polynomial_neural_artifact_paths = polynomial_neural_runner.persist(
+    data_interface=vector_data_interface,
+    extra_metrics={"per_target": polynomial_neural_per_target_run_metrics},
+    metric_units={"MAE": "dB", "RMSE": "dB"},
+)
+polynomial_neural_manifest = read_json(
+    polynomial_neural_artifact_paths["manifest"]
+)
+
+print(
+    "Polynomial Neural MLP run directory: "
+    f"{polynomial_neural_runner.manager.run_dir}"
+)
+print("Polynomial Neural MLP artifacts:")
+for artifact_name, artifact_path in polynomial_neural_artifact_paths.items():
+    print(f"- {artifact_name}: {artifact_path}")
+print(
+    "\nPolynomial Neural MLP manifest figures:",
+    polynomial_neural_manifest.get("figures", {}),
+)
+
+# %%
+neural_test_row = neural_metrics.loc[neural_metrics["split"] == "test"].iloc[0]
+polynomial_neural_test_row = polynomial_neural_metrics.loc[
     polynomial_neural_metrics["split"] == "test"
 ].iloc[0]
 
@@ -409,15 +519,59 @@ neural_variant_comparison = pd.DataFrame(
         {"model": "Polynomial Ridge", "MAE": 7.4269, "RMSE": 11.0532},
         {
             "model": "Neural MLP",
-            "MAE": float(neural_test_metrics["MAE"]),
-            "RMSE": float(neural_test_metrics["RMSE"]),
+            "MAE": float(neural_test_row["MAE"]),
+            "RMSE": float(neural_test_row["RMSE"]),
         },
         {
             "model": "Polynomial Neural MLP",
-            "MAE": float(polynomial_neural_test_metrics["MAE"]),
-            "RMSE": float(polynomial_neural_test_metrics["RMSE"]),
+            "MAE": float(polynomial_neural_test_row["MAE"]),
+            "RMSE": float(polynomial_neural_test_row["RMSE"]),
         },
     ]
 )
 
 print("Neural variant test comparison:", neural_variant_comparison, sep="\n")
+
+# %% [markdown]
+# ## Persisted Output Summary
+#
+# The two main neural runs above now write into the planned output hierarchy:
+#
+# - `outputs/runs/<run_id>/` for immutable artifacts.
+# - `outputs/models/*.json` for latest and selected model pointers.
+# - `outputs/benchmarks/*.csv` for notebook-to-notebook comparison rows.
+
+# %%
+latest_model_registry = read_json(cfg.paths.models / "latest.json")
+selected_model_registry = read_json(cfg.paths.models / "selected.json")
+s7_latest_benchmark_path = cfg.paths.benchmarks / "s7_1_magnitude_db_latest.csv"
+s7_selected_benchmark_path = (
+    cfg.paths.benchmarks / "s7_1_magnitude_db_selected.csv"
+)
+vector_latest_benchmark_path = (
+    cfg.paths.benchmarks / "vector_magnitude_db_latest.csv"
+)
+vector_selected_benchmark_path = (
+    cfg.paths.benchmarks / "vector_magnitude_db_selected.csv"
+)
+
+print("Latest model registry entries:")
+print(sorted(latest_model_registry.get("models", {})))
+print("\nSelected model registry entries:")
+print(sorted(selected_model_registry.get("models", {})))
+
+if s7_latest_benchmark_path.is_file():
+    print("\nLatest S7_1 benchmark:")
+    print(pd.read_csv(s7_latest_benchmark_path))
+
+if s7_selected_benchmark_path.is_file():
+    print("\nSelected S7_1 benchmark:")
+    print(pd.read_csv(s7_selected_benchmark_path))
+
+if vector_latest_benchmark_path.is_file():
+    print("\nLatest vector benchmark:")
+    print(pd.read_csv(vector_latest_benchmark_path))
+
+if vector_selected_benchmark_path.is_file():
+    print("\nSelected vector benchmark:")
+    print(pd.read_csv(vector_selected_benchmark_path))
