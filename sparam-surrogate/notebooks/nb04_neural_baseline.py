@@ -33,7 +33,6 @@ import keras
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-from matplotlib import pyplot as plt
 
 from sparam_surrogate.config import SurrogateConfig
 from sparam_surrogate.data import DLDataset, TouchstoneLoader, random_simu_indices
@@ -289,84 +288,6 @@ for artifact_name, artifact_path in neural_artifact_paths.items():
 print("\nNeural MLP manifest figures:", neural_manifest.get("figures", {}))
 
 # %% [markdown]
-# ## Small modelling experiments
-
-# %%
-sample_sizes = [256*4, 256*8, 256*16, 256*32, 256*40, 256*64, 256*128, 256*256]
-small_models: list[VectorMLP] = [
-    VectorMLP(
-        batch_size=512,
-        epochs=100,
-        learning_rate=1e-4,
-        gradient_clip_norm=1.0,
-        random_state=random_seed,
-    )
-    for _ in sample_sizes
-]
-
-
-def fit_small_model(
-    n_samples: int,
-    small_model: VectorMLP,
-) -> tuple[int, VectorMLP]:
-    """
-    Fit one small neural baseline and return it with its sample count.
-    """
-    print(f"\nTraining VectorMLP with {n_samples} samples...")
-
-    X_small = X_train[:n_samples]
-    Y_small = Y_train[:n_samples]
-
-    small_model.fit(
-        X_small,
-        Y_small,
-        X_small,
-        Y_small,
-        verbose=0,
-    )
-    return n_samples, small_model
-
-
-# %%
-for n_samples, small_model in zip(sample_sizes, small_models, strict=True):
-    try:
-        time_begin = pd.Timestamp.now()
-        fit_small_model(n_samples, small_model)
-        time_end = pd.Timestamp.now()
-
-        elapsed_time = time_end - time_begin
-        print(f"Completed VectorMLP with {n_samples} samples in {elapsed_time}.")
-
-        if small_model.history is None:
-            raise RuntimeError(
-                f"Small model {n_samples} did not record training history."
-            )
-        print(f"Plotting training history for small model with {n_samples} samples...")
-        fig_training_history = small_model.plot_training_history()
-        plt.show()
-    except Exception as exc:
-        raise RuntimeError(
-            f"Training failed for small model with {n_samples} samples."
-        ) from exc
-
-print("\nTraining complete for all sample sizes.")
-
-# %%
-# Print the number of epochs required to reach the best validation loss for each model.
-best_epochs = []
-
-print("\nBest validation loss epochs for small models:")
-for n_samples, small_model in zip(sample_sizes, small_models, strict=True):
-    if small_model.history is None:
-        raise RuntimeError(f"Small model {n_samples} did not record training history.")
-    history_frame = pd.DataFrame(small_model.history.history)
-    best_epoch = int(history_frame["val_loss"].idxmin()) + 1
-    best_val_loss = float(history_frame["val_loss"].min())
-    best_epochs.append(best_epoch)
-
-print("|" + "|".join(f"{best_epoch:>7}" for best_epoch in best_epochs) + "|")
-
-# %% [markdown]
 # ## Polynomial Neural Variant
 #
 # This follow-up trains the same MLP on the powers-only polynomial feature
@@ -508,26 +429,28 @@ print(
 )
 
 # %%
-neural_test_row = neural_metrics.loc[neural_metrics["split"] == "test"].iloc[0]
-polynomial_neural_test_row = polynomial_neural_metrics.loc[
-    polynomial_neural_metrics["split"] == "test"
-].iloc[0]
-
-neural_variant_comparison = pd.DataFrame(
-    [
-        {"model": "Vector Ridge", "MAE": 7.4740, "RMSE": 11.0796},
-        {"model": "Polynomial Ridge", "MAE": 7.4269, "RMSE": 11.0532},
-        {
-            "model": "Neural MLP",
-            "MAE": float(neural_test_row["MAE"]),
-            "RMSE": float(neural_test_row["RMSE"]),
-        },
-        {
-            "model": "Polynomial Neural MLP",
-            "MAE": float(polynomial_neural_test_row["MAE"]),
-            "RMSE": float(polynomial_neural_test_row["RMSE"]),
-        },
+comparison_model_names = {
+    "vector_ridge": "Vector Ridge",
+    "polynomial_ridge": "Polynomial Ridge",
+    "neural_mlp": "Neural MLP",
+    "polynomial_neural_mlp": "Polynomial Neural MLP",
+}
+vector_latest_benchmark_path = (
+    cfg.paths.benchmarks / "vector_magnitude_db_latest.csv"
+)
+neural_variant_comparison = (
+    pd.read_csv(vector_latest_benchmark_path)
+    .set_index("model_name")
+    .loc[
+        list(comparison_model_names),
+        ["test_mae_db", "test_rmse_db"],
     ]
+    .rename(
+        index=comparison_model_names,
+        columns={"test_mae_db": "MAE", "test_rmse_db": "RMSE"},
+    )
+    .rename_axis("model")
+    .reset_index()
 )
 
 print("Neural variant test comparison:", neural_variant_comparison, sep="\n")
