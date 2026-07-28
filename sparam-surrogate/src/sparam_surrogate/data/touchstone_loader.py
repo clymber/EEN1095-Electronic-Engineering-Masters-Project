@@ -38,7 +38,7 @@ class TouchstoneLoader:
         self,
         mode: Literal["scalar", "vector", "smatrix"],
         config: SurrogateConfig | Path | str | None = None,
-        representation: Literal["db", "il", "real_imag", "complex"] = "db",
+        representation: Literal["db", "il", "real_imag"] = "db",
         cache_size: int = 256,
     ) -> None:
         """
@@ -50,14 +50,12 @@ class TouchstoneLoader:
         """
         self.mode: str = self._normalise_mode(mode)
         self.project_root = PROJECT_ROOT.resolve()
-        self.representation = str(representation)
+        self.representation = representation
         self.cache_size = int(cache_size)
         if self.cache_size <= 0:
             raise ValueError("cache_size must be positive.")
-        if self.representation not in {"db", "il", "real_imag", "complex"}:
-            raise ValueError(
-                "representation must be 'db', 'il', 'real_imag', or 'complex'."
-            )
+        if self.representation not in {"db", "il", "real_imag"}:
+            raise ValueError("representation must be 'db', 'il', or 'real_imag'.")
 
         cfg = self._load_config(config)
         self.nports = cfg.dataset.nports
@@ -84,11 +82,7 @@ class TouchstoneLoader:
         if self.representation == "db":
             return tuple(self.response_column_name(pair) for pair in pairs)
         if self.representation == "il":
-            return tuple(
-                f"IL_S{receiver}_{source}_DB" for receiver, source in pairs
-            )
-        if self.representation == "complex":
-            return tuple(f"S{receiver}_{source}" for receiver, source in pairs)
+            return tuple(f"IL_S{receiver}_{source}_DB" for receiver, source in pairs)
         real_names = [f"REAL_S{receiver}_{source}" for receiver, source in pairs]
         imag_names = [f"IMAG_S{receiver}_{source}" for receiver, source in pairs]
         return tuple([*real_names, *imag_names])
@@ -296,12 +290,11 @@ class TouchstoneLoader:
         """
         Convert complex S-parameters to the configured representation.
         """
-        if self.representation == "complex":
-            if not np.isfinite(complex_values).all():
-                raise ValueError(f"{label} contains non-finite values.")
-            return complex_values
         if self.representation == "real_imag":
-            target = np.concatenate([complex_values.real, complex_values.imag])
+            target = np.concatenate(
+                [complex_values.real, complex_values.imag],
+                axis=-1,
+            )
         else:
             with np.errstate(divide="ignore"):
                 target = 20.0 * np.log10(np.abs(complex_values))
