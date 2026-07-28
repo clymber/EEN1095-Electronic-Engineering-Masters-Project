@@ -15,17 +15,18 @@
 # %% [markdown]
 # # Lazy Data Preprocessing Pipeline
 #
-# This report builds the lightweight preprocessing artifact used by both the
-# scalar baseline model and the full S-matrix model:
+# This report builds a shared design-level artifact, then derives the
+# frequency-expanded preprocessing artifact used by point-wise models:
 #
 # ```text
-# data/processed/sipi_dataset_cleaned.csv
+# data/processed/cleaned_splits_parameter.csv
+#         ↓
+# data/processed/frequency_expanded_dataset.csv
 # ```
 #
-# The CSV stores design features, frequency, split labels, simulation indices,
-# and `TOUCHSTONE_REL_PATH`. It deliberately does not store S-parameter targets.
-# During training, targets are loaded lazily from Touchstone files through
-# `tf.data.Dataset.map(...)`.
+# Both CSVs omit S-parameter targets. The cleaned split CSV is the authoritative
+# one-row-per-design source for all later preprocessing, including whole-curve
+# models. During training, targets are loaded lazily from Touchstone files.
 
 
 # %% tags=["remove-input"]
@@ -49,10 +50,15 @@ import numpy as np
 import pandas as pd
 
 from sparam_surrogate.config import SurrogateConfig, configure_stdio_relative_path
-from sparam_surrogate.data import MLDatasetBuilder, RawData, TouchstoneLoader
+from sparam_surrogate.data import (
+    ParameterDatasetBuilder,
+    PointwiseDataset,
+    RawData,
+    TouchstoneLoader,
+)
 from sparam_surrogate.utils.filesystem import ensure_dir
 
-REBUILD_CLEANED_CSV = False
+FORCE_REBUILD = False
 
 # Display paths relative to project root or user home for consistent output.
 configure_stdio_relative_path()
@@ -65,8 +71,11 @@ raw_data_dir = cfg.dataset.path
 print(f"Path of raw dataset: {raw_data_dir}")
 
 processed_dir = ensure_dir(cfg.paths.processed_data)
+cleaned_splits_path = cfg.preprocessing.cleaned_splits_csv
+frequency_expanded_path = cfg.preprocessing.freq_expanded_csv
 print(f"Processed directory: {processed_dir}")
-print(f"Preprocessing artifact: {cfg.preprocessing.processed_csv}")
+print(f"Cleaned split parameters: {cleaned_splits_path}")
+print(f"Frequency-expanded dataset: {frequency_expanded_path}")
 
 # %% [markdown]
 # ## 2. Raw Data Consistency
@@ -85,66 +94,103 @@ print(f"Parameter rows without Touchstones: {len(report['missing_touchstones']):
 print(f"Touchstones without parameters: {len(report['missing_parameter_records']):,}")
 
 # %% [markdown]
-# ## 3. Build The Cleaned CSV
+# ## 3. Data cleaning
 #
-# `MLDatasetBuilder.data_cleaning()` loads `parameter.csv`, keeps only designs
-# with matching Touchstone files, reads a representative frequency grid, expands
-# each design over frequency, and writes one cleaned CSV. Feature values remain
-# unscaled; train-only scaling belongs in the training pipeline.
+# `ParameterDatasetBuilder.clean()` runs only when the cleaned CSV is missing or
+# `FORCE_REBUILD` is `True`. It keeps only designs with matching Touchstone
+# files and records one portable Touchstone path per design.
 
 # %%
-builder = MLDatasetBuilder(raw_data, processed_dir)
-cleaned_before_split = builder.data_cleaning(force=REBUILD_CLEANED_CSV)
+parameter_builder = ParameterDatasetBuilder(raw_data, cleaned_splits_path)
+rebuild_cleaned_csv = FORCE_REBUILD or not cleaned_splits_path.exists()
 
-print(f"Cleaned rows before split: {len(cleaned_before_split):,}")
-print(f"Cleaned CSV: {builder.cleaned_path}")
-print("Columns:")
-print(list(cleaned_before_split.columns))
+if rebuild_cleaned_csv:
+    cleaned_parameters = parameter_builder.clean()
+    print(f"Valid designs after cleaning: {len(cleaned_parameters):,}")
+    print("Columns:",list(cleaned_parameters.columns))
+else:
+    print(f"Reusing cleaned parameters: {cleaned_splits_path}")
 
 # %% [markdown]
-# ## 4. Assign Train/Validation/Test Splits
+# ## 4. Dataset Splitting
 #
-# Splitting is performed by `SIMU_INDEX` before frequency expansion labels are
-# applied to rows. This prevents the same physical design from appearing in more
-# than one split.
+# Splitting runs only after cleaning. Otherwise, the existing cleaned CSV is
+# reused. This file is the authoritative source of split labels for all
+# downstream point-wise and whole-curve datasets:
+#
+# ```text
+# data/processed/cleaned_splits_parameter.csv
+# ```
 
 # %%
-train_set, val_set, test_set = builder.split(
-    val_fraction=cfg.preprocessing.val_fraction,
-    test_fraction=cfg.preprocessing.test_fraction,
-    seed=cfg.project.seed,
-    force=REBUILD_CLEANED_CSV,
+if rebuild_cleaned_csv:
+    split_parameters = parameter_builder.split(
+        cleaned_parameters,
+        val_fraction=cfg.preprocessing.val_fraction,
+        test_fraction=cfg.preprocessing.test_fraction,
+        seed=cfg.project.seed,
+    )
+else:
+    split_parameters = parameter_builder.load()
+
+design_counts = split_parameters["SPLIT_TYPE"].value_counts().sort_index()
+
+print("Design counts by split:", design_counts, sep="\n")
+print(f"\nCleaned split parameters: {cleaned_splits_path}")
+
+# %% [markdown]
+# ## 5. Build the Frequency-Expanded Dataset
+#
+# `PointwiseDataset.build_frequency_expanded_csv()` reads only the cleaned and
+# split parameter CSV. Each design row is expanded over the common Touchstone
+# frequency grid. Expansion runs only when the processed CSV is missing, older
+# than the cleaned split CSV, or explicitly forced.
+
+# %%
+pointwise_param = PointwiseDataset.build_frequency_expanded_csv(
+    cleaned_splits_path,
+    frequency_expanded_path,
+    force=FORCE_REBUILD,
 )
-cleaned = pd.read_csv(builder.cleaned_path)
+train_set = PointwiseDataset(pointwise_param, split_type="train")
 
-row_counts = cleaned["SPLIT_TYPE"].value_counts().sort_index()
-design_counts = cleaned.groupby("SPLIT_TYPE")["SIMU_INDEX"].nunique().sort_index()
-
-print("Row counts by split:", row_counts, sep="\n")
-print("\nDesign counts by split:", design_counts, sep="\n")
+row_counts = pointwise_param["SPLIT_TYPE"].value_counts().sort_index()
+print("Frequency-expanded row counts by split:", row_counts, sep="\n")
+print(f"\nFrequency-expanded CSV: {frequency_expanded_path}")
 
 # %% [markdown]
-# ## 5. Sanity Checks
+# ## 6. Sanity Checks
 #
-# These checks are intentionally lightweight. They validate the CSV contract and
-# split behavior without reloading any large eager target arrays.
+# These checks validate both CSV contracts and confirm that design-level split
+# labels remain unchanged after frequency expansion.
 
 # %%
-expected_columns = list(MLDatasetBuilder.CLEANED_COLUMNS)
-assert list(cleaned.columns) == expected_columns
+expected_parameter_columns = list(ParameterDatasetBuilder.SPLIT_COLUMNS)
+assert list(split_parameters.columns) == expected_parameter_columns
 
-for simulation_index, group in cleaned.groupby("SIMU_INDEX"):
+expected_columns = list(PointwiseDataset.COLUMNS)
+assert list(pointwise_param.columns) == expected_columns
+
+for simulation_index, group in pointwise_param.groupby("SIMU_INDEX"):
     labels = set(group["SPLIT_TYPE"].astype(str))
     assert len(labels) == 1, f"SIMU_INDEX {simulation_index} appears in {labels}"
 
-feature_values = cleaned.loc[:, MLDatasetBuilder.PARAMETER_COLUMNS]
+feature_values = pointwise_param.loc[:, PointwiseDataset.PARAMETER_COLUMNS]
 assert np.isfinite(feature_values.to_numpy(dtype=float)).all()
-assert set(cleaned["SPLIT_TYPE"]) == {"train", "val", "test"}
+assert set(pointwise_param["SPLIT_TYPE"]) == {"train", "val", "test"}
 
-print("Sanity checks passed: schema, paths, finite features, and no split leakage.")
+split_by_design = split_parameters.set_index("SIMU_INDEX")["SPLIT_TYPE"]
+expanded_split_by_design = pointwise_param.groupby("SIMU_INDEX")["SPLIT_TYPE"].first()
+pd.testing.assert_series_equal(
+    expanded_split_by_design.sort_index(),
+    split_by_design.sort_index(),
+    check_names=False,
+)
+
+print("Sanity checks passed for design-level and frequency-expanded CSVs.")
 
 # %% [markdown]
-# ## 6. Lazy Target Loading Smoke Test
+# ## 7. Lazy Target Loading Smoke Test
 #
 # The scalar baseline and full S-matrix model now differ by the map callable
 # used during training. This smoke test loads one row from the train split, then
@@ -178,14 +224,17 @@ print(f"Full S-matrix target shape: {full_target.shape}")
 print(f"First full target names: {full_loader.target_names[:8]}")
 
 # %% [markdown]
-# ## 7. Output Summary
+# ## 8. Output Summary
 #
-# The preprocessing output is now a compact CSV index plus raw Touchstone files.
-# The previous eager array artifacts are no longer part of the normal pipeline.
+# The preprocessing outputs are a shared design-level split table and a
+# point-wise frequency-expanded table. The previous eager array artifacts are
+# not part of the normal pipeline.
 
 # %%
-print(f"Final cleaned CSV: {builder.cleaned_path}")
-print(f"Total cleaned rows: {len(cleaned):,}")
-print(f"Unique designs: {cleaned['SIMU_INDEX'].nunique():,}")
-print(f"Unique frequencies: {cleaned['FREQ_GHZ'].nunique():,}")
+print(f"Design-level split CSV: {cleaned_splits_path}")
+print(f"Frequency-expanded CSV: {frequency_expanded_path}")
+print(f"Total valid designs: {len(split_parameters):,}")
+print(f"Total frequency-expanded rows: {len(pointwise_param):,}")
+print(f"Unique designs: {pointwise_param['SIMU_INDEX'].nunique():,}")
+print(f"Unique frequencies: {pointwise_param['FREQ_GHZ'].nunique():,}")
 print("Feature scaling: deferred to training with train-only statistics")

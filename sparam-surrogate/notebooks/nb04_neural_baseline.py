@@ -33,9 +33,14 @@ import keras
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+from IPython.display import display
 
 from sparam_surrogate.config import SurrogateConfig
-from sparam_surrogate.data import DLDataset, TouchstoneLoader, random_simu_indices
+from sparam_surrogate.data import (
+    PointwiseDataset,
+    TouchstoneLoader,
+    random_simu_indices,
+)
 from sparam_surrogate.models.neural_mlp import (
     PolynomialVectorMLP,
     VectorMLP,
@@ -126,11 +131,12 @@ print(f"Polynomial neural degree: {polynomial_neural_mlp_config.polynomial_degre
 # experiments do not need to parse every Touchstone file again.
 
 # %%
+load_pointwise_datasets = PointwiseDataset.from_frequency_expanded_csv
 vector_db_loader = TouchstoneLoader("vector", cfg, "db", 8)
 vector_target_names = tuple(vector_db_loader.target_names)
 
-vector_train_set, vector_val_set, vector_test_set = DLDataset.from_cleaned_csv(
-    cfg.preprocessing.processed_csv,
+vector_train_set, vector_val_set, vector_test_set = load_pointwise_datasets(
+    cfg.preprocessing.freq_expanded_csv,
     target_loader=vector_db_loader,
     cache=True,
 )
@@ -269,9 +275,9 @@ minimum_predicted_il = float(np.min(Y_test_pred_nn))
 
 print("Neural MLP vector metrics:", neural_metrics, sep="\n")
 print("\nNeural MLP per-target test metrics:", per_target_neural_metrics, sep="\n")
-print(f"\nNegative IL prediction count: {negative_prediction_count:,}")
-print(f"Negative IL prediction ratio: {negative_prediction_ratio:.4%}")
-print(f"Minimum predicted IL: {minimum_predicted_il:.4f} dB")
+print(f"\nNegative prediction count: {negative_prediction_count:,}")
+print(f"Negative prediction ratio: {negative_prediction_ratio:.4%}")
+print(f"Minimum predicted: {minimum_predicted_il:.4f} dB")
 
 # %%
 neural_artifact_paths = neural_runner.persist(
@@ -402,9 +408,9 @@ print(
     per_target_polynomial_neural_metrics,
     sep="\n",
 )
-print(f"\nNegative IL prediction count: {polynomial_neural_negative_count:,}")
-print(f"Negative IL prediction ratio: {polynomial_neural_negative_ratio:.4%}")
-print(f"Minimum predicted IL: {polynomial_neural_minimum_il:.4f} dB")
+print(f"\nNegative prediction count: {polynomial_neural_negative_count:,}")
+print(f"Negative prediction ratio: {polynomial_neural_negative_ratio:.4%}")
+print(f"Minimum predicted: {polynomial_neural_minimum_il:.4f} dB")
 
 # %%
 polynomial_neural_artifact_paths = polynomial_neural_runner.persist(
@@ -467,34 +473,32 @@ print("Neural variant test comparison:", neural_variant_comparison, sep="\n")
 # %%
 latest_model_registry = read_json(cfg.paths.models / "latest.json")
 selected_model_registry = read_json(cfg.paths.models / "selected.json")
-s7_latest_benchmark_path = cfg.paths.benchmarks / "s7_1_magnitude_db_latest.csv"
-s7_selected_benchmark_path = (
-    cfg.paths.benchmarks / "s7_1_magnitude_db_selected.csv"
-)
-vector_latest_benchmark_path = (
-    cfg.paths.benchmarks / "vector_magnitude_db_latest.csv"
-)
-vector_selected_benchmark_path = (
-    cfg.paths.benchmarks / "vector_magnitude_db_selected.csv"
-)
-
 print("Latest model registry entries:")
 print(sorted(latest_model_registry.get("models", {})))
 print("\nSelected model registry entries:")
 print(sorted(selected_model_registry.get("models", {})))
 
+# %%
+s7_latest_benchmark_path = cfg.paths.benchmarks / "s7_1_magnitude_db_latest.csv"
 if s7_latest_benchmark_path.is_file():
     print("\nLatest S7_1 benchmark:")
-    print(pd.read_csv(s7_latest_benchmark_path))
+    display(pd.read_csv(s7_latest_benchmark_path).style.hide(axis="index"))
 
+# %%
+s7_selected_benchmark_path = cfg.paths.benchmarks / "s7_1_magnitude_db_selected.csv"
 if s7_selected_benchmark_path.is_file():
     print("\nSelected S7_1 benchmark:")
-    print(pd.read_csv(s7_selected_benchmark_path))
+    display(pd.read_csv(s7_selected_benchmark_path).style.hide(axis="index"))
 
+# %%
 if vector_latest_benchmark_path.is_file():
     print("\nLatest vector benchmark:")
-    print(pd.read_csv(vector_latest_benchmark_path))
+    display(pd.read_csv(vector_latest_benchmark_path).style.hide(axis="index"))
 
+# %%
+vector_selected_benchmark_path = (
+    cfg.paths.benchmarks / "vector_magnitude_db_selected.csv"
+)
 if vector_selected_benchmark_path.is_file():
     print("\nSelected vector benchmark:")
-    print(pd.read_csv(vector_selected_benchmark_path))
+    display(pd.read_csv(vector_selected_benchmark_path).style.hide(axis="index"))

@@ -12,38 +12,66 @@ from sparam_surrogate import __app_name__, __version__
 from sparam_surrogate.cli import CLI, main
 
 
-class FakeBuilder:
+class FakePointwiseDataset:
     """
-    Test double for ``MLDatasetBuilder``.
+    Test double for ``PointwiseDataset`` CSV construction.
     """
 
-    instances: list["FakeBuilder"] = []
+    build_calls: list[dict[str, object]] = []
 
-    def __init__(self, raw_data: object, output_dir: Path) -> None:
+    @classmethod
+    def build_frequency_expanded_csv(
+        cls,
+        split_parameter_csv: Path,
+        output_csv: Path,
+        force: bool = False,
+    ) -> None:
         """
-        Record construction arguments for assertions.
+        Record frequency-expanded CSV construction.
+        """
+        cls.build_calls.append(
+            {
+                "split_parameter_csv": split_parameter_csv,
+                "output_csv": output_csv,
+                "force": force,
+            }
+        )
+
+
+class FakeParameterBuilder:
+    """
+    Test double for ``ParameterDatasetBuilder``.
+    """
+
+    instances: list["FakeParameterBuilder"] = []
+
+    def __init__(self, raw_data: object, cleaned_splits_path: Path) -> None:
+        """
+        Record design-level builder construction.
         """
         self.raw_data = raw_data
-        self.output_dir = output_dir
-        self.cleaned_path = output_dir / "sipi_dataset_cleaned.csv"
-        self.split_kwargs: dict[str, object] | None = None
+        self.cleaned_splits_path = cleaned_splits_path
+        self.build_kwargs: dict[str, object] | None = None
         self.instances.append(self)
 
-    def split(
+    def build(
         self,
+        *,
         val_fraction: float,
         test_fraction: float,
         seed: int,
-    ) -> tuple[None, None, None]:
+        force: bool,
+    ) -> object:
         """
-        Record split arguments and return placeholder datasets.
+        Record cache-aware build arguments and return a placeholder dataframe.
         """
-        self.split_kwargs = {
+        self.build_kwargs = {
             "val_fraction": val_fraction,
             "test_fraction": test_fraction,
             "seed": seed,
+            "force": force,
         }
-        return None, None, None
+        return object()
 
 
 class FakeRawData:
@@ -88,7 +116,16 @@ class TestCLI:
         """
         cfg = SimpleNamespace(
             dataset=SimpleNamespace(nports=12),
-            preprocessing=SimpleNamespace(val_fraction=0.25, test_fraction=0.1),
+            preprocessing=SimpleNamespace(
+                cleaned_splits_csv=Path(
+                    "data/processed/cleaned_splits_parameter.csv"
+                ),
+                freq_expanded_csv=Path(
+                    "data/processed/frequency_expanded_dataset.csv"
+                ),
+                val_fraction=0.25,
+                test_fraction=0.1,
+            ),
             project=SimpleNamespace(seed=99),
         )
         self._patch_preprocess_dependencies(monkeypatch, cfg)
@@ -108,11 +145,23 @@ class TestCLI:
 
         assert exit_code == 0
         assert FakeRawData.instances[0].nports == 12
-        assert FakeBuilder.instances[0].split_kwargs == {
+        assert FakeParameterBuilder.instances[0].build_kwargs == {
             "val_fraction": 0.25,
             "test_fraction": 0.1,
             "seed": 99,
+            "force": False,
         }
+        assert FakePointwiseDataset.build_calls == [
+            {
+                "split_parameter_csv": (
+                    tmp_path / "processed" / "cleaned_splits_parameter.csv"
+                ),
+                "output_csv": (
+                    tmp_path / "processed" / "frequency_expanded_dataset.csv"
+                ),
+                "force": False,
+            }
+        ]
 
     def test_preprocess_cli_values_override_typed_config(
         self,
@@ -124,7 +173,16 @@ class TestCLI:
         """
         cfg = SimpleNamespace(
             dataset=SimpleNamespace(nports=12),
-            preprocessing=SimpleNamespace(val_fraction=0.25, test_fraction=0.1),
+            preprocessing=SimpleNamespace(
+                cleaned_splits_csv=Path(
+                    "data/processed/cleaned_splits_parameter.csv"
+                ),
+                freq_expanded_csv=Path(
+                    "data/processed/frequency_expanded_dataset.csv"
+                ),
+                val_fraction=0.25,
+                test_fraction=0.1,
+            ),
             project=SimpleNamespace(seed=99),
         )
         self._patch_preprocess_dependencies(monkeypatch, cfg)
@@ -145,6 +203,7 @@ class TestCLI:
                 "0.15",
                 "--seed",
                 "123",
+                "--force",
             ],
         )
 
@@ -152,11 +211,23 @@ class TestCLI:
 
         assert exit_code == 0
         assert FakeRawData.instances[0].nports == 6
-        assert FakeBuilder.instances[0].split_kwargs == {
+        assert FakeParameterBuilder.instances[0].build_kwargs == {
             "val_fraction": 0.2,
             "test_fraction": 0.15,
             "seed": 123,
+            "force": True,
         }
+        assert FakePointwiseDataset.build_calls == [
+            {
+                "split_parameter_csv": (
+                    tmp_path / "processed" / "cleaned_splits_parameter.csv"
+                ),
+                "output_csv": (
+                    tmp_path / "processed" / "frequency_expanded_dataset.csv"
+                ),
+                "force": True,
+            }
+        ]
 
     def _patch_preprocess_dependencies(
         self,
@@ -166,11 +237,19 @@ class TestCLI:
         """
         Replace preprocessing dependencies with deterministic test doubles.
         """
-        FakeBuilder.instances = []
+        FakePointwiseDataset.build_calls = []
+        FakeParameterBuilder.instances = []
         FakeRawData.instances = []
         monkeypatch.setattr(
             "sparam_surrogate.cli.SurrogateConfig.from_config",
             lambda: cfg,
         )
         monkeypatch.setattr("sparam_surrogate.cli.RawData", FakeRawData)
-        monkeypatch.setattr("sparam_surrogate.cli.MLDatasetBuilder", FakeBuilder)
+        monkeypatch.setattr(
+            "sparam_surrogate.cli.PointwiseDataset",
+            FakePointwiseDataset,
+        )
+        monkeypatch.setattr(
+            "sparam_surrogate.cli.ParameterDatasetBuilder",
+            FakeParameterBuilder,
+        )

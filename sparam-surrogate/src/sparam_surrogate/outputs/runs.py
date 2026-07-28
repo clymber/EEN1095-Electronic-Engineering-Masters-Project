@@ -730,9 +730,17 @@ def build_resolved_config(config: SurrogateConfig) -> dict[str, Any]:
         config.dataset.parameter_csv,
         project_root=project_root,
     )
-    resolved_config["preprocessing"]["processed_csv"] = relative_to_project_root(
-        config.preprocessing.processed_csv,
-        project_root=project_root,
+    resolved_config["preprocessing"]["cleaned_splits_csv"] = (
+        relative_to_project_root(
+            config.preprocessing.cleaned_splits_csv,
+            project_root=project_root,
+        )
+    )
+    resolved_config["preprocessing"]["freq_expanded_csv"] = (
+        relative_to_project_root(
+            config.preprocessing.freq_expanded_csv,
+            project_root=project_root,
+        )
     )
 
     return json_ready(

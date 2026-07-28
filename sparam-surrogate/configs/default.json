@@ -6,7 +6,6 @@
     "paths": {
         "data_root": "data",
         "raw_data": "data/raw",
-        "interim_data": "data/interim",
         "processed_data": "data/processed",
         "outputs": "outputs",
         "benchmarks": "outputs/benchmarks",
@@ -32,7 +31,8 @@
         ]
     },
     "preprocessing": {
-        "cleaned_csv": "sipi_dataset_cleaned.csv",
+        "cleaned_splits_csv": "cleaned_splits_parameter.csv",
+        "freq_expanded_csv": "frequency_expanded_dataset.csv",
         "test_fraction": 0.2,
         "val_fraction": 0.2
     },

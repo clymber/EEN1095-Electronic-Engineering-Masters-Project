@@ -32,6 +32,27 @@ class TestSurrogateConfig:
         assert cfg.preprocessing.test_fraction == 0.1
         assert not hasattr(cfg, "training")
 
+    def test_from_config_resolves_preprocessing_csv_paths(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        """
+        Preprocessing CSVs resolve under their corresponding data directories.
+        """
+        monkeypatch.setattr(basic_cfg, "PROJECT_ROOT", tmp_path)
+        self._write_json(tmp_path / "configs" / "default.json", self._config_data())
+
+        cfg = SurrogateConfig.from_config()
+
+        assert cfg.preprocessing.cleaned_splits_csv == (
+            tmp_path / "data" / "processed" / "cleaned_splits_parameter.csv"
+        )
+        assert cfg.preprocessing.freq_expanded_csv == (
+            tmp_path / "data" / "processed" / "frequency_expanded_dataset.csv"
+        )
+        assert not hasattr(cfg.preprocessing, "processed_csv")
+
     def test_from_config_exposes_model_config_values(
         self,
         tmp_path: Path,
@@ -73,6 +94,7 @@ class TestSurrogateConfig:
 
         cfg = SurrogateConfig.from_config()
 
+        assert not hasattr(cfg.paths, "interim_data")
         assert cfg.paths.outputs == tmp_path / "outputs"
         assert cfg.paths.runs == tmp_path / "outputs" / "runs"
         assert cfg.paths.models == tmp_path / "outputs" / "models"
@@ -191,7 +213,8 @@ class TestSurrogateConfig:
                 "ports": [[1, 2]],
             },
             "preprocessing": {
-                "cleaned_csv": "cleaned.csv",
+                "cleaned_splits_csv": "cleaned_splits_parameter.csv",
+                "freq_expanded_csv": "frequency_expanded_dataset.csv",
                 "val_fraction": 0.2,
                 "test_fraction": 0.1,
             },

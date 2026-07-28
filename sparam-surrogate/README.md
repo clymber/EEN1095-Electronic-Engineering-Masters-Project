@@ -5,15 +5,23 @@ S-parameters and signal-integrity metrics.
 
 ## Current Preprocessing Design
 
-The project now uses a lazy preprocessing pipeline. Preprocessing writes one
-compact CSV index:
+The project uses a two-stage lazy preprocessing pipeline:
 
 ```text
-data/processed/sipi_dataset_cleaned.csv
+data/processed/cleaned_splits_parameter.csv
+        ↓
+data/processed/frequency_expanded_dataset.csv
 ```
 
-The CSV is shared by scalar baseline models and full S-matrix models. It stores
-features and metadata only:
+The cleaned split CSV contains one row per design and owns the fixed
+train/validation/test assignment. It is the shared source for point-wise and
+whole-curve preprocessing:
+
+```csv
+EPS,TAND,PITCH,TRACE_LEN,START,VIAR,ANTIPADR,TDIEL,DISTTL,TLWIDTH,SIMU_INDEX,TOUCHSTONE_REL_PATH,SPLIT_TYPE
+```
+
+The processed CSV expands those designs over frequency for point-wise models:
 
 ```csv
 EPS,TAND,PITCH,TRACE_LEN,START,VIAR,ANTIPADR,TDIEL,DISTTL,TLWIDTH,FREQ_GHZ,SIMU_INDEX,TOUCHSTONE_REL_PATH,SPLIT_TYPE
@@ -31,15 +39,28 @@ RawData
   |
   +--> PcbDatasetEDA
   |
-  +--> MLDatasetBuilder
+  +--> ParameterDatasetBuilder
          |
-         +--> sipi_dataset_cleaned.csv
-         |
-         +--> DLDataset(train)
-         +--> DLDataset(val)
-         +--> DLDataset(test)
+         +--> cleaned_splits_parameter.csv
+                 |
+                 +--> PointwiseDataset.build_frequency_expanded_csv(...)
+                 |      |
+                 |      +--> frequency_expanded_dataset.csv
+                 |
+                 +--> TouchstoneLoader.load_curve(...)
+                        |
+                        +--> nb05 whole-curve arrays
+```
+
+The frequency-expanded CSV continues through:
+
+```text
+frequency_expanded_dataset.csv
+         +--> PointwiseDataset(train)
+         +--> PointwiseDataset(val)
+         +--> PointwiseDataset(test)
                 |
-                +--> tf.data.Dataset.map(TouchstoneLoader(...))
+                +--> features and cached TouchstoneLoader targets
 ```
 
 | Component | Responsibility |
@@ -47,15 +68,20 @@ RawData
 | `RawData` | Locates one unzipped raw dataset, including `parameter.csv` and `variation/simu_<index>.sNp` files. |
 | `PcbParameters` | Loads and validates PCB design/material parameters. |
 | `PcbDatasetEDA` | Provides parameter and optional response exploration for reports. |
-| `MLDatasetBuilder` | Builds `sipi_dataset_cleaned.csv` and assigns split labels by `SIMU_INDEX`. |
-| `DLDataset` | Represents one split from the cleaned CSV and builds `tf.data.Dataset` objects. |
-| `TouchstoneLoader` | Lazily loads scalar or full S-matrix targets from `TOUCHSTONE_REL_PATH` using `dataset.nports` from configuration. |
+| `ParameterDatasetBuilder` | Cleans raw parameter rows, aligns Touchstones, assigns design-level splits, and writes the cleaned CSV. |
+| `PointwiseDataset` | Represents one split from the frequency-expanded CSV and exposes NumPy features and targets. |
+| `TouchstoneLoader` | Lazily loads S-parameter targets from `TOUCHSTONE_REL_PATH`; nb05 extends it with whole-curve loading. |
 
 ## Basic Usage
 
 ```python
 from sparam_surrogate.config import SurrogateConfig
-from sparam_surrogate.data import MLDatasetBuilder, RawData, TouchstoneLoader
+from sparam_surrogate.data import (
+    PointwiseDataset,
+    ParameterDatasetBuilder,
+    RawData,
+    TouchstoneLoader,
+)
 
 cfg = SurrogateConfig.from_config()
 
@@ -63,13 +89,23 @@ raw_data = RawData(
     cfg.dataset.path,
     nports=cfg.dataset.nports,
 )
-builder = MLDatasetBuilder(raw_data, cfg.paths.processed_data)
-
-builder.data_cleaning()
-train_set, val_set, test_set = builder.split(
+parameter_builder = ParameterDatasetBuilder(
+    raw_data,
+    cfg.preprocessing.cleaned_splits_csv,
+)
+parameter_builder.build(
     val_fraction=cfg.preprocessing.val_fraction,
     test_fraction=cfg.preprocessing.test_fraction,
     seed=cfg.project.seed,
+    force=False,
+)
+
+PointwiseDataset.build_frequency_expanded_csv(
+    cfg.preprocessing.cleaned_splits_csv,
+    cfg.preprocessing.freq_expanded_csv,
+)
+train_set, val_set, test_set = PointwiseDataset.from_frequency_expanded_csv(
+    cfg.preprocessing.freq_expanded_csv
 )
 
 scalar_loader = TouchstoneLoader(
@@ -88,23 +124,9 @@ full_loader = TouchstoneLoader(
 also require `cfg.dataset.ports` so selected one-based port pairs stay in
 the configuration file.
 
-Feature scaling is intentionally not written into the cleaned CSV. Training
+Feature scaling is intentionally not written into the frequency-expanded CSV. Training
 code should fit scaling statistics on train rows only, then apply those
 statistics to validation and test rows.
-
-## TensorFlow Dataset Mapping
-
-```python
-train_ds = train_set.to_tf_dataset(
-    map_func=scalar_loader,
-    batch_size=cfg.models.neural_mlp.batch_size,
-    shuffle=True,
-)
-```
-
-For full S-matrix training, use `full_loader` as the map function. Full matrix
-targets are flattened as all real components followed by all imaginary
-components in row-major S-matrix order.
 
 ## Command Line
 
@@ -116,6 +138,11 @@ sparam-surrogate preprocess \
 ```
 
 When split options are omitted, the command uses `configs/default.json`.
+The command writes both preprocessing CSVs to the requested output directory.
+
+An existing cleaned split CSV skips raw cleaning and split assignment. The
+frequency-expanded CSV is rebuilt only when it is missing or older than the cleaned
+split CSV. Pass `--force` to rebuild both artefacts.
 
 ## Setup
 
@@ -125,7 +152,7 @@ conda activate meng
 pip install -e .
 ```
 
-Install the optional ML dependencies before using TensorFlow dataset mapping:
+Install the optional ML dependencies before running the neural models:
 
 ```bash
 pip install -e ".[ml]"
@@ -139,9 +166,9 @@ Build the executed notebook reports with:
 make webpdf
 ```
 
-`notebooks/data_preprocessing.py` is the reproducible preprocessing report. It
-builds the cleaned CSV, checks split leakage, and performs a small lazy-loading
+`notebooks/nb02_data_preprocessing.py` is the reproducible preprocessing report.
+It builds both CSVs, checks split leakage, and performs a small lazy-loading
 smoke test for scalar and full S-matrix targets.
 
-`notebooks/dataset_exploration.py` remains the broader exploratory report for
+`notebooks/nb01_dataset_exploration.py` remains the broader exploratory report for
 raw parameters, geometry relationships, and small Touchstone inspections.

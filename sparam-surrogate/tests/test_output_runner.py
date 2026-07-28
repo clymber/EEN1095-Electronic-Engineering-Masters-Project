@@ -109,7 +109,12 @@ def _config(tmp_path: Path) -> SurrogateConfig:
             ports=((1, 2),),
         ),
         preprocessing=PreprocessingConfig(
-            processed_csv=tmp_path / "data" / "processed" / "cleaned.csv",
+            cleaned_splits_csv=(
+                tmp_path / "data" / "processed" / "cleaned_splits_parameter.csv"
+            ),
+            freq_expanded_csv=(
+                tmp_path / "data" / "processed" / "frequency_expanded_dataset.csv"
+            ),
             val_fraction=0.2,
             test_fraction=0.1,
         ),
