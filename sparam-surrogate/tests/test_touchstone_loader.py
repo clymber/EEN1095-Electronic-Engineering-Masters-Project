@@ -66,12 +66,8 @@ def _config(ports: tuple[tuple[int, int], ...] | None = None) -> SurrogateConfig
             ports=ports or ((2, 1), (1, 2)),
         ),
         preprocessing=PreprocessingConfig(
-            cleaned_splits_csv=Path(
-                "data/processed/cleaned_splits_parameter.csv"
-            ),
-            freq_expanded_csv=Path(
-                "data/processed/frequency_expanded_dataset.csv"
-            ),
+            cleaned_splits_csv=Path("data/processed/cleaned_splits_parameter.csv"),
+            freq_expanded_csv=Path("data/processed/frequency_expanded_dataset.csv"),
             val_fraction=0.2,
             test_fraction=0.2,
         ),
