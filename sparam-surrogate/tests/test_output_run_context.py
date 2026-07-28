@@ -60,7 +60,12 @@ def _config(tmp_path: Path) -> SurrogateConfig:
             ports=((1, 2),),
         ),
         preprocessing=PreprocessingConfig(
-            processed_csv=tmp_path / "data" / "processed" / "cleaned.csv",
+            cleaned_splits_csv=(
+                tmp_path / "data" / "processed" / "cleaned_splits_parameter.csv"
+            ),
+            freq_expanded_csv=(
+                tmp_path / "data" / "processed" / "frequency_expanded_dataset.csv"
+            ),
             val_fraction=0.2,
             test_fraction=0.1,
         ),
@@ -111,8 +116,11 @@ def test_build_resolved_config_writes_project_relative_paths(
     assert config["dataset"]["parameter_csv"] == (
         "data/raw/demo-dataset/params.csv"
     )
-    assert config["preprocessing"]["processed_csv"] == (
-        "data/processed/cleaned.csv"
+    assert config["preprocessing"]["cleaned_splits_csv"] == (
+        "data/processed/cleaned_splits_parameter.csv"
+    )
+    assert config["preprocessing"]["freq_expanded_csv"] == (
+        "data/processed/frequency_expanded_dataset.csv"
     )
 
 

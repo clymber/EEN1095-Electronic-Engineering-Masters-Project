@@ -9,13 +9,13 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
-    from .ml_dataset import DLDataset
+    from .pointwise_dataset import PointwiseDataset
 
 SIMULATION_COLUMN = "SIMU_INDEX"
 
 
 def random_simu_indices(
-    dataset: DLDataset, n_simu: int, seed: int | None = None
+    dataset: PointwiseDataset, n_simu: int, seed: int | None = None
 ) -> np.ndarray:
     """
     Select a random subset of simulation indices from a dataset.

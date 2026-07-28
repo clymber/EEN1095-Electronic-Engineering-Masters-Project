@@ -26,7 +26,11 @@ from pathlib import Path
 import sparam_surrogate.config.mylogging as mylogging
 from sparam_surrogate import __app_name__, __version__, utils
 from sparam_surrogate.config import SurrogateConfig
-from sparam_surrogate.data import MLDatasetBuilder, RawData
+from sparam_surrogate.data import (
+    ParameterDatasetBuilder,
+    PointwiseDataset,
+    RawData,
+)
 
 
 # %%
@@ -88,16 +92,18 @@ class CLI:
 
     def add_subcommand_preprocess(self) -> None:
         """
-        Add the cleaned-CSV preprocessing subcommand to the CLI parser.
+        Add the frequency-expanded preprocessing subcommand to the CLI parser.
 
-        The command builds ``sipi_dataset_cleaned.csv`` and assigns
-        train/validation/test split labels. It does not create model-specific
+        The command builds the design-level cleaned CSV before expanding it
+        into ``frequency_expanded_dataset.csv``. It does not create model-specific
         eager arrays.
         """
         preproc_parser = self._subparsers.add_parser(
             "preprocess",
-            help="Build the cleaned lazy preprocessing CSV.",
-            description=("Build sipi_dataset_cleaned.csv from one raw SI/PI topology."),
+            help="Build the frequency-expanded preprocessing CSV.",
+            description=(
+                "Build frequency_expanded_dataset.csv from one raw SI/PI topology."
+            ),
         )
         preproc_parser.add_argument(
             "-i",
@@ -142,6 +148,11 @@ class CLI:
             default=None,
             metavar="<random seed>",
             help="Split random seed. Defaults to configs/default.json.",
+        )
+        preproc_parser.add_argument(
+            "--force",
+            action="store_true",
+            help="Rebuild preprocessing CSVs even when caches are current.",
         )
 
     def add_subcommand_train(self) -> None:
@@ -267,13 +278,34 @@ def main() -> int:
                 )
                 seed = cli.seed if cli.seed is not None else cfg.project.seed
                 raw_data = RawData(cli.input_dir, nports=nports)
-                builder = MLDatasetBuilder(raw_data, cli.output_dir)
-                builder.split(
+                cleaned_splits_csv = (
+                    cli.output_dir
+                    / cfg.preprocessing.cleaned_splits_csv.name
+                )
+                parameter_builder = ParameterDatasetBuilder(
+                    raw_data,
+                    cleaned_splits_csv,
+                )
+                parameter_builder.build(
                     val_fraction=val_fraction,
                     test_fraction=test_fraction,
                     seed=seed,
+                    force=cli.force,
                 )
-                logger.info("Preprocessed CSV saved to %s", builder.cleaned_path)
+                freq_expanded_csv = (
+                    cli.output_dir
+                    / cfg.preprocessing.freq_expanded_csv.name
+                )
+                PointwiseDataset.build_frequency_expanded_csv(
+                    parameter_builder.cleaned_splits_path,
+                    freq_expanded_csv,
+                    force=cli.force,
+                )
+                logger.info(
+                    "Cleaned split parameter CSV saved to %s",
+                    parameter_builder.cleaned_splits_path,
+                )
+                logger.info("Preprocessed CSV saved to %s", freq_expanded_csv)
                 return 0
             case "train":
                 # TODO

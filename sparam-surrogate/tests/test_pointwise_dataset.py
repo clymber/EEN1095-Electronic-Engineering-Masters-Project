@@ -1,5 +1,5 @@
 """
-Tests for :class:`DLDataset` split views.
+Tests for :class:`PointwiseDataset` split views.
 """
 
 import os
@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from sparam_surrogate.data import DLDataset
+from sparam_surrogate.data import PointwiseDataset
 
 
 def _cleaned_frame() -> pd.DataFrame:
@@ -23,7 +23,11 @@ def _cleaned_frame() -> pd.DataFrame:
     pd.DataFrame
         Cleaned dataframe with feature, split, and Touchstone metadata columns.
     """
-    return pd.DataFrame(
+    values = {
+        column: [1.0, 1.0, 2.0]
+        for column in PointwiseDataset.PARAMETER_COLUMNS
+    }
+    values.update(
         {
             "EPS": [3.0, 3.0, 4.0],
             "FREQ_GHZ": [1.0, 2.0, 1.0],
@@ -36,37 +40,7 @@ def _cleaned_frame() -> pd.DataFrame:
             "SPLIT_TYPE": ["train", "train", "val"],
         }
     )
-
-
-class FakeMapFunc:
-    """
-    Small callable used to test TensorFlow mapping without Touchstone I/O.
-    """
-
-    target_shape = (1,)
-
-    def __call__(
-        self,
-        features: np.ndarray,
-        row_metadata: Mapping[str, Any],
-    ) -> np.ndarray:
-        """
-        Return a deterministic target derived from features and metadata.
-
-        Parameters
-        ----------
-        features:
-            Feature vector from ``DLDataset``.
-        row_metadata:
-            Metadata containing ``SIMU_INDEX`` and ``FREQ_GHZ``.
-
-        Returns
-        -------
-        np.ndarray
-            Single-value target for smoke testing.
-        """
-        value = float(features[0]) + float(row_metadata["FREQ_GHZ"])
-        return np.asarray([value], dtype=np.float32)
+    return pd.DataFrame(values)
 
 
 class FakeMetadataLoader:
@@ -124,49 +98,83 @@ def _cleaned_csv(tmp_path: Path) -> Path:
     """
     cleaned_path = tmp_path / "cleaned.csv"
     cleaned = _cleaned_frame()
-    cleaned.loc[len(cleaned)] = {
-        "EPS": 5.0,
-        "FREQ_GHZ": 3.0,
-        "SIMU_INDEX": 2,
-        "TOUCHSTONE_REL_PATH": "raw/variation/simu_2.s2p",
-        "SPLIT_TYPE": "test",
+    test_row = {
+        column: 3.0 for column in PointwiseDataset.PARAMETER_COLUMNS
     }
+    test_row.update(
+        {
+            "EPS": 5.0,
+            "FREQ_GHZ": 3.0,
+            "SIMU_INDEX": 2,
+            "TOUCHSTONE_REL_PATH": "raw/variation/simu_2.s2p",
+            "SPLIT_TYPE": "test",
+        }
+    )
+    cleaned.loc[len(cleaned)] = test_row
     cleaned.to_csv(cleaned_path, index=False)
     return cleaned_path
 
 
-class TestDLDataset:
+class TestPointwiseDataset:
     """
     Unit tests for cleaned-data split views.
     """
+
+    def test_uses_fixed_feature_columns(self) -> None:
+        """
+        Direct construction uses the fixed standard feature order.
+        """
+        row = {
+            column: 1.0 for column in PointwiseDataset.FEATURE_COLUMNS
+        }
+        row.update(
+            {
+                "SIMU_INDEX": 0,
+                "TOUCHSTONE_REL_PATH": "raw/variation/simu_0.s2p",
+                "SPLIT_TYPE": "train",
+            }
+        )
+
+        dataset = PointwiseDataset(
+            pd.DataFrame([row]),
+            split_type="train",
+        )
+
+        assert dataset.feature_columns == PointwiseDataset.FEATURE_COLUMNS
+        assert dataset.features.shape == (
+            1,
+            len(PointwiseDataset.FEATURE_COLUMNS),
+        )
 
     def test_filters_split_and_exposes_features_and_metadata(self) -> None:
         """
         A split view preserves feature order and aligned row metadata.
         """
-        dataset = DLDataset(_cleaned_frame(), ["EPS", "FREQ_GHZ"], "train")
+        dataset = PointwiseDataset(_cleaned_frame(), "train")
 
         assert len(dataset) == 2
-        assert dataset.feature_columns == ("EPS", "FREQ_GHZ")
-        np.testing.assert_allclose(dataset.features, [[3.0, 1.0], [3.0, 2.0]])
+        assert dataset.feature_columns == PointwiseDataset.FEATURE_COLUMNS
+        np.testing.assert_allclose(
+            dataset.features[:, [0, -1]],
+            [[3.0, 1.0], [3.0, 2.0]],
+        )
         assert dataset.row_metadata["SIMU_INDEX"].tolist() == [0, 0]
         assert dataset.row_metadata["TOUCHSTONE_REL_PATH"].tolist() == [
             "raw/variation/simu_0.s2p",
             "raw/variation/simu_0.s2p",
         ]
 
-    def test_from_cleaned_csv_returns_train_val_test_splits(
+    def test_from_frequency_expanded_csv_returns_train_val_test_splits(
         self,
         tmp_path,
     ) -> None:
         """
-        A cleaned CSV can be reopened as standard split-specific datasets.
+        A frequency-expanded CSV can be reopened as split-specific datasets.
         """
         cleaned_path = _cleaned_csv(tmp_path)
 
-        train_set, val_set, test_set = DLDataset.from_cleaned_csv(
-            cleaned_path,
-            feature_columns=["EPS", "FREQ_GHZ"],
+        train_set, val_set, test_set = (
+            PointwiseDataset.from_frequency_expanded_csv(cleaned_path)
         )
 
         assert train_set.split_type == "train"
@@ -176,7 +184,7 @@ class TestDLDataset:
         assert len(val_set) == 1
         assert len(test_set) == 1
 
-    def test_from_cleaned_csv_propagates_loader_to_all_splits(
+    def test_from_frequency_expanded_csv_propagates_loader_to_all_splits(
         self,
         tmp_path: Path,
     ) -> None:
@@ -185,9 +193,8 @@ class TestDLDataset:
         """
         loader = FakeMetadataLoader()
 
-        datasets = DLDataset.from_cleaned_csv(
+        datasets = PointwiseDataset.from_frequency_expanded_csv(
             _cleaned_csv(tmp_path),
-            feature_columns=["EPS", "FREQ_GHZ"],
             target_loader=loader,
             cache=False,
         )
@@ -198,26 +205,24 @@ class TestDLDataset:
         np.testing.assert_allclose(loaded[2], [[3.0]])
         assert loader.calls == 4
 
-    @pytest.mark.parametrize("operation", ["load_targets", "targets", "tf_dataset"])
+    @pytest.mark.parametrize("operation", ["load_targets", "targets"])
     def test_target_operations_reject_missing_loader(self, operation: str) -> None:
         """
         Target operations fail clearly when the dataset has no loader.
         """
-        dataset = DLDataset(_cleaned_frame(), ["EPS", "FREQ_GHZ"], "train")
+        dataset = PointwiseDataset(_cleaned_frame(), "train")
 
         with pytest.raises(RuntimeError, match="target loader"):
             if operation == "load_targets":
                 dataset.load_targets()
-            elif operation == "targets":
-                _ = dataset.targets
             else:
-                dataset.to_tf_dataset(batch_size=2, prefetch=False)
+                _ = dataset.targets
 
     def test_set_target_loader_attaches_and_replaces_loader(self) -> None:
         """
         The setter controls which loader eager target loading uses.
         """
-        dataset = DLDataset(_cleaned_frame(), ["EPS", "FREQ_GHZ"], "train")
+        dataset = PointwiseDataset(_cleaned_frame(), "train")
         first_loader = FakeMetadataLoader(multiplier=1.0)
         second_loader = FakeMetadataLoader(multiplier=10.0)
 
@@ -231,9 +236,8 @@ class TestDLDataset:
         """
         Eager target loading reuses the same feature and metadata alignment.
         """
-        dataset = DLDataset(
+        dataset = PointwiseDataset(
             _cleaned_frame(),
-            ["EPS", "FREQ_GHZ"],
             "train",
             target_loader=FakeMetadataLoader(),
         )
@@ -250,10 +254,12 @@ class TestDLDataset:
         """
         Final-only progress mode prints one completed progress summary.
         """
-        monkeypatch.setenv(DLDataset.PROGRESS_MODE_ENV, DLDataset.FINAL_PROGRESS_MODE)
-        dataset = DLDataset(
+        monkeypatch.setenv(
+            PointwiseDataset.PROGRESS_MODE_ENV,
+            PointwiseDataset.FINAL_PROGRESS_MODE,
+        )
+        dataset = PointwiseDataset(
             _cleaned_frame(),
-            ["EPS", "FREQ_GHZ"],
             "train",
             target_loader=FakeMetadataLoader(),
         )
@@ -269,9 +275,8 @@ class TestDLDataset:
         """
         Direct eager loading does not discard complex target values.
         """
-        dataset = DLDataset(
+        dataset = PointwiseDataset(
             _cleaned_frame(),
-            ["EPS", "FREQ_GHZ"],
             "train",
             target_loader=FakeComplexLoader(),
         )
@@ -290,11 +295,10 @@ class TestDLDataset:
         Disabled caching always loads directly and leaves no NPZ artifact.
         """
         cache_dir = tmp_path / "cache"
-        monkeypatch.setattr(DLDataset, "CACHE_DIR", cache_dir, raising=False)
+        monkeypatch.setattr(PointwiseDataset, "CACHE_DIR", cache_dir, raising=False)
         loader = FakeMetadataLoader()
-        dataset = DLDataset(
+        dataset = PointwiseDataset(
             _cleaned_frame(),
-            ["EPS", "FREQ_GHZ"],
             "train",
             target_loader=loader,
             cache=False,
@@ -315,13 +319,12 @@ class TestDLDataset:
         A cold cache creates the expected target-only split NPZ.
         """
         cache_dir = tmp_path / "cache"
-        monkeypatch.setattr(DLDataset, "CACHE_DIR", cache_dir, raising=False)
+        monkeypatch.setattr(PointwiseDataset, "CACHE_DIR", cache_dir, raising=False)
         source_csv = tmp_path / "cleaned.csv"
         source_csv.touch()
         loader = FakeMetadataLoader()
-        dataset = DLDataset(
+        dataset = PointwiseDataset(
             _cleaned_frame(),
-            ["EPS", "FREQ_GHZ"],
             "train",
             target_loader=loader,
             cache=True,
@@ -346,21 +349,19 @@ class TestDLDataset:
         Loader mode keeps scalar and vector experiment caches independent.
         """
         cache_dir = tmp_path / "cache"
-        monkeypatch.setattr(DLDataset, "CACHE_DIR", cache_dir, raising=False)
+        monkeypatch.setattr(PointwiseDataset, "CACHE_DIR", cache_dir, raising=False)
         source_csv = tmp_path / "cleaned.csv"
         source_csv.touch()
 
-        scalar_dataset = DLDataset(
+        scalar_dataset = PointwiseDataset(
             _cleaned_frame(),
-            ["EPS", "FREQ_GHZ"],
             "train",
             target_loader=FakeMetadataLoader(mode="scalar"),
             cache=True,
             source_csv=source_csv,
         )
-        vector_dataset = DLDataset(
+        vector_dataset = PointwiseDataset(
             _cleaned_frame(),
-            ["EPS", "FREQ_GHZ"],
             "train",
             target_loader=FakeMetadataLoader(mode="vector"),
             cache=True,
@@ -383,7 +384,7 @@ class TestDLDataset:
         """
         cache_dir = tmp_path / "cache"
         cache_dir.mkdir()
-        monkeypatch.setattr(DLDataset, "CACHE_DIR", cache_dir, raising=False)
+        monkeypatch.setattr(PointwiseDataset, "CACHE_DIR", cache_dir, raising=False)
         source_csv = tmp_path / "cleaned.csv"
         source_csv.touch()
         cache_path = cache_dir / "vector_db_train.npz"
@@ -392,9 +393,8 @@ class TestDLDataset:
         os.utime(source_csv, ns=(timestamp_ns, timestamp_ns))
         os.utime(cache_path, ns=(timestamp_ns + 1_000_000, timestamp_ns + 1_000_000))
         loader = FakeMetadataLoader()
-        dataset = DLDataset(
+        dataset = PointwiseDataset(
             _cleaned_frame(),
-            ["EPS", "FREQ_GHZ"],
             "train",
             target_loader=loader,
             cache=True,
@@ -417,7 +417,7 @@ class TestDLDataset:
         """
         cache_dir = tmp_path / "cache"
         cache_dir.mkdir()
-        monkeypatch.setattr(DLDataset, "CACHE_DIR", cache_dir, raising=False)
+        monkeypatch.setattr(PointwiseDataset, "CACHE_DIR", cache_dir, raising=False)
         source_csv = tmp_path / "cleaned.csv"
         source_csv.touch()
         cache_path = cache_dir / "vector_db_train.npz"
@@ -429,9 +429,8 @@ class TestDLDataset:
             ns=(timestamp_ns + cache_offset_ns, timestamp_ns + cache_offset_ns),
         )
         loader = FakeMetadataLoader()
-        dataset = DLDataset(
+        dataset = PointwiseDataset(
             _cleaned_frame(),
-            ["EPS", "FREQ_GHZ"],
             "train",
             target_loader=loader,
             cache=True,
@@ -451,13 +450,12 @@ class TestDLDataset:
         A cached loader must expose values needed for its cache filename.
         """
         cache_dir = tmp_path / "cache"
-        monkeypatch.setattr(DLDataset, "CACHE_DIR", cache_dir, raising=False)
+        monkeypatch.setattr(PointwiseDataset, "CACHE_DIR", cache_dir, raising=False)
         source_csv = tmp_path / "cleaned.csv"
         source_csv.touch()
 
-        dataset = DLDataset(
+        dataset = PointwiseDataset(
             _cleaned_frame(),
-            ["EPS", "FREQ_GHZ"],
             "train",
             target_loader=lambda _features, _metadata: np.asarray([1.0]),
             cache=True,
@@ -466,51 +464,3 @@ class TestDLDataset:
 
         with pytest.raises(ValueError, match="mode.*representation"):
             _ = dataset.targets
-
-    def test_rejects_missing_required_columns(self) -> None:
-        """
-        Missing metadata columns are reported clearly.
-        """
-        frame = _cleaned_frame().drop(columns=["TOUCHSTONE_REL_PATH"])
-
-        with pytest.raises(ValueError, match="TOUCHSTONE_REL_PATH"):
-            DLDataset(frame, ["EPS", "FREQ_GHZ"], "train")
-
-    def test_to_tf_dataset_maps_fake_callable_when_tensorflow_is_available(
-        self,
-    ) -> None:
-        """
-        TensorFlow mapping yields feature and target batches.
-        """
-        pytest.importorskip("tensorflow")
-        dataset = DLDataset(
-            _cleaned_frame(),
-            ["EPS", "FREQ_GHZ"],
-            "train",
-            target_loader=FakeMapFunc(),
-        )
-
-        tf_dataset = dataset.to_tf_dataset(
-            batch_size=2,
-            shuffle=False,
-            prefetch=False,
-        )
-        features, targets = next(iter(tf_dataset))
-
-        np.testing.assert_allclose(features.numpy(), [[3.0, 1.0], [3.0, 2.0]])
-        np.testing.assert_allclose(targets.numpy(), [[4.0], [5.0]])
-
-    def test_to_tf_dataset_rejects_complex_loader(self) -> None:
-        """
-        TensorFlow loading rejects unsupported complex targets clearly.
-        """
-        pytest.importorskip("tensorflow")
-        dataset = DLDataset(
-            _cleaned_frame(),
-            ["EPS", "FREQ_GHZ"],
-            "train",
-            target_loader=FakeComplexLoader(),
-        )
-
-        with pytest.raises(ValueError, match="complex"):
-            dataset.to_tf_dataset(batch_size=2, prefetch=False)

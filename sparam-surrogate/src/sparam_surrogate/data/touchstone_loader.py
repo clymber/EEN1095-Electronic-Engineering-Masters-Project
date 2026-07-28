@@ -1,5 +1,5 @@
 """
-Lazy Touchstone target loading for TensorFlow dataset mapping.
+Lazy S-parameter target loading from Touchstone files.
 """
 
 from collections.abc import Iterable, Mapping
@@ -28,8 +28,8 @@ class TouchstoneLoader:
     """
     Callable map function that loads S-parameter targets from Touchstone files.
 
-    Instances are suitable for use from ``DLDataset.to_tf_dataset(...)`` and
-    can also be called directly in tests or small smoke checks.
+    Instances are suitable as ``PointwiseDataset`` target loaders and can also
+    be called directly in tests or small smoke checks.
     """
 
     FREQUENCY_TOLERANCE_GHZ = 1e-9
@@ -139,8 +139,8 @@ class TouchstoneLoader:
         """
         Load the target for one design-frequency row.
 
-        ``features`` is accepted to match ``DLDataset`` map callables; target
-        lookup uses ``FREQ_GHZ`` and ``TOUCHSTONE_REL_PATH`` metadata.
+        ``features`` is accepted to match the ``PointwiseDataset`` target-loader
+        interface; lookup uses ``FREQ_GHZ`` and ``TOUCHSTONE_REL_PATH`` metadata.
         """
         _ = features
         path = self._resolve_path(row_metadata)

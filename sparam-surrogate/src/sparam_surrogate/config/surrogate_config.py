@@ -134,7 +134,8 @@ class PreprocessingConfig:
     Typed configuration for data preprocessing.
     """
 
-    processed_csv: Path  #: Resolved path to the cleaned dataset CSV.
+    cleaned_splits_csv: Path  #: Resolved cleaned parameter CSV.
+    freq_expanded_csv: Path  #: Resolved frequency-expanded dataset CSV.
     val_fraction: float  #: Fraction of data reserved for validation.
     test_fraction: float  #: Fraction of data reserved for testing.
 
@@ -143,10 +144,13 @@ class PreprocessingConfig:
         """
         Resolve relative paths against project root.
         """
-        _processed_csv = paths.processed_data / preproc["cleaned_csv"]
-
         return cls(
-            processed_csv=_processed_csv,
+            cleaned_splits_csv=(
+                paths.processed_data / preproc["cleaned_splits_csv"]
+            ),
+            freq_expanded_csv=(
+                paths.processed_data / preproc["freq_expanded_csv"]
+            ),
             val_fraction=float(preproc["val_fraction"]),
             test_fraction=float(preproc["test_fraction"]),
         )

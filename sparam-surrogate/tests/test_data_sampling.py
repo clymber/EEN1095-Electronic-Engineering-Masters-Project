@@ -5,10 +5,10 @@ Tests for dataset simulation-index sampling helpers.
 import numpy as np
 import pandas as pd
 
-from sparam_surrogate.data import DLDataset, random_simu_indices
+from sparam_surrogate.data import PointwiseDataset, random_simu_indices
 
 
-def _sample_dataset() -> DLDataset:
+def _sample_dataset() -> PointwiseDataset:
     """
     Return a small test split with repeated simulation indices.
     """
@@ -30,7 +30,10 @@ def _sample_dataset() -> DLDataset:
             "SPLIT_TYPE": ["test"] * 8,
         }
     )
-    return DLDataset(frame, ("EPS", "FREQ_GHZ"), "test")
+    for column in PointwiseDataset.PARAMETER_COLUMNS:
+        if column not in frame:
+            frame[column] = 1.0
+    return PointwiseDataset(frame, "test")
 
 
 def test_random_simu_indices_is_seed_reproducible() -> None:

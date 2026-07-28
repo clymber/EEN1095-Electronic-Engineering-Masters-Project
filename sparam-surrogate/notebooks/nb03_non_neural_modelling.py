@@ -35,7 +35,11 @@ configure_stdio_relative_path()
 import pandas as pd
 
 from sparam_surrogate.config import SurrogateConfig
-from sparam_surrogate.data import DLDataset, TouchstoneLoader, random_simu_indices
+from sparam_surrogate.data import (
+    PointwiseDataset,
+    TouchstoneLoader,
+    random_simu_indices,
+)
 from sparam_surrogate.models import (
     PolynomialModel,
     RandomForestModel,
@@ -80,6 +84,7 @@ def per_target_split_metrics(
         for target_name in validation_by_target.index
     }
 
+load_pointwise_datasets = PointwiseDataset.from_frequency_expanded_csv
 
 # %% [markdown]
 # # Non-Neural Network Modelling
@@ -129,8 +134,8 @@ print("Vector target names:", *vector_target_names, sep=", ")
 # whenever it is newer than the cleaned CSV.
 
 # %%
-scalar_train_set, scalar_val_set, scalar_test_set = DLDataset.from_cleaned_csv(
-    cfg.preprocessing.processed_csv,
+scalar_train_set, scalar_val_set, scalar_test_set = load_pointwise_datasets(
+    cfg.preprocessing.freq_expanded_csv,
     target_loader=scalar_db_loader,
     cache=True,
 )
@@ -172,10 +177,10 @@ print(f"Shape of test        targets: {y_test_scalar.shape}")
 # pylint: disable=invalid-name
 
 # %% [markdown]
-# The Ridge baseline needs full `NumPy` arrays. `DLDataset` persists targets on
-# disk, while `TouchstoneLoader` temporarily caches parsed Touchstone networks
-# only during a cold load. Its small in-memory network cache can be cleared once
-# the scalar arrays are ready.
+# The Ridge baseline needs full `NumPy` arrays. `PointwiseDataset` persists
+# targets on disk, while `TouchstoneLoader` temporarily caches parsed
+# Touchstone networks only during a cold load. Its small in-memory network cache
+# can be cleared once the scalar arrays are ready.
 
 # %%
 print(f"Scalar Touchstone cache info: {scalar_db_loader.cache_info()}")
@@ -283,10 +288,7 @@ print(f"- name={example_scalar_model.name}")
 print(f"- alphas={example_scalar_model.alphas}")
 
 # %%
-scalar_runner = ModelRunRunner(
-    cfg,
-    ScalarRidgeModel.from_config(scalar_ridge_config),
-)
+scalar_runner = ModelRunRunner(cfg, ScalarRidgeModel.from_config(scalar_ridge_config))
 scalar_model = scalar_runner.train(
     X_train_scalar,
     y_train_scalar,
@@ -315,12 +317,10 @@ scalar_test_metrics = scalar_runner.test(X_test_scalar, y_test_scalar)
 
 y_test_pred_scalar = scalar_model.predict(X_test_scalar)
 
-scalar_metrics = pd.DataFrame(
-    [
-        {"split": "validation", **scalar_validation_metrics},
-        {"split": "test", **scalar_test_metrics},
-    ]
-)
+scalar_metrics = pd.DataFrame([
+    {"split": "validation", **scalar_validation_metrics},
+    {"split": "test", **scalar_test_metrics},
+])
 print(scalar_metrics)
 
 # %% [markdown]
@@ -529,8 +529,8 @@ del y_train_scalar, y_val_scalar, y_test_scalar
 # removed without affecting vector model development.
 
 # %%
-vector_train_set, vector_val_set, vector_test_set = DLDataset.from_cleaned_csv(
-    cfg.preprocessing.processed_csv,
+vector_train_set, vector_val_set, vector_test_set = load_pointwise_datasets(
+    cfg.preprocessing.freq_expanded_csv,
     target_loader=vector_db_loader,
     cache=True,
 )
