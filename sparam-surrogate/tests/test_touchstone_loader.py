@@ -131,6 +131,40 @@ class TestTouchstoneLoader:
             [-20 * np.log10(0.5), -20 * np.log10(0.2)],
         )
 
+    def test_load_vector_il_curve(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """
+        Vector curves preserve frequency rows and configured port-pair order.
+        """
+        rel_path = "raw/variation/simu_0.s2p"
+        matrices = [
+            np.array([[0.1 + 0.0j, 0.2 + 0.0j], [0.5 + 0.0j, 0.3 + 0.0j]]),
+            np.array([[0.1 + 0.0j, 0.4 + 0.0j], [0.25 + 0.0j, 0.3 + 0.0j]]),
+        ]
+        _write_s2p(tmp_path / rel_path, matrices)
+        monkeypatch.setattr(touchstone_loader_module, "PROJECT_ROOT", tmp_path)
+        loader = TouchstoneLoader(
+            mode="vector",
+            config=_config(),
+            representation="il",
+        )
+
+        frequencies_ghz, targets = loader.load_curve({"TOUCHSTONE_REL_PATH": rel_path})
+
+        np.testing.assert_allclose(frequencies_ghz, [1.0, 2.0])
+        assert targets.shape == (2, 2)
+        np.testing.assert_allclose(
+            targets,
+            [
+                [-20 * np.log10(0.5), -20 * np.log10(0.2)],
+                [-20 * np.log10(0.25), -20 * np.log10(0.4)],
+            ],
+        )
+        assert np.all(targets > 0.0)
+
     def test_load_smatrix_target(
         self,
         tmp_path: Path,
@@ -165,6 +199,45 @@ class TestTouchstoneLoader:
             "IMAG_S2_2",
         )
         np.testing.assert_allclose(target, [1.0, 2.0, 3.0, 4.0, 0.1, 0.2, 0.3, 0.4])
+
+    def test_load_smatrix_real_imag_curve(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """
+        S-matrix curves flatten each frequency before joining real and imaginary.
+        """
+        rel_path = "raw/variation/simu_0.s2p"
+        matrices = [
+            np.array(
+                [[1.0 + 0.1j, 2.0 + 0.2j], [3.0 + 0.3j, 4.0 + 0.4j]],
+                dtype=complex,
+            ),
+            np.array(
+                [[5.0 + 0.5j, 6.0 + 0.6j], [7.0 + 0.7j, 8.0 + 0.8j]],
+                dtype=complex,
+            ),
+        ]
+        _write_s2p(tmp_path / rel_path, matrices)
+        monkeypatch.setattr(touchstone_loader_module, "PROJECT_ROOT", tmp_path)
+        loader = TouchstoneLoader(
+            mode="smatrix",
+            config=_config(),
+            representation="real_imag",
+        )
+
+        frequencies_ghz, targets = loader.load_curve({"TOUCHSTONE_REL_PATH": rel_path})
+
+        np.testing.assert_allclose(frequencies_ghz, [1.0, 2.0])
+        assert targets.shape == (2, 8)
+        np.testing.assert_allclose(
+            targets,
+            [
+                [1.0, 2.0, 3.0, 4.0, 0.1, 0.2, 0.3, 0.4],
+                [5.0, 6.0, 7.0, 8.0, 0.5, 0.6, 0.7, 0.8],
+            ],
+        )
 
     def test_frequency_lookup_uses_tolerance(
         self,
