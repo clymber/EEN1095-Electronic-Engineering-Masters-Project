@@ -111,7 +111,7 @@ train_set, val_set, test_set = PointwiseDataset.from_frequency_expanded_csv(
 scalar_loader = TouchstoneLoader(
     mode="scalar",
     config=cfg,
-    representation="db",
+    representation="il",
 )
 full_loader = TouchstoneLoader(
     mode="smatrix",
@@ -122,7 +122,8 @@ full_loader = TouchstoneLoader(
 
 `TouchstoneLoader` requires `cfg.dataset.nports`. Scalar and vector modes
 also require `cfg.dataset.ports` so selected one-based port pairs stay in
-the configuration file.
+the configuration file. The `il` representation returns
+`-20 * log10(abs(S))` with target names such as `IL_S7_1_DB`.
 
 Feature scaling is intentionally not written into the frequency-expanded CSV. Training
 code should fit scaling statistics on train rows only, then apply those

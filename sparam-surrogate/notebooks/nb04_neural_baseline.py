@@ -79,6 +79,7 @@ def per_target_split_metrics(
 # The model uses the same cleaned design-frequency rows, the same split labels,
 # and the same six dB through-path targets. This keeps the neural baseline
 # comparable to Vector Ridge, Polynomial Ridge, and Random Forest.
+# Targets use $IL_{ij,\mathrm{dB}}=-20\log_{10}|S_{ij}|$.
 #
 # The first neural baseline is intentionally simple:
 #
@@ -126,18 +127,18 @@ print(f"Polynomial neural degree: {polynomial_neural_mlp_config.polynomial_degre
 # %% [markdown]
 # ## 1. Vector Data Loading
 #
-# The target loader matches the vector dB experiment in `nb03`. The cached target
+# The target loader matches the vector IL experiment in `nb03`. The cached target
 # arrays are reused when they are newer than the cleaned CSV, so repeated neural
 # experiments do not need to parse every Touchstone file again.
 
 # %%
 load_pointwise_datasets = PointwiseDataset.from_frequency_expanded_csv
-vector_db_loader = TouchstoneLoader("vector", cfg, "db", 8)
-vector_target_names = tuple(vector_db_loader.target_names)
+vector_il_loader = TouchstoneLoader("vector", cfg, "il", 8)
+vector_target_names = tuple(vector_il_loader.target_names)
 
 vector_train_set, vector_val_set, vector_test_set = load_pointwise_datasets(
     cfg.preprocessing.freq_expanded_csv,
-    target_loader=vector_db_loader,
+    target_loader=vector_il_loader,
     cache=True,
 )
 vector_data_interface = {
@@ -146,6 +147,7 @@ vector_data_interface = {
     "target_names": vector_target_names,
     "target_scope": "vector",
     "target_units": "dB",
+    "target_representation": "insertion_loss_db",
 }
 
 print(f"Number of training   samples: {len(vector_train_set)}")
@@ -177,9 +179,16 @@ if Y_val.shape[1] != len(vector_target_names):
     raise RuntimeError("Validation targets do not match configured target names.")
 if Y_test.shape[1] != len(vector_target_names):
     raise RuntimeError("Test targets do not match configured target names.")
+for split_name, target_values in {
+    "training": Y_train,
+    "validation": Y_val,
+    "test": Y_test,
+}.items():
+    if np.any(target_values <= 0.0):
+        raise RuntimeError(f"{split_name.title()} vector IL targets must be positive.")
 
 # %%
-vector_db_loader.clear_cache()
+vector_il_loader.clear_cache()
 
 
 # %% [markdown]
@@ -217,12 +226,12 @@ selected_simu_indices = random_simu_indices(vector_test_set, 5, seed=random_seed
 fig_random_neural_design_curves = plot_design_prediction_curves(
     neural_model,
     vector_test_set,
-    vector_db_loader,
+    vector_il_loader,
     selected_simu_indices,
 )
 neural_design_curve_path = neural_runner.manager.save_figure(
     fig_random_neural_design_curves,
-    "selected_design_curves_magnitude_db.png",
+    "selected_design_curves_insertion_loss_db.png",
 )
 print(f"Saved Neural MLP design-curve plot: {neural_design_curve_path}")
 
@@ -336,12 +345,12 @@ fig_polynomial_mlp_history = polynomial_neural_model.plot_training_history()
 fig_random_polynomial_neural_design_curves = plot_design_prediction_curves(
     polynomial_neural_model,
     vector_test_set,
-    vector_db_loader,
+    vector_il_loader,
     selected_simu_indices,
 )
 polynomial_neural_design_curve_path = polynomial_neural_runner.manager.save_figure(
     fig_random_polynomial_neural_design_curves,
-    "selected_design_curves_magnitude_db.png",
+    "selected_design_curves_insertion_loss_db.png",
 )
 print(
     "Saved Polynomial Neural MLP design-curve plot: "
@@ -442,7 +451,7 @@ comparison_model_names = {
     "polynomial_neural_mlp": "Polynomial Neural MLP",
 }
 vector_latest_benchmark_path = (
-    cfg.paths.benchmarks / "vector_magnitude_db_latest.csv"
+    cfg.paths.benchmarks / "vector_insertion_loss_db_latest.csv"
 )
 neural_variant_comparison = (
     pd.read_csv(vector_latest_benchmark_path)
@@ -479,13 +488,17 @@ print("\nSelected model registry entries:")
 print(sorted(selected_model_registry.get("models", {})))
 
 # %%
-s7_latest_benchmark_path = cfg.paths.benchmarks / "s7_1_magnitude_db_latest.csv"
+s7_latest_benchmark_path = (
+    cfg.paths.benchmarks / "s7_1_insertion_loss_db_latest.csv"
+)
 if s7_latest_benchmark_path.is_file():
     print("\nLatest S7_1 benchmark:")
     display(pd.read_csv(s7_latest_benchmark_path).style.hide(axis="index"))
 
 # %%
-s7_selected_benchmark_path = cfg.paths.benchmarks / "s7_1_magnitude_db_selected.csv"
+s7_selected_benchmark_path = (
+    cfg.paths.benchmarks / "s7_1_insertion_loss_db_selected.csv"
+)
 if s7_selected_benchmark_path.is_file():
     print("\nSelected S7_1 benchmark:")
     display(pd.read_csv(s7_selected_benchmark_path).style.hide(axis="index"))
@@ -497,7 +510,7 @@ if vector_latest_benchmark_path.is_file():
 
 # %%
 vector_selected_benchmark_path = (
-    cfg.paths.benchmarks / "vector_magnitude_db_selected.csv"
+    cfg.paths.benchmarks / "vector_insertion_loss_db_selected.csv"
 )
 if vector_selected_benchmark_path.is_file():
     print("\nSelected vector benchmark:")

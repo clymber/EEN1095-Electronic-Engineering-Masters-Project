@@ -105,6 +105,33 @@ class TestTouchstoneLoader:
         assert loader.target_names == ("S2_1_DB",)
         np.testing.assert_allclose(target, [20 * np.log10(0.25)])
 
+    def test_load_scalar_il_target(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """
+        Scalar IL mode returns the first port pair as positive insertion loss.
+        """
+        rel_path = "raw/variation/simu_0.s2p"
+        matrices = [
+            np.array([[0.1 + 0.0j, 0.2 + 0.0j], [0.5 + 0.0j, 0.3 + 0.0j]]),
+            np.array([[0.1 + 0.0j, 0.2 + 0.0j], [0.25 + 0.0j, 0.3 + 0.0j]]),
+        ]
+        _write_s2p(tmp_path / rel_path, matrices)
+        monkeypatch.setattr(touchstone_loader_module, "PROJECT_ROOT", tmp_path)
+        loader = TouchstoneLoader(
+            mode="scalar",
+            config=_config(),
+            representation="il",
+        )
+
+        target = loader(np.zeros(2), _metadata(rel_path, frequency_ghz=2.0))
+
+        assert loader.target_names == ("IL_S2_1_DB",)
+        np.testing.assert_allclose(target, [-20 * np.log10(0.25)])
+        assert np.all(target > 0.0)
+
     def test_load_vector_il_target(
         self,
         tmp_path: Path,

@@ -95,12 +95,15 @@ class TestScalarPredictionBand:
             frame,
             y_true,
             y_pred,
-            "S7_1_DB",
+            "IL_S7_1_DB",
         )
 
         assert len(fig.axes) == 1
         ax = fig.axes[0]
-        assert ax.get_title() == "Scalar Ridge Magnitude Distribution: S7_1_DB"
+        assert ax.get_title() == (
+            "Scalar Ridge Insertion-Loss Distribution: IL_S7_1_DB"
+        )
+        assert ax.get_ylabel() == "Insertion Loss (dB)"
         assert len(ax.lines) == 2
         assert len(ax.collections) == 2
         plt.close(fig)
@@ -137,16 +140,16 @@ class TestVectorPredictionBand:
             frame,
             y_true,
             y_pred,
-            ("S7_1_DB", "S8_2_DB"),
+            ("IL_S7_1_DB", "IL_S8_2_DB"),
             lower_quantile=0.0,
             upper_quantile=1.0,
         )
 
         assert summary["TARGET"].tolist() == [
-            "S7_1_DB",
-            "S7_1_DB",
-            "S8_2_DB",
-            "S8_2_DB",
+            "IL_S7_1_DB",
+            "IL_S7_1_DB",
+            "IL_S8_2_DB",
+            "IL_S8_2_DB",
         ]
         assert summary["FREQ_GHZ"].tolist() == [1.0, 2.0, 1.0, 2.0]
         np.testing.assert_allclose(
@@ -200,17 +203,21 @@ class TestVectorPredictionBand:
             frame,
             y_true,
             y_pred,
-            ("S7_1_DB", "S8_2_DB"),
+            ("IL_S7_1_DB", "IL_S8_2_DB"),
             model_name="Polynomial",
         )
 
         assert len(fig.axes) == 2
         assert fig._suptitle is not None
         assert fig._suptitle.get_text() == (
-            "Polynomial Transmission Magnitude Distributions"
+            "Polynomial Insertion-Loss Distributions"
         )
-        assert [ax.get_title() for ax in fig.axes] == ["S7_1_DB", "S8_2_DB"]
+        assert [ax.get_title() for ax in fig.axes] == [
+            "IL_S7_1_DB",
+            "IL_S8_2_DB",
+        ]
         for ax in fig.axes:
+            assert ax.get_ylabel() == "Insertion Loss (dB)"
             assert len(ax.lines) == 2
             assert len(ax.collections) == 2
         plt.close(fig)
@@ -257,7 +264,7 @@ class TestModelMaeComparison:
             frame,
             y_true,
             predictions,
-            ("S7_1_DB", "S8_2_DB"),
+            ("IL_S7_1_DB", "IL_S8_2_DB"),
         )
 
         assert len(fig.axes) == 1
@@ -291,12 +298,12 @@ class TestSharedTargetComparison:
             frame,
             y_true,
             predictions,
-            "S7_1_DB",
+            "IL_S7_1_DB",
         )
 
         assert len(fig.axes) == 1
         ax = fig.axes[0]
-        assert ax.get_title() == "S7_1_DB MAE by Frequency"
+        assert ax.get_title() == "IL_S7_1_DB MAE by Frequency"
         assert [line.get_label() for line in ax.lines] == [
             "Scalar Ridge",
             "Vector Ridge",
@@ -320,12 +327,15 @@ class TestSharedTargetComparison:
             frame,
             y_true,
             predictions,
-            "S7_1_DB",
+            "IL_S7_1_DB",
         )
 
         assert len(fig.axes) == 1
         ax = fig.axes[0]
-        assert ax.get_title() == "S7_1_DB Predicted Distribution Comparison"
+        assert ax.get_title() == (
+            "IL_S7_1_DB Predicted Distribution Comparison"
+        )
+        assert ax.get_ylabel() == "Insertion Loss (dB)"
         assert len(ax.lines) == 4
         assert len(ax.collections) == 4
         assert [line.get_label() for line in ax.lines] == [

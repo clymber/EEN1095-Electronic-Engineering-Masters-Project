@@ -192,9 +192,11 @@ print("Sanity checks passed for design-level and frequency-expanded CSVs.")
 # %% [markdown]
 # ## 7. Lazy Target Loading Smoke Test
 #
-# The scalar baseline and full S-matrix model now differ by the map callable
-# used during training. This smoke test loads one row from the train split, then
-# extracts scalar and full S-matrix targets from the row's Touchstone file.
+# The point-wise insertion-loss baseline and full S-matrix model differ by the
+# map callable used during training. This smoke test loads one row from the train
+# split, then extracts positive scalar IL and full S-matrix targets from the
+# row's Touchstone file. The scalar convention is
+# $IL_{ij,\mathrm{dB}}=-20\log_{10}|S_{ij}|$.
 
 # %%
 sample_features = train_set.features[0]
@@ -202,10 +204,10 @@ sample_metadata: dict[str, Any] = {
     str(key): value for key, value in train_set.row_metadata.iloc[0].to_dict().items()
 }
 
-scalar_loader = TouchstoneLoader(
+scalar_il_loader = TouchstoneLoader(
     mode="scalar",
     config=cfg,
-    representation="db",
+    representation="il",
 )
 full_loader = TouchstoneLoader(
     mode="smatrix",
@@ -213,13 +215,14 @@ full_loader = TouchstoneLoader(
     representation="real_imag",
 )
 
-scalar_target = scalar_loader(sample_features, sample_metadata)
+scalar_il_target = scalar_il_loader(sample_features, sample_metadata)
 full_target = full_loader(sample_features, sample_metadata)
+assert np.all(scalar_il_target > 0.0)
 
 print("Sample metadata:")
 print(sample_metadata)
-print(f"Scalar target shape: {scalar_target.shape}")
-print(f"Scalar target names: {scalar_loader.target_names}")
+print(f"Scalar IL target shape: {scalar_il_target.shape}")
+print(f"Scalar IL target names: {scalar_il_loader.target_names}")
 print(f"Full S-matrix target shape: {full_target.shape}")
 print(f"First full target names: {full_loader.target_names[:8]}")
 
