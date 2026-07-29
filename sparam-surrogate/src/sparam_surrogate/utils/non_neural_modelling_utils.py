@@ -161,9 +161,9 @@ def plot_scalar_prediction_band_by_frequency(
         linewidth=2.0,
         label="Predicted median",
     )
-    ax.set_title(f"Scalar Ridge Magnitude Distribution: {target_name}")
+    ax.set_title(f"Scalar Ridge Insertion-Loss Distribution: {target_name}")
     ax.set_xlabel("Frequency (GHz)")
-    ax.set_ylabel("Transmission Magnitude (dB)")
+    ax.set_ylabel("Insertion Loss (dB)")
     ax.grid(True, alpha=0.3)
     ax.legend()
     fig.tight_layout()
@@ -189,8 +189,8 @@ def plot_scalar_true_vs_predicted(
     )
     add_diagonal_reference(ax, y_true[positions], y_pred[positions])
     ax.set_title(f"Predicted vs True: {target_name}")
-    ax.set_xlabel("True Transmission Magnitude (dB)")
-    ax.set_ylabel("Predicted Transmission Magnitude (dB)")
+    ax.set_xlabel("True Insertion Loss (dB)")
+    ax.set_ylabel("Predicted Insertion Loss (dB)")
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
     return fig
@@ -335,7 +335,7 @@ def plot_shared_target_prediction_bands(
 
     ax.set_title(f"{target_name} Predicted Distribution Comparison")
     ax.set_xlabel("Frequency (GHz)")
-    ax.set_ylabel("S7_1_DB (dB)")
+    ax.set_ylabel("Insertion Loss (dB)")
     ax.grid(True, alpha=0.3)
     ax.legend(ncol=2, fontsize="small")
     fig.tight_layout()
@@ -449,10 +449,10 @@ def plot_vector_prediction_bands_by_frequency(
         )
         ax.set_title(target_name)
         ax.set_xlabel("Frequency (GHz)")
-        ax.set_ylabel("Transmission Magnitude (dB)")
+        ax.set_ylabel("Insertion Loss (dB)")
         ax.grid(True, alpha=0.3)
     axes[0, 0].legend()
-    fig.suptitle(f"{model_name} Transmission Magnitude Distributions", y=1.02)
+    fig.suptitle(f"{model_name} Insertion-Loss Distributions", y=1.02)
     fig.tight_layout()
     return fig
 
@@ -480,8 +480,8 @@ def plot_vector_true_vs_predicted(
         )
         add_diagonal_reference(ax, true_values, pred_values)
         ax.set_title(names[column_index])
-        ax.set_xlabel("True Transmission Magnitude (dB)")
-        ax.set_ylabel("Predicted Transmission Magnitude (dB)")
+        ax.set_xlabel("True Insertion Loss (dB)")
+        ax.set_ylabel("Predicted Insertion Loss (dB)")
         ax.grid(True, alpha=0.3)
     fig.suptitle(f"{model_name} Predicted vs True", y=1.02)
     fig.tight_layout()

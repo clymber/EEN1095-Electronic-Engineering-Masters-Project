@@ -63,6 +63,7 @@ def _save_run(
     metrics: dict | None = METRICS_A,
     target_scope: str = "vector",
     target_names: list[str] | None = None,
+    target_representation: str | None = None,
 ) -> ModelRunArtifactManager:
     """
     Save and optionally score one lightweight model run.
@@ -75,14 +76,14 @@ def _save_run(
         model.name,
         timestamp=timestamp,
     )
-    manager.save_model(
-        model,
-        data_interface={
-            "target_names": target_names or ["S7_1_DB", "S8_2_DB"],
-            "target_scope": target_scope,
-            "target_units": "dB",
-        },
-    )
+    data_interface = {
+        "target_names": target_names or ["S7_1_DB", "S8_2_DB"],
+        "target_scope": target_scope,
+        "target_units": "dB",
+    }
+    if target_representation is not None:
+        data_interface["target_representation"] = target_representation
+    manager.save_model(model, data_interface=data_interface)
     if metrics is not None:
         manager.save_metrics(metrics, metric_units={"MAE": "dB", "RMSE": "dB"})
     return manager
@@ -122,6 +123,28 @@ def _s7_path(outputs_root: Path, selection: str) -> Path:
     Return the S7_1 benchmark path for a selection.
     """
     return outputs_root / "benchmarks" / f"s7_1_magnitude_db_{selection}.csv"
+
+
+def _il_vector_path(outputs_root: Path, selection: str) -> Path:
+    """
+    Return the vector insertion-loss benchmark path for a selection.
+    """
+    return (
+        outputs_root
+        / "benchmarks"
+        / f"vector_insertion_loss_db_{selection}.csv"
+    )
+
+
+def _il_s7_path(outputs_root: Path, selection: str) -> Path:
+    """
+    Return the S7_1 insertion-loss benchmark path for a selection.
+    """
+    return (
+        outputs_root
+        / "benchmarks"
+        / f"s7_1_insertion_loss_db_{selection}.csv"
+    )
 
 
 def test_refresh_latest_benchmarks_writes_and_replaces_vector_row(
@@ -285,6 +308,56 @@ def test_refresh_benchmarks_writes_s7_row_for_vector_per_target_metrics(
             "run_id": manager.run_id,
         }
     ]
+
+
+def test_refresh_benchmarks_separates_insertion_loss_from_magnitude(
+    tmp_path: Path,
+) -> None:
+    """
+    Insertion-loss runs write IL tables without changing magnitude tables.
+    """
+    outputs_root = tmp_path / "outputs"
+    metrics = {
+        **METRICS_A,
+        "per_target": {
+            "IL_S7_1_DB": {
+                "validation": {"MAE": 0.11, "RMSE": 0.33},
+                "test": {"MAE": 0.22, "RMSE": 0.44},
+            },
+            "IL_S8_2_DB": {
+                "validation": {"MAE": 0.15, "RMSE": 0.35},
+                "test": {"MAE": 0.25, "RMSE": 0.45},
+            },
+        },
+    }
+    manager = _save_run(
+        outputs_root,
+        "20260705T153000Z",
+        metrics=metrics,
+        target_names=["IL_S7_1_DB", "IL_S8_2_DB"],
+        target_representation="insertion_loss_db",
+    )
+    registry = _registry(outputs_root, tmp_path)
+    registry.register_run(manager.run_dir)
+
+    paths = refresh_benchmarks(
+        outputs_root / "benchmarks",
+        registry,
+        "scalar_ridge",
+        selection="latest",
+    )
+
+    assert [path.name for path in paths] == [
+        "vector_insertion_loss_db_latest.csv",
+        "s7_1_insertion_loss_db_latest.csv",
+        "per_target_insertion_loss_db_latest.csv",
+    ]
+    assert _rows(_il_vector_path(outputs_root, "latest"))[0]["run_id"] == (
+        manager.run_id
+    )
+    assert _rows(_il_s7_path(outputs_root, "latest"))[0]["test_mae_db"] == 0.22
+    assert not _vector_path(outputs_root, "latest").exists()
+    assert not _s7_path(outputs_root, "latest").exists()
 
 
 def test_refresh_benchmarks_skips_runs_without_metrics(tmp_path: Path) -> None:

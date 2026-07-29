@@ -18,6 +18,13 @@ from sparam_surrogate.utils.json_io import read_json
 VECTOR_MAGNITUDE_DB = "vector_magnitude_db"
 S7_1_MAGNITUDE_DB = "s7_1_magnitude_db"
 PER_TARGET_MAGNITUDE_DB = "per_target_magnitude_db"
+VECTOR_INSERTION_LOSS_DB = "vector_insertion_loss_db"
+S7_1_INSERTION_LOSS_DB = "s7_1_insertion_loss_db"
+PER_TARGET_INSERTION_LOSS_DB = "per_target_insertion_loss_db"
+PER_TARGET_BENCHMARKS = {
+    PER_TARGET_MAGNITUDE_DB,
+    PER_TARGET_INSERTION_LOSS_DB,
+}
 METRIC_COLUMNS = ("val_mae_db", "val_rmse_db", "test_mae_db", "test_rmse_db")
 
 
@@ -52,7 +59,7 @@ def refresh_benchmarks(
         path = root / f"{benchmark_name}_{selection}.csv"
         key_columns = (
             ("model_name", "target_name")
-            if benchmark_name == PER_TARGET_MAGNITUDE_DB
+            if benchmark_name in PER_TARGET_BENCHMARKS
             else ("model_name",)
         )
         _upsert_rows(path, rows, key_columns=key_columns)
@@ -121,21 +128,66 @@ def _benchmark_rows(
 
     metadata_path = registry.resolve_path(entry.metadata_path)
     metadata = read_json(metadata_path) if metadata_path.is_file() else {}
+    benchmark_names = _target_benchmark_names(metadata)
+    if benchmark_names is None:
+        return {}
+    vector_benchmark, s7_1_benchmark, per_target_benchmark = benchmark_names
+
     rows_by_benchmark: dict[str, list[dict[str, Any]]] = {}
     aggregate_row = _aggregate_row(entry, metrics)
     per_target_rows = _per_target_rows(entry, metrics)
 
     if aggregate_row is not None and _is_vector_benchmark(metadata):
-        rows_by_benchmark[VECTOR_MAGNITUDE_DB] = [aggregate_row]
+        rows_by_benchmark[vector_benchmark] = [aggregate_row]
 
     s7_1_row = _s7_1_row(metadata, aggregate_row, per_target_rows)
     if s7_1_row is not None:
-        rows_by_benchmark[S7_1_MAGNITUDE_DB] = [s7_1_row]
+        rows_by_benchmark[s7_1_benchmark] = [s7_1_row]
 
     if per_target_rows:
-        rows_by_benchmark[PER_TARGET_MAGNITUDE_DB] = per_target_rows
+        rows_by_benchmark[per_target_benchmark] = per_target_rows
 
     return rows_by_benchmark
+
+
+def _target_benchmark_names(
+    metadata: Mapping[str, Any],
+) -> tuple[str, str, str] | None:
+    """
+    Return benchmark table names for a supported target representation.
+    """
+    data_interface = metadata.get("data_interface")
+    if not isinstance(data_interface, Mapping):
+        return None
+
+    representation = str(
+        data_interface.get("target_representation", "")
+    ).lower()
+    target_names = tuple(str(name) for name in data_interface.get("target_names", ()))
+    insertion_loss_names = any(
+        _normalise_target_name(name).startswith("il_s") for name in target_names
+    )
+    magnitude_names = any(
+        _normalise_target_name(name).startswith("s") for name in target_names
+    )
+
+    if representation == "insertion_loss_db" or (
+        not representation and insertion_loss_names
+    ):
+        return (
+            VECTOR_INSERTION_LOSS_DB,
+            S7_1_INSERTION_LOSS_DB,
+            PER_TARGET_INSERTION_LOSS_DB,
+        )
+    if representation in {"magnitude_db", "log_magnitude_db"} or (
+        not representation and magnitude_names
+    ):
+        return (
+            VECTOR_MAGNITUDE_DB,
+            S7_1_MAGNITUDE_DB,
+            PER_TARGET_MAGNITUDE_DB,
+        )
+    return None
 
 
 def _aggregate_row(
@@ -252,10 +304,23 @@ def _is_s7_1_benchmark(metadata: Mapping[str, Any]) -> bool:
 
 def _is_s7_1_target(target_name: Any) -> bool:
     """
-    Return whether a target name refers to S7_1 magnitude in dB.
+    Return whether a target name refers to the S7_1 response in dB.
     """
-    normalized = re.sub(r"[^a-z0-9]+", "_", str(target_name).lower()).strip("_")
-    return normalized in {"s7_1", "s7_1_db", "s7_1_magnitude_db"}
+    normalized = _normalise_target_name(target_name)
+    return normalized in {
+        "s7_1",
+        "s7_1_db",
+        "s7_1_magnitude_db",
+        "il_s7_1_db",
+        "s7_1_insertion_loss_db",
+    }
+
+
+def _normalise_target_name(target_name: Any) -> str:
+    """
+    Return a lowercase underscore-delimited target name.
+    """
+    return re.sub(r"[^a-z0-9]+", "_", str(target_name).lower()).strip("_")
 
 
 def _upsert_rows(

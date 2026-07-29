@@ -146,13 +146,14 @@ def test_runner_persists_full_workflow_and_refreshes_benchmarks(
     runner.test(X, y)
     paths = runner.persist(
         data_interface={
-            "target_names": ["S7_1_DB", "S8_2_DB"],
+            "target_names": ["IL_S7_1_DB", "IL_S8_2_DB"],
             "target_scope": "vector",
             "target_units": "dB",
+            "target_representation": "insertion_loss_db",
         },
         extra_metrics={
             "per_target": {
-                "S7_1_DB": {
+                "IL_S7_1_DB": {
                     "validation": {"MAE": 0.01, "RMSE": 0.02},
                     "test": {"MAE": 0.03, "RMSE": 0.04},
                 }
@@ -164,7 +165,7 @@ def test_runner_persists_full_workflow_and_refreshes_benchmarks(
     run_dir = cfg.paths.runs / "20260705T153000Z_scalar_ridge"
     saved_metrics = read_json(run_dir / "metrics.json")["metrics"]
     assert paths["model"] == run_dir / "model.joblib"
-    assert saved_metrics["per_target"]["S7_1_DB"]["test"]["MAE"] == 0.03
+    assert saved_metrics["per_target"]["IL_S7_1_DB"]["test"]["MAE"] == 0.03
     assert (run_dir / "config_resolved.json").is_file()
     assert (run_dir / "environment.json").is_file()
     assert (run_dir / "validation_results.csv").is_file()
@@ -172,16 +173,16 @@ def test_runner_persists_full_workflow_and_refreshes_benchmarks(
     assert (cfg.paths.models / "latest.json").is_file()
     assert (cfg.paths.models / "selected.json").is_file()
     assert (
-        cfg.paths.benchmarks / "vector_magnitude_db_latest.csv"
+        cfg.paths.benchmarks / "vector_insertion_loss_db_latest.csv"
     ).is_file()
     assert (
-        cfg.paths.benchmarks / "vector_magnitude_db_selected.csv"
+        cfg.paths.benchmarks / "vector_insertion_loss_db_selected.csv"
     ).is_file()
     assert (
-        cfg.paths.benchmarks / "s7_1_magnitude_db_latest.csv"
+        cfg.paths.benchmarks / "s7_1_insertion_loss_db_latest.csv"
     ).is_file()
     assert (
-        cfg.paths.benchmarks / "s7_1_magnitude_db_selected.csv"
+        cfg.paths.benchmarks / "s7_1_insertion_loss_db_selected.csv"
     ).is_file()
     assert read_json(run_dir / "manifest.json")["completed_steps"] == [
         "train",

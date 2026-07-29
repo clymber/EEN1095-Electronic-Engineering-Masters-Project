@@ -33,6 +33,7 @@ configure_stdio_relative_path()
 
 # %%
 import pandas as pd
+from IPython.display import display
 
 from sparam_surrogate.config import SurrogateConfig
 from sparam_surrogate.data import (
@@ -94,6 +95,13 @@ load_pointwise_datasets = PointwiseDataset.from_frequency_expanded_csv
 # value for one port pair. The remaining baselines predict one vector containing
 # the six configured through-path IL values.
 #
+# Every target uses the real-valued positive insertion-loss convention
+# $IL_{ij,\mathrm{dB}}=-20\log_{10}|S_{ij}|$.
+#
+# Run-dependent metrics and selected hyperparameters are reported by output cells and
+# persisted artifacts rather than duplicated in Markdown. The analysis text explains
+# how to interpret those results so it remains valid when the notebook is rerun.
+#
 # The cleaned CSV stores only design features, frequency, split labels, simulation
 # indices, and Touchstone paths. The `TouchstoneLoader` reads Touchstone files on
 # demand, then this notebook materializes the target arrays before fitting because
@@ -102,11 +110,11 @@ load_pointwise_datasets = PointwiseDataset.from_frequency_expanded_csv
 # %%
 cfg = SurrogateConfig.from_config()
 random_seed = cfg.project.seed
-scalar_db_loader = TouchstoneLoader("scalar", cfg, "db", 8)
-vector_db_loader = TouchstoneLoader("vector", cfg, "db", 8)
+scalar_il_loader = TouchstoneLoader("scalar", cfg, "il", 8)
+vector_il_loader = TouchstoneLoader("vector", cfg, "il", 8)
 scalar_target_index = 0  # pylint: disable=invalid-name
-scalar_target_name = scalar_db_loader.target_names[scalar_target_index]
-vector_target_names = tuple(vector_db_loader.target_names)
+scalar_target_name = scalar_il_loader.target_names[scalar_target_index]
+vector_target_names = tuple(vector_il_loader.target_names)
 
 print(f"Name of raw dataset: {cfg.dataset.name}")
 print(f"Raw data directory: {cfg.dataset.path}")
@@ -129,14 +137,14 @@ print("Vector target names:", *vector_target_names, sep=", ")
 # ## Scalar Data Loading And Validation
 #
 # The scalar experiment owns train, validation, and test dataset views configured
-# with the scalar dB loader. On the first run, each view materializes its target
+# with the scalar IL loader. On the first run, each view materializes its target
 # array from Touchstone files and writes a split cache. Later runs load the cache
 # whenever it is newer than the cleaned CSV.
 
 # %%
 scalar_train_set, scalar_val_set, scalar_test_set = load_pointwise_datasets(
     cfg.preprocessing.freq_expanded_csv,
-    target_loader=scalar_db_loader,
+    target_loader=scalar_il_loader,
     cache=True,
 )
 scalar_data_interface = {
@@ -145,6 +153,7 @@ scalar_data_interface = {
     "target_names": (scalar_target_name,),
     "target_scope": "scalar",
     "target_units": "dB",
+    "target_representation": "insertion_loss_db",
 }
 
 print(f"Number of scalar model training   samples: {len(scalar_train_set)}")
@@ -174,6 +183,13 @@ y_test_scalar = scalar_test_set.targets[:, 0]
 print(f"Shape of training    targets: {y_train_scalar.shape}")
 print(f"Shape of validation  targets: {y_val_scalar.shape}")
 print(f"Shape of test        targets: {y_test_scalar.shape}")
+for split_name, target_values in {
+    "training": y_train_scalar,
+    "validation": y_val_scalar,
+    "test": y_test_scalar,
+}.items():
+    if (target_values <= 0.0).any():
+        raise RuntimeError(f"{split_name.title()} scalar IL targets must be positive.")
 # pylint: disable=invalid-name
 
 # %% [markdown]
@@ -183,9 +199,9 @@ print(f"Shape of test        targets: {y_test_scalar.shape}")
 # can be cleared once the scalar arrays are ready.
 
 # %%
-print(f"Scalar Touchstone cache info: {scalar_db_loader.cache_info()}")
-scalar_db_loader.clear_cache()
-print(f"Scalar Touchstone cache after clearing: {scalar_db_loader.cache_info()}")
+print(f"Scalar Touchstone cache info: {scalar_il_loader.cache_info()}")
+scalar_il_loader.clear_cache()
+print(f"Scalar Touchstone cache after clearing: {scalar_il_loader.cache_info()}")
 
 # %% [markdown]
 # ## 1. Scalar Insertion Loss Baseline
@@ -324,16 +340,11 @@ scalar_metrics = pd.DataFrame([
 print(scalar_metrics)
 
 # %% [markdown]
-# For the single `S7_1_DB` target, the scalar model achieved MAE/RMSE values of
-# 7.30/10.77 on the validation set and 7.35/10.90 on the held-out test set. The test
-# performance is slightly worse, with an error increase of approximately 0.8% in MAE
-# and 1.3% in RMSE. This indicates a small generalisation gap rather than severe
-# overfitting.
-#
-# The RMSE remains higher than the MAE, which suggests that some samples still contain
-# larger prediction errors. Therefore, the baseline model is useful as a pipeline
-# validation step, but further analysis is needed to locate the high-error regions,
-# especially across frequency and design-parameter space.
+# The held-out test error is moderately higher than the validation error. The
+# difference is more pronounced for RMSE than for MAE, indicating that a subset of
+# difficult test samples contributes disproportionately to the generalisation gap.
+# The average absolute-error gap is nevertheless limited, so there is no evidence of
+# severe overall instability. The following plots localise the remaining errors.
 
 # %% [markdown]
 # ### 1.5 Plotting: Scalar IL Distribution Across Test Designs
@@ -357,28 +368,16 @@ selected_simu_indices = random_simu_indices(scalar_test_set, 5, seed=random_seed
 fig_random_scalar_design_curves = plot_design_prediction_curves(
     scalar_model,
     scalar_test_set,
-    scalar_db_loader,
+    scalar_il_loader,
     selected_simu_indices,
 )
 
 # %% [markdown]
-# 1. __Overall trend captured__
-#
-#    The Ridge model follows the main downward trend of `S7_1_DB` as frequency
-#    increases. This shows that the model has learned the broad frequency-dependent
-#    behaviour.
-#
-# 2. __Spread is underestimated__
-#
-#    The true 10th–90th percentile band becomes much wider at high frequency, but the
-#    predicted band remains very narrow. This means the model mostly predicts an
-#    average-like response and does not capture design-to-design variation well.
-#
-# 3. __High-frequency region is harder__
-#
-#    The mismatch becomes more obvious above the mid/high-frequency range. This suggests
-#    that the relationship between PCB parameters and response becomes more nonlinear at
-#    higher frequencies.
+# The predicted median follows the broad frequency trend, showing that Ridge learns
+# the central response. However, the predicted percentile band is consistently much
+# narrower than the true band, particularly toward the upper end of the frequency
+# range. The model therefore behaves like an average-response predictor and
+# underestimates design-to-design variation.
 
 # %% [markdown]
 # ### 1.6 Plotting: Predicted Vs True IL Values
@@ -394,29 +393,11 @@ fig_scalar_scatter = plot_scalar_true_vs_predicted(
 )
 
 # %% [markdown]
-# 1. **Perfect prediction reference**
-#
-#    The black diagonal line represents perfect prediction. Points close to this line
-#    would mean the model predicts the true value accurately.
-#
-# 2. **Predictions are compressed**
-#
-#    The true values cover a very wide range, but the predicted values stay in a much
-#    narrower range. This means the Ridge model cannot reproduce the full dynamic range
-#    of `S7_1_DB`.
-#
-# 3. **Deep-loss samples are missed.**
-#
-#    For very negative true values, the model predicts values that are not negative
-#    enough. In other words, strong attenuation cases are underestimated.
-#
-# 4. **Same issue as the percentile plot**
-#
-#    This confirms the result from Section 1.5: the model captures the broad
-#    trend, but it smooths the response too much and misses extreme cases.
-#
-# The scalar Ridge model is useful as a baseline, but it is too limited for accurate
-# sample-level prediction across the full response range.
+# Predictions occupy a narrower range than the true IL values and are compressed
+# toward the centre of the distribution. The largest insertion-loss cases are
+# systematically underestimated. This agrees with the percentile-band plot: the
+# scalar Ridge model captures the broad trend but smooths away extreme
+# design-frequency responses.
 #
 
 # %% [markdown]
@@ -439,39 +420,12 @@ fig_scalar_mae_frequency = plot_scalar_mae_by_frequency(
 )
 
 # %% [markdown]
-# 1. **Error increases with frequency**
-#
-#    The MAE rises from about 1 dB at low frequency to about 13–14 dB near
-#    100 GHz. This shows that the model performs much better at low frequency
-#    than at high frequency.
-#
-# 2. **High-frequency prediction is the main weakness**
-#
-#    The error does not stay constant across the frequency range. Most of the prediction
-#    difficulty comes from the mid-to-high-frequency region, especially above roughly 40
-#    GHz.
-#
-# 3. **The increase is smooth, not random**
-#
-#    The MAE grows gradually rather than showing only a few isolated spikes.
-#    This suggests a systematic modelling limitation, not just a small number of bad
-#    samples.
-#
-# 4. **Likely cause: underfitting**
-#
-#    Ridge regression is a linear model, so it produces smooth predictions. At higher
-#    frequencies, the S-parameter response becomes more nonlinear and more sensitive to
-#    PCB design parameters. The model therefore cannot capture the full behaviour.
-#
-# 5. **Connection to previous plots**
-#
-#    This supports the observations from Sections 1.5 and 1.6. The Ridge model captures
-#    the broad trend, but it underestimates the response spread and misses strong
-#    attenuation cases, especially at high frequency.
-#
-# The scalar Ridge model is acceptable as an early baseline, but its accuracy degrades
-# clearly with frequency. A nonlinear model is needed to improve high-frequency
-# prediction.
+# MAE rises smoothly across the frequency range rather than being dominated by a few
+# isolated peaks. Prediction is therefore substantially easier at the low-frequency
+# end and progressively harder toward the high-frequency end. Together with the
+# compressed scatter and narrow prediction band, this is consistent with systematic
+# underfitting by the global linear model rather than a small number of anomalous
+# samples.
 
 # %%
 scalar_runner.manager.save_figure(
@@ -480,7 +434,7 @@ scalar_runner.manager.save_figure(
 )
 scalar_runner.manager.save_figure(
     fig_random_scalar_design_curves,
-    "selected_design_curves_magnitude_db.png",
+    "selected_design_curves_insertion_loss_db.png",
 )
 scalar_runner.manager.save_figure(
     fig_scalar_scatter,
@@ -524,14 +478,14 @@ del y_train_scalar, y_val_scalar, y_test_scalar
 
 # %% [markdown]
 # The vector and polynomial experiments use a separate set of train, validation,
-# and test views configured with the six-target vector dB loader. Their cache files
+# and test views configured with the six-target vector IL loader. Their cache files
 # are independent from the scalar experiment: a scalar cache can be rebuilt or
 # removed without affecting vector model development.
 
 # %%
 vector_train_set, vector_val_set, vector_test_set = load_pointwise_datasets(
     cfg.preprocessing.freq_expanded_csv,
-    target_loader=vector_db_loader,
+    target_loader=vector_il_loader,
     cache=True,
 )
 vector_data_interface = {
@@ -540,6 +494,7 @@ vector_data_interface = {
     "target_names": vector_target_names,
     "target_scope": "vector",
     "target_units": "dB",
+    "target_representation": "insertion_loss_db",
 }
 
 print(f"Number of training   samples: {len(vector_train_set)}")
@@ -559,11 +514,18 @@ print(f"Shape of test       features: {X_test.shape}")
 print(f"Shape of training   targets: {Y_train.shape}")
 print(f"Shape of validation targets: {Y_val.shape}")
 print(f"Shape of test       targets: {Y_test.shape}")
+for split_name, target_values in {
+    "training": Y_train,
+    "validation": Y_val,
+    "test": Y_test,
+}.items():
+    if (target_values <= 0.0).any():
+        raise RuntimeError(f"{split_name.title()} vector IL targets must be positive.")
 
 # %%
-print(f"Vector Touchstone cache: {vector_db_loader.cache_info()}")
-vector_db_loader.clear_cache()
-print(f"Vector Touchstone cache after clearing: {vector_db_loader.cache_info()}")
+print(f"Vector Touchstone cache: {vector_il_loader.cache_info()}")
+vector_il_loader.clear_cache()
+print(f"Vector Touchstone cache after clearing: {vector_il_loader.cache_info()}")
 
 # %% [markdown]
 # ### 2.1 Input-Output Definition
@@ -603,7 +565,7 @@ print(f"Target names of vector model: {vector_target_names}")
 # The six dB IL targets are loaded with:
 #
 # ```python
-# TouchstoneLoader(mode="vector", representation="db", config=cfg)
+# TouchstoneLoader(mode="vector", representation="il", config=cfg)
 # ```
 #
 # On a cold load, the loader accesses Touchstone data while filling `Y_train`,
@@ -638,33 +600,15 @@ print(f"Selected vector preprocessing: {vector_model.pipeline.named_steps['scale
 print(f"Selected vector regressor: {vector_model.pipeline.named_steps['model']}")
 
 # %% [markdown]
-# 1. **Validation performance is almost unchanged**
+# Validation performance is nearly unchanged across the tested alpha values, and the
+# selected setting has only a marginal advantage. Regularisation strength is therefore
+# not the main limitation. The model predicts all six outputs successfully, but the
+# nearly flat sweep suggests that further alpha tuning will not overcome the limited
+# capacity of a linear relationship.
 #
-#    Across all tested `alpha` values, the MAE stays around `7.414 dB` and the RMSE
-#    stays around `10.94 dB`, with only negligible differences between settings. The
-#    selected value is `alpha = 10`, the strongest regularisation tested, but the
-#    improvement over weaker settings is extremely small.
-#
-# 2. **Regularisation is not the main issue**
-#
-#    Changing `alpha` does not materially improve validation performance. This suggests
-#    that the main limitation is not ordinary overfitting controlled by L2 shrinkage,
-#    but underfitting: the linear model is too simple to capture the full behaviour.
-#
-# 3. **Vector output works, but remains limited**
-#
-#    The model predicts six output columns together, but Ridge still uses a linear
-#    relationship between input features and outputs. It does not fully capture
-#    nonlinear frequency-dependent effects or complex design-to-design variation. The
-#    flat validation sweep further indicates that tuning `alpha` cannot significantly
-#    improve performance, so meaningful gains will likely require a more expressive
-#    model such as polynomial features, tree-based regression, or a neural network.
-#
-# 4. **StandardScaler is appropriate**
-#
-#    Using `StandardScaler()` is sensible because Ridge regression is sensitive to
-#    feature scale. This keeps parameters such as geometry values and frequency on
-#    comparable numerical scales.
+# `StandardScaler()` remains appropriate because Ridge is sensitive to feature scale.
+# It places geometry values, material properties, and frequency on comparable
+# numerical scales before fitting.
 #
 
 # %% [markdown]
@@ -702,31 +646,11 @@ print("Overall vector metrics:", vector_metrics, sep="\n")
 print("\nPer-port-pair test metrics:", per_target_test_metrics, sep="\n")
 
 # %% [markdown]
-# 1. **Test performance is slightly worse than validation**
-#
-#    The validation MAE/RMSE are `7.41 dB` and `10.94 dB`, while the test MAE/RMSE
-#    increase to `7.47 dB` and `11.08 dB`. This shows a small generalisation gap, but
-#    not severe overfitting.
-#
-# 2. **RMSE increases more than MAE**
-#
-#    The test RMSE is noticeably higher than the test MAE. This suggests that some
-#    held-out samples have relatively large prediction errors. In other words, the model
-#    is not just making small uniform errors; it misses some difficult cases more
-#    strongly.
-#
-# 3. **All six port pairs have similar difficulty**
-#
-#    The per-port-pair MAE values are all close, roughly between `7.26 dB` and
-#    `7.64 dB`. This means no single output dominates the overall error. The Ridge model
-#    has similar predictive difficulty across the six through-link responses.
-#
-# 4. **Vector Ridge is still a linear baseline**
-#
-#    Although the model predicts six outputs together, Ridge regression still learns a
-#    linear mapping from the input features to each output. Therefore, it cannot fully
-#    capture nonlinear frequency behaviour, resonance-like effects, or wide
-#    design-to-design variation.
+# Test performance is modestly worse than validation performance, with the RMSE gap
+# more visible than the MAE gap. This again indicates that difficult held-out cases
+# affect the squared-error measure more strongly. Per-target errors are closely
+# grouped, so no individual through path dominates the aggregate result. The common
+# limitation across outputs is consistent with underfitting by the linear model class.
 #
 
 # %% [markdown]
@@ -741,36 +665,17 @@ fig_vector_distributions = plot_vector_prediction_bands_by_frequency(
 )
 
 # %% [markdown]
-# 1. **All six links show a similar pattern**
-#
-#    The six predicted distributions have almost the same behaviour. The predicted
-#    median follows the true median reasonably well for every port pair, so the vector
-#    Ridge model has learned the broad frequency trend across all six outputs.
-#
-# 2. **Predicted spread is too narrow**
-#
-#    The true 10th–90th percentile bands become much wider as frequency increases,
-#    especially above the mid-frequency range. However, the predicted percentile bands
-#    remain very narrow. This means the model does not capture the full design-to-design
-#    variation.
-#
-# 3. **High-frequency variation is missed**
-#
-#    At high frequencies, the true responses vary strongly between different test
-#    designs, but the Ridge model mostly predicts a smooth average-like response. This
-#    confirms that the model underfits the more complex high-frequency behaviour.
-#
-# 4. **Vector Ridge is stable but limited**
-#
-#    The model is stable across multiple outputs, which makes it a useful baseline.
-#    However, the narrow predicted bands show that linear Ridge regression cannot model
-#    the full response distribution.
+# All six paths show the same broad behaviour. Their predicted medians follow the
+# central frequency trends, but their percentile bands are much narrower than the
+# corresponding true bands. The mismatch becomes more evident at higher frequencies,
+# where design-to-design variation is strongest. Vector Ridge is therefore a stable
+# multi-output baseline, but it still predicts an overly average-like response.
 
 # %%
 fig_random_vector_design_curves = plot_design_prediction_curves(
     vector_model,
     vector_test_set,
-    vector_db_loader,
+    vector_il_loader,
     selected_simu_indices,
 )
 
@@ -791,33 +696,10 @@ fig_vector_scatter = plot_vector_true_vs_predicted(
 )
 
 # %% [markdown]
-# 1. **Predictions are compressed for all six outputs**
-#
-#    In every subplot, the true values cover a very wide range, but the predicted values
-#    stay in a much narrower band. This means the vector Ridge model cannot reproduce
-#    the full dynamic range of the six through-link responses.
-#
-# 2. **Deep-loss cases are not predicted correctly**
-#
-#    For very negative true values, the model predicts values that are not negative
-#    enough. Strong attenuation cases are therefore underestimated.
-#
-# 3. **All port pairs show the same failure pattern**
-#
-#    The six scatter plots look very similar. This agrees with the per-port-pair
-#    metrics: no single port pair is uniquely problematic; the limitation comes from the
-#    model type.
-#
-# 4. **Same conclusion as the distribution plots**
-#
-#    This confirms Section 2.5 at the sample level. The model captures the broad trend,
-#    but it predicts an average-like response and misses extreme design-frequency cases.
-#
-# 5. **Conclusion**
-#
-#    Vector Ridge is a useful multi-output baseline, but it is too simple for accurate
-#    prediction across the full response range. A nonlinear model is needed to capture
-#    stronger attenuation and wider design-to-design variation.
+# Predictions are compressed toward the mean for every output, and strong-attenuation
+# cases are systematically underestimated. The similar scatter pattern across all six
+# paths agrees with the closely grouped per-target metrics: the main problem is shared
+# model capacity rather than one uniquely difficult port pair.
 
 # %% [markdown]
 # ### 2.7 Plot Vector MAE By Frequency
@@ -837,29 +719,10 @@ fig_vector_mae_frequency = plot_vector_mae_by_frequency(
 )
 
 # %% [markdown]
-# 1. **Error increases with frequency**
-#
-#    The MAE is low at the beginning of the frequency range, around `1 dB`, but rises
-#    steadily to about `13–14 dB` near `100 GHz`. This shows that the Vector
-#    Ridge model becomes less accurate as frequency increases.
-#
-# 2. **All six links follow almost the same error trend**
-#
-#    The six MAE curves are very close to each other across the whole frequency range.
-#    This means the model has similar difficulty across all six through-link targets,
-#    rather than failing on only one specific port pair.
-#
-# 3. **High-frequency modelling is the main weakness**
-#
-#    The error growth is smooth and systematic, not caused by isolated spikes. This
-#    suggests underfitting: the linear Ridge model cannot capture the more complex
-#    high-frequency behaviour of the S-parameter responses.
-#
-# 4. **Conclusion**
-#
-#    The Vector Ridge model is a stable multi-output baseline, but its error increases
-#    strongly with frequency. A more expressive nonlinear model is needed to improve
-#    prediction accuracy, especially in the high-frequency region.
+# MAE increases smoothly with frequency for all six paths, and the curves remain close
+# to one another. This confirms that the high-frequency weakness is common across the
+# configured targets. The systematic trend, rather than isolated error spikes, further
+# supports the conclusion that a more expressive nonlinear model is needed.
 #
 
 # %%
@@ -869,7 +732,7 @@ vector_runner.manager.save_figure(
 )
 vector_runner.manager.save_figure(
     fig_random_vector_design_curves,
-    "selected_design_curves_magnitude_db.png",
+    "selected_design_curves_insertion_loss_db.png",
 )
 vector_runner.manager.save_figure(
     fig_vector_scatter,
@@ -898,10 +761,9 @@ print("\nVector Ridge manifest figures:", vector_manifest.get("figures", {}))
 #
 # This baseline keeps the same vector target definition as the vector Ridge model,
 # but expands each input feature with powers before fitting a regularised linear
-# model. The default follow-up experiment now sweeps degrees 3, 4, and 5 with a
-# stronger regularisation search, then selects the degree and Ridge
-# regularisation strength with the lowest validation MAE. For one feature, the
-# powers-only expansion is:
+# model. The configured degree and regularisation grids are evaluated below, then
+# the degree and Ridge regularisation strength with the lowest validation MAE are
+# selected. For one feature, the powers-only expansion is:
 #
 # $$
 # x_j \rightarrow [x_j, x_j^2, \ldots, x_j^D]
@@ -943,30 +805,11 @@ print(f"Selected expanded polynomial feature count: {expanded_feature_count}")
 print(f"Selected polynomial pipeline:\n{polynomial_model.pipeline}")
 
 # %% [markdown]
-# 1. **Degree 5 is selected in the current run**
-#
-#    The best validation result comes from `degree = 5` with `alpha = 1000`.
-#    The selected powers-only expansion increases the feature count from 11 to
-#    55. Higher powers help slightly, but the improvement remains modest.
-#
-# 2. **Regularisation helps, but only slightly**
-#
-#    The best model uses the largest tested `alpha` (`1000`), suggesting
-#    stronger regularisation is beneficial. However, validation MAE changes
-#    little across `alpha` values, so most of the gain comes from the polynomial
-#    features.
-#
-# 3. **The gain is modest**
-#
-#    The best polynomial validation MAE is `7.3723 dB`, compared with `7.4142
-#    dB` for Vector Ridge. The polynomial expansion improves the baseline, but
-#    only slightly.
-#
-# 4. **Conclusion**
-#
-#    Polynomial features provide a small but consistent improvement while keeping the
-#    model simple and interpretable. However, the gain is limited, suggesting that a
-#    more expressive nonlinear model will be needed for larger improvements.
+# The selected powers-only expansion gives the best validation result in the
+# configured sweep, but the differences across degrees and regularisation strengths
+# are small. This indicates that the additional nonlinear terms provide only a modest
+# advantage and that regularisation tuning is not the main performance constraint.
+# The held-out comparison below tests whether the small validation gain generalises.
 
 # %% [markdown]
 # ### 3.2 Polynomial Evaluation
@@ -998,8 +841,10 @@ model_comparison = pd.DataFrame(
 print(f"Overall model comparison:\n{model_comparison}")
 
 # %% [markdown]
-# Test MAE drops from `7.4740 dB` to `7.4269 dB`, while RMSE decreases from `11.0796 dB`
-# to `11.0532 dB`. The gain is small, but consistent.
+# Polynomial Ridge and Vector Ridge are effectively tied on the test set. Polynomial
+# Ridge has a marginally lower MAE but a slightly higher RMSE, so neither model has a
+# clear overall advantage. The validation gain therefore does not translate into a
+# meaningful held-out aggregate improvement.
 
 # %%
 per_target_vector_comparison = per_target_test_metrics.copy()
@@ -1029,19 +874,9 @@ per_target_model_comparison = pd.concat(
 print(f"Per-target model comparison:\n{per_target_model_comparison}")
 
 # %% [markdown]
-# 1. The improvement appears across all six targets.
-#
-#    Each port-pair prediction improves slightly, suggesting the polynomial features
-#    provide a small overall benefit rather than helping only one specific link.
-#
-# 2. The main limitation remains.
-#
-#    The improvement is only a few hundredths of a dB, so the model is mainly refining
-#    the Ridge baseline rather than addressing its underlying weaknesses.
-#
-# Overall, Polynomial Ridge is a slightly stronger non-neural baseline, but
-#    the modest gain suggests that a more expressive nonlinear model is likely
-#    needed for further improvement.
+# Per-target changes are small and mixed across the six through paths rather than
+# being driven by one output. Polynomial features slightly improve some paths and
+# slightly worsen others, but they do not resolve the common modelling limitation.
 #
 
 # %% [markdown]
@@ -1061,36 +896,16 @@ fig_polynomial_distributions = plot_vector_prediction_bands_by_frequency(
 fig_random_polynomial_design_curves = plot_design_prediction_curves(
     polynomial_model,
     vector_test_set,
-    vector_db_loader,
+    vector_il_loader,
     selected_simu_indices,
 )
 
 # %% [markdown]
-# 1. The Polynomial model follows the median trend well.
-#
-#    For all six port pairs, the predicted median follows the true median across
-#    frequency. This shows that the polynomial features help the model represent
-#    the main frequency-dependent trend.
-#
-# 2. The predicted spread is still too narrow.
-#
-#    The true 10th–90th percentile band becomes much wider at high frequency,
-#    but the predicted band remains narrow. This means the model still
-#    underestimates design-to-design variation.
-#
-# 3. The qualitative behaviour is similar to Vector Ridge.
-#
-#    Compared with Vector Ridge, the Polynomial model gives a small improvement.
-#    The predicted median curves are less constrained to a straight-line trend
-#    and show a more realistic curved frequency response, indicating that the
-#    polynomial features capture some nonlinear frequency-dependent behaviour.
-#    However, the improvement is modest, as the predicted distribution remains
-#    much narrower than the true distribution and still fails to capture the full
-#    response range.
-#
-# Overall, Polynomial Ridge is a useful refinement of the linear baseline, but
-# it still underfits the wider high-frequency distribution. The next improvement
-# likely requires a more flexible nonlinear model.
+# Polynomial Ridge produces slightly more realistic median curvature than Vector
+# Ridge, showing that the added powers capture some nonlinear frequency dependence.
+# However, the predicted percentile bands remain much narrower than the true bands.
+# The feature expansion therefore refines the central trend without recovering the
+# full design-to-design response spread.
 #
 
 # %% [markdown]
@@ -1108,32 +923,10 @@ fig_model_mae_comparison_frequency = plot_model_mae_comparison_by_frequency(
 )
 
 # %% [markdown]
-# 1. The Polynomial model is slightly better overall.
-#
-#    The Polynomial MAE curve is very close to the Vector Ridge curve, but it is
-#    slightly lower in some frequency regions, especially at lower frequencies.
-#    This agrees with the numerical results: the Polynomial model improves the
-#    overall test MAE slightly, from `7.4740 dB` to `7.4269 dB`.
-#
-# 2. Both models show the same frequency-dependent error pattern.
-#
-#    The two curves have almost the same shape. MAE increases steadily from
-#    around `1 dB` at low frequency to about `13–14 dB` near `100 GHz`. This
-#    means the Polynomial model has not changed the main difficulty of the
-#    problem: prediction becomes much harder at higher frequencies.
-#
-# 3. The improvement is useful but limited.
-#
-#    The Polynomial model adds some nonlinear flexibility, so it is a stronger
-#    baseline than plain Vector Ridge. However, the error curve is only shifted
-#    slightly and still rises strongly with frequency. This suggests that
-#    polynomial features refine the model but do not fully solve the
-#    high-frequency underfitting problem.
-#
-# Overall, Polynomial Ridge is a modest improvement over Vector Ridge. It should
-# be kept as the stronger non-neural baseline, but the similar MAE-by-frequency
-# shape shows that a more expressive nonlinear model is still needed for
-# substantial improvement.
+# The Polynomial and Vector Ridge MAE curves almost overlap. Polynomial Ridge is
+# slightly better in some frequency regions, but both models retain the same smooth
+# increase in error toward higher frequencies. The expansion therefore provides a
+# limited local refinement without changing the main frequency-dependent weakness.
 #
 
 # %%
@@ -1143,7 +936,7 @@ polynomial_runner.manager.save_figure(
 )
 polynomial_runner.manager.save_figure(
     fig_random_polynomial_design_curves,
-    "selected_design_curves_magnitude_db.png",
+    "selected_design_curves_insertion_loss_db.png",
 )
 polynomial_runner.manager.save_figure(
     fig_model_mae_comparison_frequency,
@@ -1167,12 +960,12 @@ print(
 )
 
 # %% [markdown]
-# ### 3.5 Why Polynomial Ridge Only Gives A Limited Improvement
+# ### 3.5 Interpreting Polynomial Ridge Capacity
 #
-# The Polynomial Ridge model improves the curve shape slightly compared with
-# Vector Ridge, but it still does not fit the full response distribution well.
-# This is because the model is not simply fitting one curve; it is learning a
-# global relationship across many designs, frequencies, and output samples.
+# Polynomial Ridge changes the validation and test results only modestly and does not
+# recover the full predicted response spread. This is understandable because it is
+# not simply fitting one curve; it learns a global relationship across many designs,
+# frequencies, and output samples.
 #
 # %% [markdown]
 # #### 1. The model is fitting many designs at once, not one curve
@@ -1182,11 +975,11 @@ print(
 # mapping:
 #
 # $$
-# (\mathbf{u}, f) \rightarrow S_{7,1,\mathrm{dB}}(f)
+# (\mathbf{u}, f) \rightarrow IL_{7,1}(f)
 # $$
 #
 # Here, $\mathbf{u}$ represents the PCB design-parameter vector, and $(f)$
-# represents frequency. Therefore, the model must learn not only how `S7_1_DB`
+# represents frequency. Therefore, the model must learn not only how `IL_S7_1_DB`
 # changes with frequency, but also how the curve changes when the PCB geometry
 # and material parameters change. This is much harder than fitting one
 # frequency-response curve for one design.
@@ -1203,34 +996,22 @@ print(
 #
 # where:
 #
-# * $\hat{y}$ is the predicted target value, such as predicted `S7_1_DB`.
+# * $\hat{y}$ is the predicted target value, such as predicted `IL_S7_1_DB`.
 # * $\beta_0$ is the intercept term.
 # * $R$ is the total number of expanded polynomial features.
 # * $\beta_r$ is the learned coefficient for the (r)-th polynomial feature.
 # * $\phi_r(\mathbf{u},f)$ is the (r)-th transformed feature generated
 #   from design parameters and frequency.
 #
-# In the current experiment, the original input feature count is 11, but the
-# polynomial expansion produces 55 features:
-#
-# $$
-# 11\ \text{original features} \rightarrow 55\ \text{polynomial features}
-# $$
-#
-# Therefore, for the Polynomial Ridge model in this experiment:
-#
-# $$
-# R=55
-# $$
-#
-# This gives the model more flexibility than plain Ridge, but it is still a
-# compact model rather than a highly expressive nonlinear model.
+# The selected degree and resulting expanded feature count are printed by the
+# training cell above. This powers-only expansion gives the model more flexibility
+# than plain Ridge while remaining compact because it does not add interactions
+# between different input features.
 #
 # %% [markdown]
-# #### 3. Strong regularisation limits the curvature
+# #### 3. The role of regularisation
 #
-# The best Polynomial Ridge model uses `alpha = 1000`, which means the model is
-# strongly regularised. Ridge regression penalises large coefficients:
+# Ridge regression penalises large coefficients:
 #
 # $$
 # \min_{\boldsymbol{\beta}}
@@ -1242,10 +1023,10 @@ print(
 # $$
 #
 #
-# Here, $\alpha$ controls the strength of regularisation. A larger $\alpha$
-# shrinks the coefficients more strongly. This improves stability, but it also
-# prevents the polynomial curve from bending too aggressively. As a result, the
-# model still produces relatively smooth and average-like predictions.
+# Here, $\alpha$ controls the strength of regularisation. Validation error changes
+# little across the tested values, so the smooth and average-like predictions are
+# mainly a limitation of the powers-only representation rather than the selected
+# regularisation strength.
 #
 # %% [markdown]
 # #### 4. High-frequency behaviour is more complex than polynomial curvature
@@ -1255,9 +1036,9 @@ print(
 # changes. A low-capacity polynomial model may not represent these behaviours
 # well.
 #
-# This explains why the Polynomial Ridge median curve is slightly less straight
-# than Vector Ridge, but the predicted 10th–90th percentile band is still too
-# narrow.
+# The median response is slightly less constrained than with Vector Ridge, but the
+# predicted percentile band remains too narrow. Added polynomial curvature alone is
+# therefore insufficient for the more complex response variation.
 #
 # %% [markdown]
 # #### 5. The loss function encourages average predictions
@@ -1267,18 +1048,17 @@ print(
 # predict, the model can reduce total error by staying close to the central
 # trend rather than fitting those extreme cases.
 #
-# Therefore, Polynomial Ridge improves the median curve shape slightly, but it
-# still misses the full design-to-design variation.
+# The observed median and percentile bands show this central-tendency effect:
+# Polynomial Ridge improves the median shape slightly but still misses much of the
+# design-to-design variation.
 #
 # %% [markdown]
 # #### Conclusion
 #
-# Polynomial Ridge is a useful improvement over Vector Ridge because it adds
-# nonlinear feature terms and produces a less straight, more realistic median
-# curve. However, it is still a compact global model, so it remains too smooth
-# and average-like for the full design-to-design response spread. This motivates
-# the next non-neural check: a more flexible tree-based model that can learn
-# local design-frequency partitions.
+# Polynomial Ridge is a modest refinement of Vector Ridge rather than a decisive
+# improvement. It adds useful nonlinear curvature but remains a compact global model
+# with average-like predictions. The next non-neural check uses a tree-based model to
+# test whether local design-frequency partitions better represent the response.
 #
 
 # %% [markdown]
@@ -1349,12 +1129,11 @@ random_forest_per_target_run_metrics = per_target_split_metrics(
 print(f"Random Forest vector metrics:\n{random_forest_metrics}")
 
 # %% [markdown]
-# **Random Forest overfits the training data**
-#
-#    Training MAE/RMSE are only `0.4438/0.8707 dB`, but validation MAE/RMSE
-#    rise to `7.7313/11.5134 dB` and test MAE/RMSE are `7.7570/11.5838 dB`.
-#    This large train-validation gap shows that the forest fits the training
-#    samples closely but does not generalise well to held-out PCB designs.
+# Random Forest fits the training data much more closely than either held-out split.
+# The large train-validation gap is clear evidence of overfitting: the forest captures
+# training designs well but does not generalise that pointwise accuracy to unseen PCB
+# designs. Validation and test performance are much closer to one another, so the main
+# gap arises between fitted and unseen designs.
 
 # %%
 shared_target_model_comparison = pd.DataFrame(
@@ -1397,28 +1176,11 @@ shared_target_model_comparison = pd.DataFrame(
 print(f"\n{scalar_target_name} model comparison:\n{shared_target_model_comparison}")
 
 # %% [markdown]
-# 1. **Random Forest is worse by pointwise error metrics**
-#
-#    Test MAE is `7.7570 dB`, compared with `7.4740 dB` for Vector Ridge and
-#    `7.4269 dB` for Polynomial Ridge. Test RMSE is also worse: `11.5838 dB`
-#    versus `11.0796 dB` for Vector Ridge and `11.0532 dB` for Polynomial
-#    Ridge. By aggregate pointwise error, Random Forest is not the strongest
-#    model in this run.
-#
-# 2. **The metric weakness is consistent across all six targets**
-#
-#    Each per-target Random Forest MAE is higher than the corresponding Vector
-#    Ridge and Polynomial Ridge value. This means the model is not only failing
-#    on one difficult link; its pointwise error is higher across the configured
-#    through paths.
-#
-# **Conclusion**
-#
-#    Random Forest provides a useful nonlinear tabular stress test. It is worse
-#    by MAE/RMSE, but the distribution plots below show that it can represent
-#    response spread and nonlinear curvature better than the Ridge-style
-#    baselines. The remaining challenge is to keep this richer distribution and
-#    curve-shape behaviour while improving held-out pointwise accuracy.
+# Random Forest has worse held-out MAE and RMSE than both Ridge-style vector models,
+# and this weakness is consistent across the configured through paths. It is therefore
+# not the strongest model by aggregate pointwise accuracy. However, it remains a useful
+# nonlinear capacity check because the distribution and design-curve plots reveal
+# response-shape behaviour that aggregate errors do not capture.
 
 # %% [markdown]
 # ### 4.3 Plot Random Forest Predicted Vs True Values
@@ -1444,26 +1206,11 @@ fig_random_forest_distributions = plot_vector_prediction_bands_by_frequency(
 )
 
 # %% [markdown]
-# 1. **The predicted distribution is a qualitative improvement**
-#
-#    Compared with the Ridge-style baselines, the Random Forest predicted
-#    10th-90th percentile band is wider and follows the true response spread
-#    more closely. The predicted median also tracks the true median well across
-#    the six configured through paths.
-#
-# 2. **The spread is still not perfect**
-#
-#    The true high-frequency band remains wider than the predicted band in some
-#    regions, so Random Forest still underestimates the full design-to-design
-#    variation. However, the distribution shape is much more realistic than the
-#    very narrow Ridge and Polynomial Ridge bands.
-#
-# 3. **Metric and distribution conclusions differ**
-#
-#    Random Forest is worse by aggregate MAE/RMSE, but better at representing
-#    the held-out response distribution. This makes it useful evidence that
-#    nonlinear model capacity helps the shape of the prediction, even if this
-#    specific forest does not minimise pointwise error.
+# Random Forest produces wider predicted percentile bands than the Ridge-style
+# baselines and follows the true design-to-design spread more closely. Some variation,
+# especially toward higher frequencies, is still underestimated. This is a qualitative
+# improvement in distribution shape despite the worse aggregate MAE and RMSE, revealing
+# a trade-off between pointwise accuracy and response-spread fidelity.
 #
 # %% [markdown]
 # ### 4.5 Compare Vector-Model MAE By Frequency
@@ -1495,32 +1242,25 @@ fig_polynomial_random_forest_design_comparison = (
             "Random Forest": random_forest_model,
         },
         vector_test_set,
-        vector_db_loader,
+        vector_il_loader,
         selected_simu_indices,
     )
 )
 
 # %% [markdown]
-# 1. **Random Forest greatly improves curve curvature**
-#
-#    Polynomial Ridge mostly produces smooth, nearly straight responses for each
-#    held-out design. Random Forest follows local bends, dips, and recovery
-#    regions much more closely, especially for designs with stronger
-#    high-frequency curvature.
-#
-# 2. **The improvement is qualitative rather than metric-led**
-#
-#    The metric results above show that Random Forest does not improve aggregate
-#    pointwise accuracy, but this comparison plot shows a clear qualitative
-#    improvement in response curvature compared with Polynomial Ridge.
+# Random Forest represents substantially more local curvature than Polynomial Ridge
+# and follows some bends, peaks, and recovery regions more closely. The improvement is
+# uneven: some features remain misplaced or incorrectly scaled on the selected
+# held-out designs. This richer shape is not accompanied by better aggregate pointwise
+# error, so it is insufficient evidence of better generalisation.
 
 # %% [markdown]
-# ## 5. Four-Model Comparison On S7_1_DB
+# ## 5. Four-Model Comparison On IL_S7_1_DB
 #
-# The scalar Ridge model only predicts `S7_1_DB`, so the cleanest comparison is
+# The scalar Ridge model only predicts `IL_S7_1_DB`, so the cleanest comparison is
 # to evaluate all four fitted models on that shared target only. The scalar
 # model contributes its direct prediction. The Vector Ridge, Polynomial Ridge,
-# and Random Forest models contribute only their `S7_1_DB` output column, even
+# and Random Forest models contribute only their `IL_S7_1_DB` output column, even
 # though they were trained on all six outputs.
 
 # %%
@@ -1536,7 +1276,7 @@ shared_target_predictions = {
 }
 
 # %% [markdown]
-# First, compare the four `S7_1_DB` MAE curves by frequency.
+# First, compare the four `IL_S7_1_DB` MAE curves by frequency.
 
 # %%
 fig_s7_four_model_mae_frequency = plot_shared_target_mae_comparison(
@@ -1551,7 +1291,7 @@ fig_s7_four_model_mae_frequency = plot_shared_target_mae_comparison(
 # from each model. The true curve uses the same median and 10th-90th percentile
 # band in all cases, while each model contributes its own predicted median and
 # band. This makes it easier to see whether Random Forest improves the
-# `S7_1_DB` curve shape compared with the Ridge-style baselines.
+# `IL_S7_1_DB` curve shape compared with the Ridge-style baselines.
 
 # %%
 fig_s7_four_model_distributions = plot_shared_target_prediction_bands(
@@ -1562,55 +1302,24 @@ fig_s7_four_model_distributions = plot_shared_target_prediction_bands(
 )
 
 # %% [markdown]
-# 1. **Random Forest does not improve pointwise error on the shared target**
+# Random Forest does not improve held-out pointwise error on the shared target, even
+# though it is the most flexible non-neural model considered here. Scalar and Vector
+# Ridge perform very similarly, showing that multi-output fitting provides convenience
+# and consistency but little shared-output benefit for this target. Polynomial Ridge
+# changes the shared-target result only slightly and remains effectively tied with the
+# linear Ridge predictions.
 #
-#    On `S7_1_DB`, Random Forest test MAE/RMSE are `7.6914/11.4722 dB`. This
-#    is worse than Scalar Ridge and Vector Ridge (`7.3544/10.9045 dB`) and
-#    worse than Polynomial Ridge (`7.3154/10.8848 dB`). Therefore, the stronger
-#    nonlinear tabular model does not improve pointwise MAE/RMSE for the shared
-#    scalar target in this run.
+# The qualitative comparison tells a different story. Random Forest represents local
+# curvature and the response distribution more realistically, while the Ridge-style
+# models remain smoother and more compressed. Its large train-to-held-out gap shows
+# that this additional flexibility currently overfits rather than improving pointwise
+# generalisation.
 #
-# 2. **Vector Ridge does not clearly improve over Scalar Ridge on `S7_1_DB`**
-#
-#    The Scalar Ridge and Vector Ridge curves are almost overlapping. This
-#    suggests that predicting all six outputs together does not significantly
-#    improve the individual `S7_1_DB` prediction. For Ridge regression, the
-#    multi-output model is therefore useful for convenience and consistency,
-#    but it does not provide strong shared-output learning.
-#
-# 3. **Polynomial Ridge gives only a small improvement**
-#
-#    Polynomial Ridge is slightly better in some frequency regions, especially
-#    near the low-frequency range, and its predicted median curve is slightly
-#    less straight than the Ridge curves. This shows that polynomial features
-#    add some nonlinear flexibility. However, the difference is small, so the
-#    improvement is modest.
-#
-# 4. **Random Forest improves local curvature**
-#
-#    The Random Forest result suggests that local tree partitions help capture
-#    nonlinear curvature, including bends and dips that Polynomial Ridge smooths
-#    away. However, this curvature improvement does not yet generalise well
-#    enough to improve pointwise MAE/RMSE on this held-out design split. The
-#    very low train error and much higher validation/test error still point to
-#    overfitting.
-#
-# 5. **Random Forest improves the predicted distribution shape**
-#
-#    The distribution comparison shows that Random Forest gives a wider and more
-#    realistic predicted band than the Ridge-style models. It still may not
-#    capture the full high-frequency design-to-design variation, but it is a
-#    clear qualitative improvement in distribution shape even though its
-#    pointwise error metrics are worse.
-#
-# The four-model comparison shows a clear progression: Scalar Ridge
-# establishes the single-target baseline, Vector Ridge extends the same idea to
-# multiple outputs, Polynomial Ridge adds limited nonlinear flexibility, and
-# Random Forest tests a stronger non-neural tabular model. In this run, Random
-# Forest improves both the qualitative distribution and the local curve
-# curvature, but it does not improve aggregate held-out MAE/RMSE. This
-# strengthens the case for a model class that can preserve the richer response
-# shape while improving pointwise generalisation.
+# Overall, no single non-neural baseline wins every criterion. The Ridge models retain
+# stronger aggregate accuracy, Polynomial Ridge adds limited nonlinear flexibility,
+# and Random Forest better represents curve shape and design-to-design spread. This
+# motivates a model class that can preserve the richer response structure while
+# improving held-out pointwise accuracy.
 #
 
 # %%
@@ -1667,15 +1376,17 @@ print(
 # %%
 latest_model_registry = read_json(cfg.paths.models / "latest.json")
 selected_model_registry = read_json(cfg.paths.models / "selected.json")
-s7_latest_benchmark_path = cfg.paths.benchmarks / "s7_1_magnitude_db_latest.csv"
+s7_latest_benchmark_path = (
+    cfg.paths.benchmarks / "s7_1_insertion_loss_db_latest.csv"
+)
 s7_selected_benchmark_path = (
-    cfg.paths.benchmarks / "s7_1_magnitude_db_selected.csv"
+    cfg.paths.benchmarks / "s7_1_insertion_loss_db_selected.csv"
 )
 vector_latest_benchmark_path = (
-    cfg.paths.benchmarks / "vector_magnitude_db_latest.csv"
+    cfg.paths.benchmarks / "vector_insertion_loss_db_latest.csv"
 )
 vector_selected_benchmark_path = (
-    cfg.paths.benchmarks / "vector_magnitude_db_selected.csv"
+    cfg.paths.benchmarks / "vector_insertion_loss_db_selected.csv"
 )
 
 print("Latest model registry entries:")
@@ -1685,16 +1396,16 @@ print(sorted(selected_model_registry.get("models", {})))
 
 if s7_latest_benchmark_path.is_file():
     print("\nLatest S7_1 benchmark:")
-    print(pd.read_csv(s7_latest_benchmark_path))
+    display(pd.read_csv(s7_latest_benchmark_path).style.hide(axis="index"))
 
 if s7_selected_benchmark_path.is_file():
     print("\nSelected S7_1 benchmark:")
-    print(pd.read_csv(s7_selected_benchmark_path))
+    display(pd.read_csv(s7_selected_benchmark_path).style.hide(axis="index"))
 
 if vector_latest_benchmark_path.is_file():
     print("\nLatest vector benchmark:")
-    print(pd.read_csv(vector_latest_benchmark_path))
+    display(pd.read_csv(vector_latest_benchmark_path).style.hide(axis="index"))
 
 if vector_selected_benchmark_path.is_file():
     print("\nSelected vector benchmark:")
-    print(pd.read_csv(vector_selected_benchmark_path))
+    display(pd.read_csv(vector_selected_benchmark_path).style.hide(axis="index"))
