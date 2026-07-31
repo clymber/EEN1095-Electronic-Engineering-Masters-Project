@@ -49,6 +49,8 @@ def _save_scalar_run(
     timestamp: str,
     *,
     alpha: float,
+    target_name: str = "S7_1_DB",
+    target_representation: str | None = None,
 ) -> tuple[ModelRunArtifactManager, ScalarRidgeModel, np.ndarray]:
     """
     Save one fitted scalar ridge run for registry tests.
@@ -63,15 +65,15 @@ def _save_scalar_run(
         model.name,
         timestamp=timestamp,
     )
-    manager.save_model(
-        model,
-        data_interface={
-            "dataset_name": "tiny_fixture",
-            "target_names": ["S7_1_DB"],
-            "target_scope": "scalar",
-            "target_units": "dB",
-        },
-    )
+    data_interface = {
+        "dataset_name": "tiny_fixture",
+        "target_names": [target_name],
+        "target_scope": "scalar",
+        "target_units": "dB",
+    }
+    if target_representation is not None:
+        data_interface["target_representation"] = target_representation
+    manager.save_model(model, data_interface=data_interface)
     return manager, model, X_val
 
 
@@ -153,6 +155,41 @@ class TestModelRegistry:
 
         assert registry.latest("scalar_ridge").run_id == second.run_id
         assert registry.selected("scalar_ridge").run_id == first.run_id
+
+    def test_first_run_for_new_target_representation_reinitializes_selected(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """
+        A model's first run for a new target representation becomes selected.
+        """
+        outputs_root = tmp_path / "outputs"
+        registry = ModelRegistry(outputs_root / "models", project_root=tmp_path)
+        magnitude_run, _, _ = _save_scalar_run(
+            outputs_root / "runs",
+            "20260705T153000Z",
+            alpha=0.001,
+        )
+        insertion_loss_run, _, _ = _save_scalar_run(
+            outputs_root / "runs",
+            "20260705T163000Z",
+            alpha=0.01,
+            target_name="IL_S7_1_DB",
+            target_representation="insertion_loss_db",
+        )
+
+        registry.register_run(magnitude_run.run_dir)
+        registry.register_run(insertion_loss_run.run_dir)
+
+        assert registry.selected("scalar_ridge").run_id == (
+            insertion_loss_run.run_id
+        )
+
+        registry.register_run(magnitude_run.run_dir)
+
+        assert registry.selected("scalar_ridge").run_id == (
+            insertion_loss_run.run_id
+        )
 
     def test_promote_updates_selected_pointer(self, tmp_path: Path) -> None:
         """

@@ -207,6 +207,14 @@ class KerasWrapperState:
         "reduce_lr_factor",
         "min_learning_rate",
         "random_state",
+        "frequencies_ghz",
+        "latent_dim",
+        "decoder_channels",
+        "kernel_size",
+        "frequency_encoding",
+        "fourier_order",
+        "weight_decay",
+        "derivative_loss_weight",
     )
 
     # Fitted preprocessing attributes needed for neural wrapper prediction.
@@ -217,6 +225,7 @@ class KerasWrapperState:
         "expanded_feature_scaler",
         "y_scaler",
         "expanded_feature_count_",
+        "selected_epoch_",
     )
 
     @classmethod
@@ -974,9 +983,11 @@ def _load_neural_artifacts(
     """
     Load a neural wrapper from Keras and joblib artifacts.
     """
+    keras_state = KerasWrapperState.load(preprocessors_path)
+    _import_object(keras_state.class_path)
     keras = import_module("keras")
     keras_model = keras.models.load_model(model_path)
-    return KerasWrapperState.load(preprocessors_path).restore(keras_model)
+    return keras_state.restore(keras_model)
 
 
 def _import_object(import_path: str) -> type:

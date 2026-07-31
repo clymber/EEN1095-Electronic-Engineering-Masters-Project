@@ -192,6 +192,60 @@ def test_runner_persists_full_workflow_and_refreshes_benchmarks(
     ]
 
 
+def test_first_run_for_new_representation_creates_selected_benchmark(
+    tmp_path: Path,
+) -> None:
+    """
+    The first run for a new representation repairs its selected benchmark.
+    """
+    cfg = _config(tmp_path)
+    X, y = _arrays()  # pylint: disable=invalid-name
+    magnitude_runner = ModelRunRunner(
+        cfg,
+        ScalarRidgeModel(alphas=(0.001,)),
+        timestamp="20260705T153000Z",
+    )
+    magnitude_runner.train(X, y, X, y)
+    magnitude_runner.validate(X, y)
+    magnitude_runner.test(X, y)
+    magnitude_runner.persist(
+        data_interface={
+            "target_names": ["S7_1_DB"],
+            "target_scope": "scalar",
+            "target_units": "dB",
+        }
+    )
+
+    insertion_loss_runner = ModelRunRunner(
+        cfg,
+        ScalarRidgeModel(alphas=(0.01,)),
+        timestamp="20260705T163000Z",
+    )
+    insertion_loss_runner.train(X, y, X, y)
+    insertion_loss_runner.validate(X, y)
+    insertion_loss_runner.test(X, y)
+    insertion_loss_runner.persist(
+        data_interface={
+            "target_names": ["IL_S7_1_DB"],
+            "target_scope": "scalar",
+            "target_units": "dB",
+            "target_representation": "insertion_loss_db",
+        }
+    )
+
+    selected = read_json(cfg.paths.models / "selected.json")["models"]
+    selected_benchmark = (
+        cfg.paths.benchmarks / "s7_1_insertion_loss_db_selected.csv"
+    )
+    assert selected["scalar_ridge"]["run_id"] == (
+        "20260705T163000Z_scalar_ridge"
+    )
+    assert selected_benchmark.is_file()
+    assert "20260705T163000Z_scalar_ridge" in selected_benchmark.read_text(
+        encoding="utf-8"
+    )
+
+
 def test_runner_supports_training_only_persistence(tmp_path: Path) -> None:
     """
     Training-only persistence skips metrics and benchmark summaries.
