@@ -7,13 +7,34 @@ import json
 from pathlib import Path
 
 from sparam_surrogate.config import basic_cfg
-from sparam_surrogate.config.surrogate_config import SurrogateConfig
+from sparam_surrogate.config.surrogate_config import (
+    CurveNeuralModelConfig,
+    SurrogateConfig,
+)
 
 
 class TestSurrogateConfig:
     """
     Unit tests for ``SurrogateConfig``.
     """
+
+    def test_curve_neural_defaults_use_selection_callback_patience(self) -> None:
+        """
+        Curve-model defaults use the predeclared MAE-selection patience values.
+        """
+        cfg = CurveNeuralModelConfig()
+        resolved = CurveNeuralModelConfig.resolve({})
+
+        assert cfg.latent_dim == 32
+        assert cfg.decoder_channels == (32, 16, 8)
+        assert cfg.derivative_loss_weight == 11.626038
+        assert cfg.early_stopping_patience == 8
+        assert cfg.reduce_lr_patience == 3
+        assert resolved.latent_dim == 32
+        assert resolved.decoder_channels == (32, 16, 8)
+        assert resolved.derivative_loss_weight == 11.626038
+        assert resolved.early_stopping_patience == 8
+        assert resolved.reduce_lr_patience == 3
 
     def test_from_config_exposes_split_fractions_only_on_preprocessing(
         self,
@@ -80,6 +101,13 @@ class TestSurrogateConfig:
         assert cfg.models.polynomial_neural_mlp.batch_size == 64
         assert cfg.models.polynomial_neural_mlp.epochs == 10
         assert cfg.models.polynomial_neural_mlp.random_state == 123
+        assert cfg.models.curve_neural.latent_dim == 32
+        assert cfg.models.curve_neural.decoder_channels == (32, 16, 8)
+        assert cfg.models.curve_neural.kernel_size == 3
+        assert cfg.models.curve_neural.frequency_encoding == "fourier"
+        assert cfg.models.curve_neural.fourier_order == 2
+        assert cfg.models.curve_neural.weight_decay == 0.0001
+        assert cfg.models.curve_neural.derivative_loss_weight == 0.0
 
     def test_from_config_exposes_default_output_paths(
         self,
@@ -255,6 +283,25 @@ class TestSurrogateConfig:
                     "prediction_batch_size": 2048,
                     "learning_rate": 0.0001,
                     "gradient_clip_norm": 1.0,
+                    "early_stopping_patience": 8,
+                    "reduce_lr_patience": 3,
+                    "reduce_lr_factor": 0.5,
+                    "min_learning_rate": 0.000001,
+                    "random_state": 123,
+                },
+                "curve_neural": {
+                    "latent_dim": 32,
+                    "decoder_channels": [32, 16, 8],
+                    "kernel_size": 3,
+                    "frequency_encoding": "fourier",
+                    "fourier_order": 2,
+                    "weight_decay": 0.0001,
+                    "derivative_loss_weight": 0.0,
+                    "batch_size": 32,
+                    "epochs": 20,
+                    "prediction_batch_size": 512,
+                    "learning_rate": 0.001,
+                    "gradient_clip_norm": 0.5,
                     "early_stopping_patience": 8,
                     "reduce_lr_patience": 3,
                     "reduce_lr_factor": 0.5,

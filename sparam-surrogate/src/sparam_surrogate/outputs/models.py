@@ -293,13 +293,43 @@ class ModelRegistry:
 
     def _initialize_selected(self, entry: ModelRegistryEntry) -> None:
         """
-        Initialize selected.json for models that do not have a selected run.
+        Initialize selection for a model or a new target representation.
         """
         index = self._read_model_index(self.selected_path)
         models = index["models"]
-        if entry.model_name not in models:
+        current = models.get(entry.model_name)
+        if not isinstance(current, Mapping):
             models[entry.model_name] = entry.to_dict()
+        else:
+            current_entry = ModelRegistryEntry.from_dict(current)
+            current_representation = self._target_representation(current_entry)
+            candidate_representation = self._target_representation(entry)
+            if (
+                candidate_representation is not None
+                and candidate_representation != current_representation
+                and _is_entry_newer_or_equal(entry, current_entry)
+            ):
+                models[entry.model_name] = entry.to_dict()
         write_json(self.selected_path, index)
+
+    def _target_representation(
+        self,
+        entry: ModelRegistryEntry,
+    ) -> str | None:
+        """
+        Return the run's explicit target representation when available.
+        """
+        metadata_path = self.resolve_path(entry.metadata_path)
+        if not metadata_path.is_file():
+            return None
+
+        metadata = read_json(metadata_path)
+        data_interface = metadata.get("data_interface")
+        if not isinstance(data_interface, Mapping):
+            return None
+
+        representation = data_interface.get("target_representation")
+        return str(representation).lower() if representation else None
 
     def _upsert_history(self, entry: ModelRegistryEntry) -> None:
         """
@@ -335,6 +365,7 @@ class ModelRegistry:
         if not self.registry_path.exists():
             return {"runs": [], "schema_version": self.SCHEMA_VERSION}
         return read_json(self.registry_path)
+
 
 def _default_project_root(models_root: Path) -> Path:
     """

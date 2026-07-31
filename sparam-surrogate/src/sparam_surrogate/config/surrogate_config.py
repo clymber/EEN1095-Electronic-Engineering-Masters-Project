@@ -3,7 +3,7 @@ Typed, ready-to-use configuration for the project.
 """
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -332,6 +332,52 @@ class NeuralMLPModelConfig:
 
 
 @dataclass(frozen=True)
+class CurveNeuralModelConfig(NeuralMLPModelConfig):
+    """
+    Typed configuration for the whole-curve neural decoder.
+    """
+
+    latent_dim: int = 32  #: Dense latent-space width.
+    decoder_channels: tuple[int, int, int] = (32, 16, 8)
+    kernel_size: int = 5  #: Convolution kernel width.
+    frequency_encoding: str = "fourier"  #: none, linear, or fourier.
+    fourier_order: int = 4  #: Number of Fourier harmonics.
+    weight_decay: float = 0.0  #: Adam weight decay.
+    derivative_loss_weight: float = 11.626038  #: Retained first-difference weight.
+    batch_size: int = 64
+    learning_rate: float = 0.001
+    early_stopping_patience: int = 8
+    reduce_lr_patience: int = 3
+
+    @classmethod
+    def resolve(cls, model_cfg: Mapping[str, Any]) -> "CurveNeuralModelConfig":
+        """
+        Resolve a whole-curve neural model configuration block.
+        """
+        defaults = cls()
+        values = {**asdict(defaults), **model_cfg}
+        neural_cfg = NeuralMLPModelConfig.resolve(values)
+        channels = _to_int_tuple(values["decoder_channels"])
+        if len(channels) != 3:
+            raise ValueError("curve_neural.decoder_channels must contain three values.")
+        frequency_encoding = str(values["frequency_encoding"]).lower()
+        if frequency_encoding not in {"none", "linear", "fourier"}:
+            raise ValueError(
+                "curve_neural.frequency_encoding must be none, linear, or fourier."
+            )
+        return cls(
+            **asdict(neural_cfg),
+            latent_dim=int(values["latent_dim"]),
+            decoder_channels=(channels[0], channels[1], channels[2]),
+            kernel_size=int(values["kernel_size"]),
+            frequency_encoding=frequency_encoding,
+            fourier_order=int(values["fourier_order"]),
+            weight_decay=float(values["weight_decay"]),
+            derivative_loss_weight=float(values["derivative_loss_weight"]),
+        )
+
+
+@dataclass(frozen=True)
 class PolynomialNeuralMLPModelConfig(NeuralMLPModelConfig):
     """
     Typed configuration for the polynomial-feature neural MLP model.
@@ -402,6 +448,11 @@ class ModelsConfig:
         default_factory=PolynomialNeuralMLPModelConfig
     )
 
+    #: Whole-curve neural decoder defaults.
+    curve_neural: CurveNeuralModelConfig = field(
+        default_factory=CurveNeuralModelConfig
+    )
+
     @classmethod
     def resolve(cls, models_cfg: Mapping[str, Any]) -> "ModelsConfig":
         """
@@ -423,6 +474,9 @@ class ModelsConfig:
             neural_mlp=NeuralMLPModelConfig.resolve(models_cfg.get("neural_mlp", {})),
             polynomial_neural_mlp=PolynomialNeuralMLPModelConfig.resolve(
                 models_cfg.get("polynomial_neural_mlp", {})
+            ),
+            curve_neural=CurveNeuralModelConfig.resolve(
+                models_cfg.get("curve_neural", {})
             ),
         )
 
