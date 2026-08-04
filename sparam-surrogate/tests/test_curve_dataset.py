@@ -189,6 +189,7 @@ def test_factory_preserves_split_feature_and_target_order(tmp_path: Path) -> Non
     assert datasets[0].features.shape == (2, 10)
     assert datasets[0].simulation_indices.tolist() == [10, 11]
     assert datasets[0].targets.shape == (2, 3, 2)
+    assert datasets[0].targets.dtype == np.float32
     assert all(dataset.cache_status == "disabled" for dataset in datasets)
     assert loader.calls == 4
 

@@ -319,6 +319,14 @@ def test_refresh_benchmarks_separates_insertion_loss_from_magnitude(
     outputs_root = tmp_path / "outputs"
     metrics = {
         **METRICS_A,
+        "benchmark_diagnostics": {
+            "deep_null_threshold_db": 80.0,
+            "high_frequency_threshold_ghz": 75.25,
+            "val_deep_null_mae_db": 4.1,
+            "test_deep_null_mae_db": 4.2,
+            "val_high_frequency_mae_db": 2.1,
+            "test_high_frequency_mae_db": 2.2,
+        },
         "per_target": {
             "IL_S7_1_DB": {
                 "validation": {"MAE": 0.11, "RMSE": 0.33},
@@ -355,9 +363,123 @@ def test_refresh_benchmarks_separates_insertion_loss_from_magnitude(
     assert _rows(_il_vector_path(outputs_root, "latest"))[0]["run_id"] == (
         manager.run_id
     )
+    vector_row = _rows(_il_vector_path(outputs_root, "latest"))[0]
+    assert vector_row["deep_null_threshold_db"] == 80.0
+    assert vector_row["high_frequency_threshold_ghz"] == 75.25
+    assert vector_row["val_deep_null_mae_db"] == 4.1
+    assert vector_row["test_deep_null_mae_db"] == 4.2
+    assert vector_row["val_high_frequency_mae_db"] == 2.1
+    assert vector_row["test_high_frequency_mae_db"] == 2.2
     assert _rows(_il_s7_path(outputs_root, "latest"))[0]["test_mae_db"] == 0.22
     assert not _vector_path(outputs_root, "latest").exists()
     assert not _s7_path(outputs_root, "latest").exists()
+
+
+def test_refresh_preserves_optional_columns_from_other_models(
+    tmp_path: Path,
+) -> None:
+    """
+    Refreshing a basic row retains another model's diagnostic columns.
+    """
+    outputs_root = tmp_path / "outputs"
+    path = _il_vector_path(outputs_root, "latest")
+    path.parent.mkdir(parents=True)
+    pd.DataFrame(
+        [
+            {
+                "model_name": "diagnostic_model",
+                "val_mae_db": 1.0,
+                "val_rmse_db": 2.0,
+                "test_mae_db": 3.0,
+                "test_rmse_db": 4.0,
+                "test_deep_null_mae_db": 5.0,
+                "run_id": "diagnostic_run",
+            }
+        ]
+    ).to_csv(path, index=False)
+
+    manager = _save_run(
+        outputs_root,
+        "20260705T153000Z",
+        target_names=["IL_S7_1_DB", "IL_S8_2_DB"],
+        target_representation="insertion_loss_db",
+    )
+    registry = _registry(outputs_root, tmp_path)
+    registry.register_run(manager.run_dir)
+    refresh_benchmarks(
+        outputs_root / "benchmarks",
+        registry,
+        "scalar_ridge",
+        selection="latest",
+    )
+
+    table = pd.read_csv(path).set_index("model_name")
+    assert table.loc["diagnostic_model", "test_deep_null_mae_db"] == 5.0
+    assert pd.isna(table.loc["scalar_ridge", "test_deep_null_mae_db"])
+
+
+def test_refresh_benchmarks_uses_derived_benchmark_contract(
+    tmp_path: Path,
+) -> None:
+    """
+    Derived insertion-loss metrics benchmark a real-imaginary model output.
+    """
+    outputs_root = tmp_path / "outputs"
+    X_train, X_val = _features()  # pylint: disable=invalid-name
+    model = ScalarRidgeModel(alphas=(0.001,))
+    model.fit(X_train, _target(X_train), X_val, _target(X_val))
+    manager = ModelRunArtifactManager.create(
+        outputs_root / "runs",
+        model.name,
+        timestamp="20260705T153000Z",
+    )
+    manager.save_model(
+        model,
+        data_interface={
+            "target_names": ["REAL_S1_1", "IMAG_S1_1"],
+            "target_scope": "curve",
+            "target_representation": "real_imag",
+        },
+    )
+    manager.save_metrics(
+        {
+            "validation": {"ComplexMAE": 0.01, "ComplexNRMSE": 0.02},
+            "test": {"ComplexMAE": 0.03, "ComplexNRMSE": 0.04},
+            "benchmark": {
+                "target_names": ["IL_S7_1_DB", "IL_S8_2_DB"],
+                "target_scope": "vector",
+                "target_representation": "insertion_loss_db",
+                **METRICS_A,
+                "per_target": {
+                    "IL_S7_1_DB": {
+                        "validation": {"MAE": 0.11, "RMSE": 0.33},
+                        "test": {"MAE": 0.22, "RMSE": 0.44},
+                    },
+                    "IL_S8_2_DB": {
+                        "validation": {"MAE": 0.15, "RMSE": 0.35},
+                        "test": {"MAE": 0.25, "RMSE": 0.45},
+                    },
+                },
+            },
+        }
+    )
+    registry = _registry(outputs_root, tmp_path)
+    registry.register_run(manager.run_dir)
+
+    paths = refresh_benchmarks(
+        outputs_root / "benchmarks",
+        registry,
+        model.name,
+        selection="latest",
+    )
+
+    assert [path.name for path in paths] == [
+        "vector_insertion_loss_db_latest.csv",
+        "s7_1_insertion_loss_db_latest.csv",
+        "per_target_insertion_loss_db_latest.csv",
+    ]
+    assert _rows(paths[0])[0]["test_mae_db"] == METRICS_A["test"]["MAE"]
+    assert _rows(paths[1])[0]["test_mae_db"] == 0.22
 
 
 def test_refresh_benchmarks_skips_runs_without_metrics(tmp_path: Path) -> None:

@@ -213,8 +213,22 @@ class KerasWrapperState:
         "kernel_size",
         "frequency_encoding",
         "fourier_order",
+        "frequency_rbf_count",
         "weight_decay",
         "derivative_loss_weight",
+        "n_ports",
+        "hidden_width",
+        "residual_blocks",
+        "reciprocal",
+        "log_magnitude_weight",
+        "log_magnitude_entry_indices",
+        "log_magnitude_floor",
+        "targeted_log_magnitude_weight",
+        "targeted_log_magnitude_entry_indices",
+        "deep_null_log_magnitude_weight",
+        "deep_null_threshold_magnitude",
+        "deep_null_weight",
+        "passivity_weight",
     )
 
     # Fitted preprocessing attributes needed for neural wrapper prediction.
@@ -226,6 +240,10 @@ class KerasWrapperState:
         "y_scaler",
         "expanded_feature_count_",
         "selected_epoch_",
+        "fine_tune_selected_epoch_",
+        "guard_passed_",
+        "guarded_validation_nrmse_",
+        "guarded_validation_six_path_mae_db_",
     )
 
     @classmethod
@@ -347,9 +365,7 @@ class ModelMetadata:
         if self.data_interface is not None:
             metadata["data_interface"] = dict(self.data_interface)
         if self.selected_hyperparameters is not None:
-            metadata["selected_hyperparameters"] = dict(
-                self.selected_hyperparameters
-            )
+            metadata["selected_hyperparameters"] = dict(self.selected_hyperparameters)
         if self.training_controls is not None:
             metadata["training_controls"] = dict(self.training_controls)
         return json_ready(metadata)
@@ -739,17 +755,13 @@ def build_resolved_config(config: SurrogateConfig) -> dict[str, Any]:
         config.dataset.parameter_csv,
         project_root=project_root,
     )
-    resolved_config["preprocessing"]["cleaned_splits_csv"] = (
-        relative_to_project_root(
-            config.preprocessing.cleaned_splits_csv,
-            project_root=project_root,
-        )
+    resolved_config["preprocessing"]["cleaned_splits_csv"] = relative_to_project_root(
+        config.preprocessing.cleaned_splits_csv,
+        project_root=project_root,
     )
-    resolved_config["preprocessing"]["freq_expanded_csv"] = (
-        relative_to_project_root(
-            config.preprocessing.freq_expanded_csv,
-            project_root=project_root,
-        )
+    resolved_config["preprocessing"]["freq_expanded_csv"] = relative_to_project_root(
+        config.preprocessing.freq_expanded_csv,
+        project_root=project_root,
     )
 
     return json_ready(
