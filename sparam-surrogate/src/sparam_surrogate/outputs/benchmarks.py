@@ -26,6 +26,14 @@ PER_TARGET_BENCHMARKS = {
     PER_TARGET_INSERTION_LOSS_DB,
 }
 METRIC_COLUMNS = ("val_mae_db", "val_rmse_db", "test_mae_db", "test_rmse_db")
+DIAGNOSTIC_COLUMNS = (
+    "deep_null_threshold_db",
+    "high_frequency_threshold_ghz",
+    "val_deep_null_mae_db",
+    "test_deep_null_mae_db",
+    "val_high_frequency_mae_db",
+    "test_high_frequency_mae_db",
+)
 
 
 def refresh_benchmarks(
@@ -128,6 +136,10 @@ def _benchmark_rows(
 
     metadata_path = registry.resolve_path(entry.metadata_path)
     metadata = read_json(metadata_path) if metadata_path.is_file() else {}
+    benchmark_contract = metrics.get("benchmark")
+    if isinstance(benchmark_contract, Mapping):
+        metrics = benchmark_contract
+        metadata = {"data_interface": benchmark_contract}
     benchmark_names = _target_benchmark_names(metadata)
     if benchmark_names is None:
         return {}
@@ -197,16 +209,25 @@ def _aggregate_row(
     """
     Return one benchmark row from aggregate validation and test metrics.
     """
-    values = {
+    values: dict[str, Any] = {
         "model_name": entry.model_name,
         "val_mae_db": _metric_value(metrics, "validation", "MAE"),
         "val_rmse_db": _metric_value(metrics, "validation", "RMSE"),
         "test_mae_db": _metric_value(metrics, "test", "MAE"),
         "test_rmse_db": _metric_value(metrics, "test", "RMSE"),
-        "run_id": entry.run_id,
     }
     if any(values[key] is None for key in METRIC_COLUMNS):
         return None
+    diagnostics = metrics.get("benchmark_diagnostics")
+    if isinstance(diagnostics, Mapping):
+        values.update(
+            {
+                column: float(diagnostics[column])
+                for column in DIAGNOSTIC_COLUMNS
+                if diagnostics.get(column) is not None
+            }
+        )
+    values["run_id"] = entry.run_id
     return values
 
 
@@ -335,6 +356,8 @@ def _upsert_rows(
     ensure_dir(path.parent)
     new_rows = pd.DataFrame(rows)
     table = pd.read_csv(path) if path.is_file() else pd.DataFrame()
+    columns = list(table.columns)
+    columns.extend(column for column in new_rows.columns if column not in columns)
 
     for row in rows:
         if table.empty or not all(key in table.columns for key in key_columns):
@@ -345,5 +368,5 @@ def _upsert_rows(
         table = table.loc[~matches]
 
     table = pd.concat([table, new_rows], ignore_index=True)
-    table = table.reindex(columns=list(rows[0]))
+    table = table.reindex(columns=columns)
     table.to_csv(path, index=False)

@@ -205,7 +205,7 @@ class CurveDataset:
         for row in records:
             frequencies_ghz, targets = curve_loader.load_curve(row)
             frequencies_ghz = np.asarray(frequencies_ghz, dtype=float)
-            targets = np.asarray(targets, dtype=float)
+            targets = np.asarray(targets, dtype=np.float32)
             expected_shape = (len(frequencies_ghz), target_width)
             if (
                 frequencies_ghz.ndim != 1

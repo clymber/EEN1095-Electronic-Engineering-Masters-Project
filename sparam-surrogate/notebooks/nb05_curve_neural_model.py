@@ -612,9 +612,10 @@ display(
 # %%
 selected_point_result = capacity_results[selected_capacity]
 selected_point_model = selected_point_result["model"]
+# Accumulate reference moments in float64 even when cache targets are float32.
 scaled_train_targets = selected_point_model.y_scaler.transform(
     y_train.reshape(-1, n_targets)
-).reshape(y_train.shape)
+).reshape(y_train.shape).astype(np.float64, copy=False)
 point_reference_mse = float(np.mean(np.square(scaled_train_targets)))
 derivative_reference_mse = float(
     np.mean(np.square(np.diff(scaled_train_targets, axis=1)))
@@ -779,16 +780,17 @@ np.testing.assert_allclose(input_mean, X_train.mean(axis=0))
 np.testing.assert_allclose(input_scale, X_train.std(axis=0))
 np.testing.assert_allclose(
     target_mean,
-    flat_train_targets.mean(axis=0),
+    flat_train_targets.mean(axis=0, dtype=np.float64),
 )
 np.testing.assert_allclose(
     target_scale,
-    flat_train_targets.std(axis=0),
+    flat_train_targets.std(axis=0, dtype=np.float64),
 )
 
+# Accumulate reference moments in float64 even when cache targets are float32.
 scaled_train_targets = curve_model.y_scaler.transform(
     flat_train_targets
-).reshape(y_train.shape)
+).reshape(y_train.shape).astype(np.float64, copy=False)
 point_reference_mse = float(np.mean(np.square(scaled_train_targets)))
 derivative_reference_mse = float(
     np.mean(np.square(np.diff(scaled_train_targets, axis=1)))
@@ -1042,6 +1044,47 @@ comparison_table = pd.DataFrame(
 display(comparison_table.style.hide(axis="index").format(precision=6))
 
 
+deep_null_threshold_db = float(np.quantile(y_train, 0.99))
+high_frequency_threshold_ghz = float(np.quantile(frequencies_ghz, 0.75))
+high_frequency_mask = frequencies_ghz >= high_frequency_threshold_ghz
+
+
+def benchmark_slice_metrics(
+    targets: np.ndarray,
+    predictions: np.ndarray,
+) -> dict[str, float]:
+    """
+    Return MAE in the train-defined deep-null and upper-frequency regions.
+    """
+    absolute_error = np.abs(predictions - targets)
+    return {
+        "deep_null_mae_db": float(
+            absolute_error[targets >= deep_null_threshold_db].mean()
+        ),
+        "high_frequency_mae_db": float(
+            absolute_error[:, high_frequency_mask].mean()
+        ),
+    }
+
+
+validation_slice_metrics = benchmark_slice_metrics(
+    y_val,
+    validation_prediction,
+)
+test_slice_metrics = benchmark_slice_metrics(y_test, test_prediction)
+benchmark_diagnostics = {
+    "deep_null_threshold_db": deep_null_threshold_db,
+    "high_frequency_threshold_ghz": high_frequency_threshold_ghz,
+    "val_deep_null_mae_db": validation_slice_metrics["deep_null_mae_db"],
+    "test_deep_null_mae_db": test_slice_metrics["deep_null_mae_db"],
+    "val_high_frequency_mae_db": (
+        validation_slice_metrics["high_frequency_mae_db"]
+    ),
+    "test_high_frequency_mae_db": test_slice_metrics["high_frequency_mae_db"],
+}
+display(pd.Series(benchmark_diagnostics, name="NB05 benchmark diagnostics"))
+
+
 def per_target_split_metrics() -> dict[str, dict[str, dict[str, float]]]:
     """
     Return benchmark-compatible NB05 validation and test metrics by target.
@@ -1194,6 +1237,7 @@ training_history = curve_model.history
 assert training_history is not None
 
 extra_metrics = {
+    "benchmark_diagnostics": benchmark_diagnostics,
     "per_target": final_per_target_metrics,
     "shape": shape_metrics,
     "prediction_range": prediction_ranges,
