@@ -23,7 +23,12 @@ Train a fundamental neural-network insertion-loss baseline.
 # %aimport -numpy
 
 # ruff: noqa: E402 -- Configure filtered notebook output before remaining imports.
+import os
+
 from sparam_surrogate.config import configure_stdio_relative_path
+
+# Keep routine TensorFlow device and end-of-dataset messages out of stored cells.
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 # Display paths relative to project root or user home.
 configure_stdio_relative_path()

@@ -167,6 +167,13 @@ Build the executed notebook reports with:
 make webpdf
 ```
 
+To update out-of-date PDFs from the outputs already stored in the existing `.ipynb`
+files, without syncing or executing the notebooks, run:
+
+```bash
+make ipynb-to-pdf
+```
+
 `notebooks/nb02_data_preprocessing.py` is the reproducible preprocessing report.
 It builds both CSVs, checks split leakage, and performs a small lazy-loading
 smoke test for scalar and full S-matrix targets.
