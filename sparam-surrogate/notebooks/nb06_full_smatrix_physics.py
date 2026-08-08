@@ -23,7 +23,12 @@ Train and evaluate a physics-aware complete complex S-matrix surrogate.
 # %aimport -numpy
 
 # ruff: noqa: E402 -- Configure filtered notebook output before remaining imports.
+import os
+
 from sparam_surrogate.config import configure_stdio_relative_path
+
+# Keep routine TensorFlow device and end-of-dataset messages out of stored cells.
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 configure_stdio_relative_path()
 
@@ -43,7 +48,11 @@ from sparam_surrogate.models.full_smatrix import (
     physics_diagnostics,
     real_imag_channels_to_smatrix,
 )
-from sparam_surrogate.outputs import ModelRunRunner, refresh_benchmarks
+from sparam_surrogate.outputs import (
+    ModelRunRunner,
+    refresh_benchmarks,
+    regenerate_benchmarks,
+)
 from sparam_surrogate.utils.non_neural_modelling_utils import regression_metrics
 
 # %% [markdown]
@@ -683,11 +692,10 @@ latest_benchmark_paths = refresh_benchmarks(
     model.name,
     selection="latest",
 )
-selected_benchmark_paths = refresh_benchmarks(
+selected_benchmark_paths = regenerate_benchmarks(
     cfg.paths.benchmarks,
     runner.registry,
-    model.name,
-    selection="selected",
+    selections=("selected",),
 )
 expected_benchmark_names = {
     "vector_insertion_loss_db_latest.csv",

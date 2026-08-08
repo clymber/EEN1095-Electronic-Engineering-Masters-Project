@@ -23,7 +23,12 @@ Train and evaluate the selected whole-curve neural model.
 # %aimport -numpy
 
 # ruff: noqa: E402 -- Configure filtered notebook output before remaining imports.
+import os
+
 from sparam_surrogate.config import configure_stdio_relative_path
+
+# Keep routine TensorFlow device and end-of-dataset messages out of stored cells.
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 configure_stdio_relative_path()
 
@@ -47,7 +52,7 @@ from sparam_surrogate.config import (
 )
 from sparam_surrogate.data import CurveDataset, TouchstoneLoader
 from sparam_surrogate.models.curve_neural import CurveNeuralModel
-from sparam_surrogate.outputs import ModelRunRunner, refresh_benchmarks
+from sparam_surrogate.outputs import ModelRunRunner, regenerate_benchmarks
 from sparam_surrogate.utils.json_io import read_json
 from sparam_surrogate.utils.non_neural_modelling_utils import (
     per_target_metrics,
@@ -1283,11 +1288,10 @@ promoted_entry = curve_runner.registry.promote(
     curve_model.name,
     curve_runner.manager.run_id,
 )
-selected_benchmark_paths = refresh_benchmarks(
+selected_benchmark_paths = regenerate_benchmarks(
     cfg.paths.benchmarks,
     curve_runner.registry,
-    curve_model.name,
-    selection="selected",
+    selections=("selected",),
 )
 assert promoted_entry.run_id == curve_runner.manager.run_id
 

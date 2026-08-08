@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from sparam_surrogate.models import ScalarRidgeModel
 from sparam_surrogate.outputs.benchmarks import (
@@ -532,3 +533,47 @@ def test_regenerate_benchmarks_rebuilds_and_replaces(
         regenerate=True,
     )
     assert _rows(stale_path)[0]["model_name"] == "scalar_ridge"
+
+
+def test_selected_regeneration_keeps_existing_csv_when_write_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A failed selected-table write leaves the previous complete CSV in place.
+    """
+    outputs_root = tmp_path / "outputs"
+    registry, first, second = _register_two_runs(outputs_root, tmp_path)
+    path = _vector_path(outputs_root, "selected")
+    regenerate_benchmarks(
+        outputs_root / "benchmarks",
+        registry,
+        selections=("selected",),
+    )
+    original_contents = path.read_text(encoding="utf-8")
+    assert first.run_id in original_contents
+
+    registry.promote("scalar_ridge", second.run_id)
+
+    def fail_after_partial_write(
+        _table: pd.DataFrame,
+        destination: Path,
+        *_args: object,
+        **_kwargs: object,
+    ) -> None:
+        """
+        Write partial contents before simulating a CSV serialization failure.
+        """
+        Path(destination).write_text("partial", encoding="utf-8")
+        raise RuntimeError("simulated CSV write failure")
+
+    monkeypatch.setattr(pd.DataFrame, "to_csv", fail_after_partial_write)
+
+    with pytest.raises(RuntimeError, match="simulated CSV write failure"):
+        regenerate_benchmarks(
+            outputs_root / "benchmarks",
+            registry,
+            selections=("selected",),
+        )
+
+    assert path.read_text(encoding="utf-8") == original_contents

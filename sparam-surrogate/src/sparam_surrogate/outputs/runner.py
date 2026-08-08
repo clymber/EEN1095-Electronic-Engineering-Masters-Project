@@ -11,7 +11,12 @@ from typing import Any, Generic, TypeVar, cast
 
 from sparam_surrogate.config.surrogate_config import SurrogateConfig
 from sparam_surrogate.models.base import SparamModel
-from sparam_surrogate.outputs.benchmarks import refresh_benchmarks as refresh_rows
+from sparam_surrogate.outputs.benchmarks import (
+    refresh_benchmarks as refresh_rows,
+)
+from sparam_surrogate.outputs.benchmarks import (
+    regenerate_benchmarks as regenerate_rows,
+)
 from sparam_surrogate.outputs.models import ModelRegistry
 from sparam_surrogate.outputs.runs import (
     ModelRunArtifactManager,
@@ -141,20 +146,32 @@ class ModelRunRunner(Generic[ModelT]):
             )
 
         create_run_artifact_dirs(self.manager.run_dir)
+        try:
+            previous_selected_run_id = self.registry.selected(
+                self.model.name
+            ).run_id
+        except KeyError:
+            previous_selected_run_id = None
         self.registry.register_run(self.manager.run_dir)
+        selected_pointer_changed = (
+            self.registry.selected(self.model.name).run_id
+            != previous_selected_run_id
+        )
         self._record_step("persist")
 
         if refresh_benchmarks and self.test_metrics is not None:
-            for selection in ("latest", "selected"):
-                try:
-                    refresh_rows(
-                        self.cfg.paths.benchmarks,
-                        self.registry,
-                        self.model.name,
-                        selection=selection,
-                    )
-                except Exception:
-                    pass
+            refresh_rows(
+                self.cfg.paths.benchmarks,
+                self.registry,
+                self.model.name,
+                selection="latest",
+            )
+            if selected_pointer_changed:
+                regenerate_rows(
+                    self.cfg.paths.benchmarks,
+                    self.registry,
+                    selections=("selected",),
+                )
 
         artifact_paths["manifest"] = self.manager.save_manifest(
             completed_steps=self.completed_steps

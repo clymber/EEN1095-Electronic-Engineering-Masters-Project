@@ -9,6 +9,7 @@ from pathlib import Path
 
 import matplotlib
 import numpy as np
+import pytest
 
 matplotlib.use("Agg")
 
@@ -24,6 +25,7 @@ from sparam_surrogate.config.surrogate_config import (
 )
 from sparam_surrogate.models import ScalarRidgeModel
 from sparam_surrogate.models.base import SparamModel
+from sparam_surrogate.outputs import runner as runner_module
 from sparam_surrogate.outputs.runner import ModelRunRunner
 from sparam_surrogate.utils.json_io import read_json
 
@@ -244,6 +246,117 @@ def test_first_run_for_new_representation_creates_selected_benchmark(
     assert "20260705T163000Z_scalar_ridge" in selected_benchmark.read_text(
         encoding="utf-8"
     )
+
+
+def test_ordinary_persist_refreshes_latest_without_selected_tables(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A later unpromoted run updates latest benchmarks but not selected tables.
+    """
+    cfg = _config(tmp_path)
+    X, y = _arrays()  # pylint: disable=invalid-name
+    refresh_selections: list[str] = []
+    regenerate_selections: list[tuple[str, ...]] = []
+    original_refresh = runner_module.refresh_rows
+    original_regenerate = runner_module.regenerate_rows
+
+    def record_refresh(*args: object, **kwargs: object) -> list[Path]:
+        """
+        Record and perform a single-pointer benchmark refresh.
+        """
+        refresh_selections.append(str(kwargs["selection"]))
+        return original_refresh(*args, **kwargs)
+
+    def record_regenerate(*args: object, **kwargs: object) -> list[Path]:
+        """
+        Record and perform a complete benchmark regeneration.
+        """
+        selections = kwargs["selections"]
+        assert isinstance(selections, tuple)
+        regenerate_selections.append(selections)
+        return original_regenerate(*args, **kwargs)
+
+    monkeypatch.setattr(runner_module, "refresh_rows", record_refresh)
+    monkeypatch.setattr(runner_module, "regenerate_rows", record_regenerate)
+
+    first = ModelRunRunner(
+        cfg,
+        ScalarRidgeModel(alphas=(0.001,)),
+        timestamp="20260705T153000Z",
+    )
+    first.train(X, y, X, y)
+    first.validate(X, y)
+    first.test(X, y)
+    first.persist(
+        data_interface={
+            "target_names": ["IL_S7_1_DB"],
+            "target_scope": "scalar",
+            "target_representation": "insertion_loss_db",
+        }
+    )
+    assert refresh_selections == ["latest"]
+    assert regenerate_selections == [("selected",)]
+    refresh_selections.clear()
+    regenerate_selections.clear()
+
+    second = ModelRunRunner(
+        cfg,
+        ScalarRidgeModel(alphas=(0.01,)),
+        timestamp="20260705T163000Z",
+    )
+    second.train(X, y, X, y)
+    second.validate(X, y)
+    second.test(X, y)
+    second.persist(
+        data_interface={
+            "target_names": ["IL_S7_1_DB"],
+            "target_scope": "scalar",
+            "target_representation": "insertion_loss_db",
+        }
+    )
+
+    assert refresh_selections == ["latest"]
+    assert regenerate_selections == []
+    assert second.registry.latest("scalar_ridge").run_id == second.manager.run_id
+    assert second.registry.selected("scalar_ridge").run_id == first.manager.run_id
+
+
+def test_runner_propagates_benchmark_refresh_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Persistence reports benchmark refresh failures instead of hiding them.
+    """
+    cfg = _config(tmp_path)
+    X, y = _arrays()  # pylint: disable=invalid-name
+    runner = ModelRunRunner(
+        cfg,
+        ScalarRidgeModel(alphas=(0.001,)),
+        timestamp="20260705T153000Z",
+    )
+    runner.train(X, y, X, y)
+    runner.validate(X, y)
+    runner.test(X, y)
+
+    def fail_refresh(*_args: object, **_kwargs: object) -> list[Path]:
+        """
+        Simulate a benchmark filesystem failure.
+        """
+        raise OSError("simulated benchmark failure")
+
+    monkeypatch.setattr(runner_module, "refresh_rows", fail_refresh)
+
+    with pytest.raises(OSError, match="simulated benchmark failure"):
+        runner.persist(
+            data_interface={
+                "target_names": ["IL_S7_1_DB"],
+                "target_scope": "scalar",
+                "target_representation": "insertion_loss_db",
+            }
+        )
 
 
 def test_runner_supports_training_only_persistence(tmp_path: Path) -> None:

@@ -114,7 +114,7 @@ def regenerate_benchmarks(
         for benchmark_name, rows in rows_by_benchmark.items():
             path = root / f"{benchmark_name}_{selection}.csv"
             ensure_dir(path.parent)
-            pd.DataFrame(rows).to_csv(path, index=False)
+            _write_csv(pd.DataFrame(rows), path)
             written_paths.append(path)
     return written_paths
 
@@ -369,4 +369,16 @@ def _upsert_rows(
 
     table = pd.concat([table, new_rows], ignore_index=True)
     table = table.reindex(columns=columns)
-    table.to_csv(path, index=False)
+    _write_csv(table, path)
+
+
+def _write_csv(table: pd.DataFrame, path: Path) -> None:
+    """
+    Replace one CSV only after its temporary file is written completely.
+    """
+    temporary_path = path.with_name(f".{path.name}.tmp")
+    try:
+        table.to_csv(temporary_path, index=False)
+        temporary_path.replace(path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
