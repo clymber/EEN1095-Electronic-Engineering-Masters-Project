@@ -1,0 +1,22 @@
+\begin{abstract}
+Printed circuit board (PCB) interconnects introduce insertion loss, reflections
+and crosstalk that become increasingly important at high data rates.
+Electromagnetic simulations characterise these effects accurately but are
+expensive for repeated design-space exploration. This work develops a staged
+machine-learning surrogate workflow for one PCB topology, progressing from
+regression baselines to curve-aware neural models and finally a
+frequency-conditioned network that predicts the reciprocal complex 12-port
+scattering matrix from ten design parameters over 200 frequency points. On
+held-out designs, the final model achieved a complex mean absolute error of
+0.0686, preserved reciprocity exactly, and showed no passivity violations on the
+evaluated grid. The experiments also reveal a trade-off between complete
+response modelling and selected-path accuracy, with sharp transmission nulls
+remaining difficult to reproduce. The results demonstrate both the feasibility
+and limitations of complete scattering-matrix surrogate modelling for
+signal-integrity analysis.
+\end{abstract}
+
+\begin{IEEEkeywords}
+scattering parameters, signal integrity, surrogate modelling, neural networks,
+physical consistency
+\end{IEEEkeywords}

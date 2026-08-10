@@ -1,0 +1,58 @@
+# EEN1095 Main Research Paper
+
+LaTeX source for the six-page conference-style paper that forms the centrepiece of the EEN1095 project portfolio.
+
+## Project structure
+
+```text
+.
+├── main.tex
+├── references.bib
+├── IEEEtran.cls
+├── sections/
+│   ├── 00_abstract.tex
+│   ├── 01_introduction.tex
+│   ├── 02_related_work.tex
+│   ├── 03_methodology.tex
+│   ├── 04_results.tex
+│   ├── 05_analysis.tex
+│   └── 06_conclusion.tex
+└── media/
+    └── README.md
+```
+
+## Overleaf
+
+1. Create a blank Overleaf project.
+2. Upload this complete folder or upload its ZIP archive.
+3. Set `main.tex` as the main document if Overleaf does not detect it automatically.
+4. Use the pdfLaTeX compiler.
+
+The project has no absolute paths, shell commands, or local-only dependencies.
+
+## Local build
+
+```bash
+latexmk -pdf main.tex
+```
+
+The project-level `.latexmkrc` sets the generated PDF filename to
+`A00049113_EEN1095_Project_Portfolio.pdf`. The same filename is configured for
+LaTeX Workshop builds in VS Code.
+
+Clean generated files with:
+
+```bash
+latexmk -C
+```
+
+## Portfolio constraints reflected in the scaffold
+
+- A4 paper size.
+- IEEE two-column conference layout.
+- `EEN1095 Project Portfolio` and `August 2026` in the page header.
+- Main-paper page numbering.
+- Separate source files for each paper section.
+- BibTeX references using the IEEE bibliography style.
+- All figures stored under `media/`.
+- Comments indicating the recommended six-page allocation.

@@ -1,0 +1,29 @@
+\section{Introduction}
+\label{sec:introduction}
+
+% The introduction and related-work material together should fit within
+% approximately the first page of the six-page paper.
+% Cover: context, significance, research gap, approach, principal result,
+% and contribution. Avoid a paragraph that merely lists later sections.
+
+% 1. Context + significance
+High-speed printed circuit board (PCB) interconnects such as traces, vias and
+multilayer transitions exhibit frequency-dependent loss, reflection and
+crosstalk. These effects are described by scattering parameters (S-parameters),
+from which signal-integrity measures including insertion loss, return loss and
+crosstalk can be derived \cite{pozar2011microwave}. Accurate electromagnetic
+simulation captures this behaviour but becomes computationally expensive when
+many geometric and material variations must be evaluated
+\cite{bruns2007numerical}. Machine-learning surrogate models offer a faster
+alternative by learning the relationship between design parameters and
+simulated responses
+\cite{swaminathan2020demystifying,akinwande2024complex}.
+
+% 2. Gap + approach + main conclusion
+This work follows a staged workflow: linear and nonlinear baselines establish
+reference performance; curve-aware neural models capture broadband structure;
+and a frequency-conditioned network predicts the reciprocal complex 12-port
+S-matrix from ten design parameters across 200 frequency points. Evaluation on
+held-out designs considers predictive error, reciprocity, passivity and
+difficult response regions. The experiments show that broader full-matrix
+prediction is feasible, but comes with reduced selected-path accuracy.

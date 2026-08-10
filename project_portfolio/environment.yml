@@ -1,0 +1,8 @@
+name: latex
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - latexmk
+  - chktex
+  - latexindent.pl
