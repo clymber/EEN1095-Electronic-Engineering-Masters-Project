@@ -57,9 +57,9 @@ test results were inspected during model development; the reported test
 evaluation is therefore retrospective rather than an untouched confirmatory
 experiment.
 
-\begin{figure*}[t]
+\begin{figure}[t]
     \centering
-    \includegraphics[width=0.94\textwidth]{pcb_topology.png}
+    \includegraphics[width=\columnwidth]{pcb_topology.png}
     \caption{Top view of the selected PCB topology. Six traces connect the
     left ports $P_1$--$P_6$ to the right ports $P_7$--$P_{12}$ through two via
     arrays. The annotations identify the port numbering and representative
@@ -67,7 +67,7 @@ experiment.
     \cite{schierholz2021sipi} under the
     \href{https://creativecommons.org/licenses/by/4.0/}{CC BY 4.0 licence}.}
     \label{fig:pcb-topology}
-\end{figure*}
+\end{figure}
 
 \subsection{Point-Wise Baseline Models}
 \label{sec:pointwise-baselines}
@@ -137,12 +137,99 @@ test design and thus measures the value added by conditioning on the design
 parameters.
 
 \subsection{Broadband Neural Model}
-% TODO: Describe the curve architecture, input and output tensors, training
-% procedure, loss function, and model-selection criteria.
+\label{sec:broadband-neural}
+The curve model replaced independent design-frequency rows with one sample per
+design. For $K=200$ frequencies and $q=6$ paths, its target was
+$\mathbf{L}^{(n)}\in\mathbb{R}^{K\times q}$, where
+$L_{k,c}^{(n)}$ is the positive insertion loss of path $c$ for design $n$ at
+$f_k$. Thus, the model mapped only $\mathbf{u}^{(n)}\in\mathbb{R}^{10}$ to all
+six curves in one forward pass; frequency was not an eleventh input feature.
+The design variables were standardised using the training designs, while each
+target channel was standardised using its pooled training-curve samples.
+
+The decoder was S-TCNN-style rather than an exact reproduction of
+\cite{torun2019spectral}. A width-32 dense encoder was projected and reshaped to
+a $25\times32$ latent sequence. Three stride-two transposed convolutions, with
+32, 16, and 8 channels, expanded this sequence to 200 positions. Each position
+was augmented with its normalised frequency and four Fourier sine/cosine pairs,
+then processed by a convolutional refinement layer and a linear six-channel
+output. This construction lets decoded features interact across neighbouring
+frequency positions while retaining an explicit coordinate for each output.
+
+Training used the curve-aware objective
+\begin{equation}
+    \mathcal{L}_{\mathrm{curve}}=
+    \operatorname{MSE}(\widehat{\mathbf{L}},\mathbf{L})+
+    \lambda_{\Delta}\operatorname{MSE}
+    (\Delta_f\widehat{\mathbf{L}},\Delta_f\mathbf{L}),
+    \label{eq:curve-loss}
+\end{equation}
+where $\Delta_f$ is the first difference along the frequency grid.
+$\lambda_{\Delta}$ was calculated from the training targets so that the
+reference derivative term contributed 10\% of the point-wise MSE. Validation
+experiments compared absent, linear, and Fourier frequency coordinates;
+current-size and compact decoders; and point-wise and curve-aware losses. The
+compact Fourier curve-aware configuration was retained, and early stopping
+restored the epoch selected by inverse-scaled validation MAE across all six
+curves. Because this model also changed the data interface, scaling, architecture
+and loss, its comparison with the point-wise MLPs does not isolate any one of
+those changes.
 
 \subsection{Reciprocal Full-S-Matrix and Physical Diagnostics}
-% TODO: Describe the frequency-conditioned residual model, 78 unique complex
-% upper-triangle entries represented by 156 real channels, reconstruction, loss,
-% and selection. Reciprocity is guaranteed by construction. Passivity and
-% finite-band causality were diagnostics, not enforced losses, in the selected
-% run. Define every symbol and every subscript or superscript.
+\label{sec:full-smatrix}
+The final model extended the target to
+$\{\mathbf{S}^{(n)}(f_k)\}_{k=1}^{K}$, where
+$\mathbf{S}^{(n)}(f_k)\in\mathbb{C}^{m\times m}$ and $m=12$. The external data
+contract stored the real and imaginary parts of all $m^2=144$ entries as a
+$K\times288$ real-valued tensor. Internally, only the
+$r=m(m+1)/2=78$ upper-triangle complex entries were predicted, giving 156 real
+channels per frequency. The lower triangle was reconstructed as
+\begin{equation}
+    \widehat{S}_{i,j}^{(n)}(f_k)
+    =\widehat{S}_{j,i}^{(n)}(f_k),\qquad i>j,
+    \label{eq:reciprocal-reconstruction}
+\end{equation}
+so every returned matrix was reciprocal by construction rather than by a soft
+penalty.
+
+As in the curve model, the interface accepted one design vector rather than the
+frequency-expanded table. The standardised design vector was repeated over the
+fixed grid and concatenated at each position with 41 frequency features:
+normalised frequency, four Fourier sine/cosine pairs, and 32 Gaussian
+radial-basis functions. An input projection followed by three width-128 residual
+MLP blocks produced the upper-triangle real and imaginary channels. The same
+blocks were applied at every frequency position, so the model returned the
+whole grid in one pass but did not use the transposed-convolution decoder of
+Section~\ref{sec:broadband-neural}.
+
+Each complex entry was scaled by one training-set root-mean-square magnitude
+shared by its real and imaginary components. The selected loss combined
+normalised complex MSE with a weight-0.1 Huber penalty on off-diagonal
+log-magnitude error. Validation Complex NRMSE selected the restored checkpoint.
+The passivity-loss weight was zero and the loss contained no causality term;
+therefore, neither property was enforced during training.
+
+Physical behaviour was evaluated after reconstruction. Reciprocity was checked
+using the normalised Frobenius residual between
+$\widehat{\mathbf{S}}$ and $\widehat{\mathbf{S}}^{\mathsf{T}}$. A matrix was
+counted as passive on the sampled grid when its largest singular value satisfied
+$\sigma_{\max}(\widehat{\mathbf{S}})\leq1$. Causality was assessed using a
+normalised Hilbert-transform residual between the real and imaginary responses
+over the available positive-frequency band. This last quantity is only a
+finite-band diagnostic: the data omit DC, negative frequencies, and frequencies
+above 100~GHz, so it cannot establish full-band causality.
+
+For a same-task deterministic reference, the complete training response was
+averaged at each frequency:
+\begin{equation}
+    \overline{\mathbf{S}}_{\mathrm{train}}(f_k)=
+    \frac{1}{N_{\mathrm{train}}}
+    \sum_{n\in\mathcal{D}_{\mathrm{train}}}\mathbf{S}^{(n)}(f_k).
+    \label{eq:mean-smatrix-reference}
+\end{equation}
+This same matrix curve was assigned to every validation or test design and was
+evaluated with the model's Complex MAE and Complex NRMSE. The formulation shares
+the broadband complex forward-modelling objective of Akinwande \textit{et al.}
+\cite{akinwande2024complex}, but the implementation here is a real-valued
+residual network with separate real and imaginary channels, not a complex-valued
+neural network.
