@@ -75,6 +75,7 @@ from typing import Any
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 import numpy as np
+import numpy.typing  # noqa: F401 -- Make NumPy typing visible to scikit-rf 2.0.1.
 import pandas as pd
 from IPython.display import Markdown, display
 from nb07_support.presentation import (
@@ -491,11 +492,12 @@ print(
 # the central 80% of designs. The first measures population centre; the second measures
 # whether the model reproduces population spread.
 #
-# A deep-null score uses true S7 values at or above the frozen 69.19 dB threshold.
+# A deep-null score uses true $IL_{7,1}$ values at or above the frozen 69.19 dB
+# threshold.
 # That threshold is the 99th percentile of the **pooled six-path training tensor**,
-# not an S7-only test-derived threshold. High-frequency MAE uses the upper-quarter
-# training-grid boundary. The quantile is 75.125 GHz, so the sampled mask starts at
-# 75.5 GHz.
+# not an $IL_{7,1}$-only test-derived threshold. High-frequency MAE uses the
+# upper-quarter training-grid boundary. The quantile is 75.125 GHz, so the sampled
+# mask starts at 75.5 GHz.
 
 # %%
 PRACTICAL_MARGIN_DB = 0.10
@@ -529,12 +531,14 @@ def s7_diagnostics(
     prediction: np.ndarray,
 ) -> dict[str, float]:
     """
-    Return shared S7 aggregate, tail, shape, and distribution diagnostics.
+    Return shared IL(7,1) aggregate, tail, shape, and distribution diagnostics.
     """
     truth = np.asarray(truth, dtype=float)
     prediction = np.asarray(prediction, dtype=float)
     if truth.shape != prediction.shape or truth.ndim != 2:
-        raise ValueError("S7 diagnostics require aligned design-by-frequency arrays.")
+        raise ValueError(
+            "IL(7,1) diagnostics require aligned design-by-frequency arrays."
+        )
 
     absolute_error = np.abs(prediction - truth)
     deep_mask = truth >= null_threshold_db
@@ -664,7 +668,7 @@ def record_result(
     six_preds: dict[str, np.ndarray] | None = None,
 ) -> None:
     """
-    Record fresh metrics and verify saved selected S7 headline values.
+    Record fresh metrics and verify saved selected IL(7,1) headline values.
     """
     for split_name, prediction in s7_preds.items():
         stats = s7_diagnostics(truth_s7[split_name], prediction)
@@ -843,12 +847,13 @@ def release_loaded_model(model: Any) -> None:
 # %% [markdown]
 # ### How to read the repeated plots
 #
-# Each model uses the same three S7 views. The **distribution plot** shows the median
-# response and the central 10th–90th percentile band across test designs; it reveals
-# whether the model captures both the typical curve and design-to-design spread. The
-# **fixed-design plot** compares prediction and truth for one test design selected
-# before model errors were inspected. The **MAE-by-frequency plot** averages absolute
-# error across test designs at each frequency, showing where error is concentrated.
+# Each model uses the same three $IL_{7,1}$ views. The **distribution plot** shows the
+# median response and the central 10th–90th percentile band across test designs; it
+# reveals whether the model captures both the typical curve and design-to-design
+# spread. The **fixed-design plot** compares prediction and truth for one test design
+# selected before model errors were inspected. The **MAE-by-frequency plot** averages
+# absolute error across test designs at each frequency, showing where error is
+# concentrated.
 
 # %% [markdown]
 # ## Train-only reference predictors
@@ -919,7 +924,7 @@ display_reference_metrics(reference_table)
 # 10 design variables + frequency (11)
 #     → training-fitted StandardScaler
 #     → Ridge(alpha=0.01)
-#     → one scalar IL_S7_1_DB value
+#     → one scalar IL(7,1) value in dB (stored as IL_S7_1_DB)
 # ```
 #
 # I began here because a low-capacity model is easy to interpret and difficult to
@@ -1000,10 +1005,10 @@ _ = gc.collect()
 # same 11 inputs → same scaling → Ridge(alpha=0.01) → six IL values
 # ```
 #
-# This experiment checks the claim directly. If the S7 coefficients and predictions
-# are numerically identical, vector output is a packaging improvement rather than an
-# S7 accuracy improvement. That would remove any reason to keep designing separate
-# scalar architectures.
+# This experiment checks the claim directly. If the $IL_{7,1}$ coefficients and
+# predictions are numerically identical, vector output is a packaging improvement
+# rather than an $IL_{7,1}$ accuracy improvement. That would remove any reason to keep
+# designing separate scalar architectures.
 
 # %%
 vector_model, vector_s7, vector_six, vector_timing = load_pointwise_predictions(
@@ -1174,8 +1179,9 @@ _ = gc.collect()
 # %% [markdown]
 # The selected powers-only model changes test MAE only slightly.
 # Its paired interval lies wholly inside the ±0.10 dB band, so Vector Ridge and
-# Polynomial Ridge are practically equivalent on this S7 comparison. The experiment
-# limits the value of adding univariate powers alone. It does not test interactions.
+# Polynomial Ridge are practically equivalent on this $IL_{7,1}$ comparison. The
+# experiment limits the value of adding univariate powers alone. It does not test
+# interactions.
 
 # %% [markdown]
 # ## 7. Random Forest: does local nonlinear capacity recover curve structure?
@@ -1248,11 +1254,11 @@ _ = gc.collect()
 # %% [markdown]
 # NB07 deliberately avoids a full forest prediction over the training split. Without
 # that calculation, it would be wrong to diagnose overfitting from a train-test gap.
-# The selected forest is larger and has meaningfully worse held-out S7 MAE than
-# Polynomial Ridge. Still, the distribution plot is useful: its central band is less
-# compressed, and its band-width error is lower. First-difference error is higher, so
-# wider population spread did not translate into better individual curve shape. That
-# trade-off motivates a smoother nonlinear approximator with a much smaller saved
+# The selected forest is larger and has meaningfully worse held-out $IL_{7,1}$ MAE
+# than Polynomial Ridge. Still, the distribution plot is useful: its central band is
+# less compressed, and its band-width error is lower. First-difference error is higher,
+# so wider population spread did not translate into better individual curve shape.
+# That trade-off motivates a smoother nonlinear approximator with a much smaller saved
 # model.
 
 # %% [markdown]
@@ -1414,9 +1420,9 @@ _ = gc.collect()
 # unnecessary for the selected MLP. A neural network does not automate data cleaning,
 # target construction, split design, or every other kind of data engineering.
 #
-# Across the selected point-wise models, S7 error remains near the same level. The
-# next phase changes the question: instead of treating every design-frequency row as
-# independent, can one model generate a complete curve for each design?
+# Across the selected point-wise models, $IL_{7,1}$ error remains near the same level.
+# The next phase changes the question: instead of treating every design-frequency row
+# as independent, can one model generate a complete curve for each design?
 
 # %% [markdown]
 # # Phase 4 — Learning structured outputs
@@ -1819,6 +1825,49 @@ def evaluate_full_split(
     }
 
 
+def complex_reference_metrics(
+    target_channels: np.ndarray,
+    reference_channels: np.ndarray,
+    *,
+    design_batch_size: int = 64,
+) -> dict[str, float]:
+    """
+    Evaluate one complex reference curve against a design split in batches.
+    """
+    complex_absolute_error_sum = 0.0
+    complex_squared_error_sum = 0.0
+    complex_truth_energy_sum = 0.0
+    complex_count = 0
+    reference = np.asarray(reference_channels, dtype=np.float32)
+    n_entries = reference.shape[-1] // 2
+
+    for start in range(0, len(target_channels), design_batch_size):
+        stop = min(start + design_batch_size, len(target_channels))
+        target_batch = np.asarray(target_channels[start:stop], dtype=np.float32)
+        real = target_batch[..., :n_entries]
+        imag = target_batch[..., n_entries:]
+        real_error = real - reference[..., :n_entries]
+        imag_error = imag - reference[..., n_entries:]
+        squared_error = real_error**2 + imag_error**2
+        complex_absolute_error_sum += float(
+            np.sum(np.sqrt(squared_error), dtype=np.float64)
+        )
+        complex_squared_error_sum += float(
+            np.sum(squared_error, dtype=np.float64)
+        )
+        complex_truth_energy_sum += float(
+            np.sum(real**2 + imag**2, dtype=np.float64)
+        )
+        complex_count += int(real_error.size)
+
+    return {
+        "ComplexMAE": complex_absolute_error_sum / complex_count,
+        "ComplexNRMSE": float(
+            np.sqrt(complex_squared_error_sum / complex_truth_energy_sum)
+        ),
+    }
+
+
 # %%
 # Release every point-wise feature matrix and residual estimator reference before the
 # 1.5 GB complete-complex cache is opened.
@@ -1878,8 +1927,61 @@ for split_name, dataset in {"validation": full_val, "test": full_test}.items():
             f"Full-matrix and canonical {split_name} simulation IDs differ."
         )
 
-# The training tensor alone is close to one gigabyte and is not used for retrospective
-# evaluation. Drop it before loading the selected neural artifact.
+# %% [markdown]
+# ### Training-mean complete-matrix reference
+#
+# The earlier mean-curve reference predicts one training-average $IL_{7,1}$ curve for
+# every design. The complete-matrix task needs its own same-task reference. At each
+# frequency, I therefore average every real and imaginary S-matrix channel over
+# training designs:
+#
+# $$
+# \bar{S}_{\mathrm{train}}(f_k)
+# =\frac{1}{N_{\mathrm{train}}}\sum_{n\in\mathrm{train}}S_n(f_k).
+# $$
+#
+# Every validation or test design receives this same training-derived complex matrix.
+# The reference uses no validation or test target during fitting. Beating it shows that
+# the neural model learns design-conditioned information beyond an average frequency
+# response; it does not establish industrial usefulness or replacement of simulation.
+
+# %%
+full_reference_channels = np.mean(
+    full_train.targets,
+    axis=0,
+    dtype=np.float64,
+).astype(np.float32)
+full_reference_rows: list[dict[str, Any]] = []
+frozen_full_reference_metrics = {
+    "validation": {"ComplexMAE": 0.08117783, "ComplexNRMSE": 0.83700753},
+    "test": {"ComplexMAE": 0.08039935, "ComplexNRMSE": 0.83429936},
+}
+
+for split_name, dataset in {"validation": full_val, "test": full_test}.items():
+    metrics = complex_reference_metrics(dataset.targets, full_reference_channels)
+    full_reference_rows.append({"split": split_name, **metrics})
+    for metric_name, frozen in frozen_full_reference_metrics[split_name].items():
+        recomputed = float(metrics[metric_name])
+        difference = recomputed - frozen
+        reproduction_rows.append(
+            {
+                "model_name": "full_smatrix_neural",
+                "split": f"{split_name}_training_mean_reference",
+                "metric": metric_name,
+                "persisted": frozen,
+                "recomputed": recomputed,
+                "difference": difference,
+                "tolerance": 1e-6,
+            }
+        )
+        if not np.isclose(recomputed, frozen, rtol=0.0, atol=1e-6):
+            raise AssertionError(
+                f"Full-matrix {split_name} reference {metric_name} differs by "
+                f"{difference:.6g}."
+            )
+
+# The training tensor alone is close to one gigabyte. Drop it before loading the
+# selected neural artifact.
 del full_train
 _ = gc.collect()
 
@@ -1956,6 +2058,28 @@ for split_name, output in full_outputs.items():
 complex_table = pd.DataFrame(complex_rows)
 physics_table = pd.DataFrame(physics_rows)
 
+# %% [markdown]
+# ### Same-task complex comparison
+#
+# The reference and neural rows below use the same target representation, split, and
+# complex metrics. This comparison is therefore interpretable in a way that a direct
+# numerical comparison between complex-domain error and dB insertion-loss error is not.
+
+# %%
+full_reference_table = pd.DataFrame(full_reference_rows)
+full_reference_table.insert(0, "model", "Training-Mean Reference")
+full_model_complex_table = complex_table.copy()
+full_model_complex_table.insert(0, "model", MODEL_LABELS["full_smatrix_neural"])
+full_complex_comparison_table = pd.concat(
+    [full_reference_table, full_model_complex_table],
+    ignore_index=True,
+)
+display(full_complex_comparison_table.set_index(["model", "split"]))
+
+del full_reference_channels
+_ = gc.collect()
+
+# %%
 persisted_full_metrics = selected_metrics["full_smatrix_neural"]["metrics"]
 for row in complex_rows:
     split_name = row["split"]
@@ -2014,6 +2138,8 @@ display_full_smatrix_diagnostics(
     complex_table,
     physics_table,
 )
+
+# %%
 display_model_metrics(
     result_rows,
     model_name="full_smatrix_neural",
@@ -2026,6 +2152,8 @@ display_model_metrics(
     ),
     metric_labels=METRIC_LABELS,
 )
+
+# %%
 display_s7_diagnostics(
     current_prediction=full_s7["test"],
     current_label=MODEL_LABELS["full_smatrix_neural"],
@@ -2033,8 +2161,11 @@ display_s7_diagnostics(
     predecessor_label=MODEL_LABELS[previous_name],
     **s7_display_context,
 )
+
+# %%
 display_transition("curve_neural", "full_smatrix_neural")
 
+# %%
 release_loaded_model(full_model)
 del (
     full_model,
@@ -2048,21 +2179,22 @@ del (
 _ = gc.collect()
 
 # %% [markdown]
-# On the test split, Complex MAE is 0.06857 and Complex NRMSE is
-# 0.78893. Reciprocal mirroring gives a zero prediction residual, and no passivity
-# violation is observed on this finite grid. The predicted band-limited causality
-# residual is 0.4812, compared with 0.3173 for the truth; neither value is proof of
-# full-band causality.
+# On the test split, the training-mean reference reaches Complex MAE 0.08040 and
+# Complex NRMSE 0.83430. Full S-Matrix Neural improves these to 0.06857 and 0.78893,
+# respectively. Reciprocal mirroring gives a zero prediction residual, and no
+# passivity violation is observed on this finite grid. The predicted band-limited
+# causality residual is 0.4812, compared with 0.3173 for the truth; neither value is
+# proof of full-band causality.
 #
 # The conclusion must keep three axes separate. The full model predicts a much broader
 # object, and reciprocal symmetry is exact by construction. Passivity is observed on
-# these evaluated designs and frequencies, not guaranteed. Its S7 dB accuracy is much
-# worse than Curve Neural: test MAE rises from 7.3883 to 10.7903 dB, a practically
+# these evaluated designs and frequencies, not guaranteed. Its $IL_{7,1}$ accuracy is
+# much worse than Curve Neural: test MAE rises from 7.3883 to 10.7903 dB, a practically
 # meaningful increase of 3.4020 dB. Its negative mean residual and pronounced
-# low-frequency error are visible in the plot. Its high-frequency S7 MAE is
+# low-frequency error are visible in the plot. Its high-frequency $IL_{7,1}$ MAE is
 # slightly lower, but that isolated difference is not evidence of an overall
 # improvement. The full model improves output scope and reciprocal consistency, but
-# it is not the most accurate selected model for S7.
+# it is not the most accurate selected model for $IL_{7,1}$.
 
 # %% [markdown]
 # # 12. Synthesis: what changed, what did not, and why
@@ -2090,11 +2222,13 @@ display_headline_metrics(
 )
 
 # %% [markdown]
-# Scalar and Vector Ridge have the same S7 result, while Polynomial Ridge changes it
-# only slightly. Random Forest is more flexible but has a higher test MAE. Curve Neural
-# gives the lowest selected six-path S7 test MAE at 7.3883 dB. Full S-Matrix Neural
-# reaches 10.7903 dB on this path because its main contribution is a much broader
-# complex prediction task, not the best S7 fit.
+# Scalar and Vector Ridge have the same $IL_{7,1}$ result, while Polynomial Ridge
+# changes it only slightly. Random Forest is more flexible but has a higher test MAE.
+# Curve Neural gives the lowest selected six-path $IL_{7,1}$ test MAE at 7.3883 dB.
+# Full S-Matrix Neural reaches 10.7903 dB on this path while addressing a much broader
+# complex prediction task. Because its architecture, target representation, scaling,
+# and loss also differ, this comparison does not identify output scope as the cause of
+# the $IL_{7,1}$ difference.
 
 # %%
 display_transition_summary(transition_rows, model_labels=MODEL_LABELS)
@@ -2104,11 +2238,13 @@ display_transition_summary(transition_rows, model_labels=MODEL_LABELS)
 # MAE by 0.3074 dB, while Neural MLP recovers 0.2969 dB relative to the forest.
 # Polynomial Neural MLP differs from the plain MLP by only 0.0014 dB. Curve Neural then
 # lowers MAE by 0.1204 dB, with directional support but unresolved practical size. The
-# final increase reflects the full model’s different prediction task.
+# final increase accompanies a different prediction task and model formulation; it is
+# not a controlled output-scope ablation.
 #
 # A model can reduce average error while still missing rare nulls. It can also solve a
-# broader output problem while scoring worse on S7. The next two tables therefore keep
-# accuracy, saved-model size, output scope, and physical properties separate.
+# broader output problem while scoring worse on $IL_{7,1}$. The next two tables
+# therefore keep accuracy, saved-model size, output scope, and physical properties
+# separate.
 
 # %%
 runtime_table = (
@@ -2134,16 +2270,16 @@ model_choice_rows = [
     {
         "use case": "transparent one-path fitted reference",
         "choose": "scalar_ridge",
-        "test S7 MAE (dB)": test_mae.loc["scalar_ridge"],
+        "test IL(7,1) MAE (dB)": test_mae.loc["scalar_ridge"],
         "artifact size": artifact_lookup.loc["scalar_ridge"],
-        "output scope": "one S7 insertion-loss value per row",
+        "output scope": "one IL(7,1) value per row",
         "physics status": "none guaranteed",
         "give up": "nonlinear capacity and multi-path output",
     },
     {
-        "use case": "lowest selected six-path S7 error",
+        "use case": "lowest selected six-path IL(7,1) error",
         "choose": best_six_model,
-        "test S7 MAE (dB)": test_mae.loc[best_six_model],
+        "test IL(7,1) MAE (dB)": test_mae.loc[best_six_model],
         "artifact size": artifact_lookup.loc[best_six_model],
         "output scope": "six complete insertion-loss curves",
         "physics status": "no complex phase or guaranteed reciprocity",
@@ -2152,11 +2288,11 @@ model_choice_rows = [
     {
         "use case": "complete reciprocal complex response",
         "choose": "full_smatrix_neural",
-        "test S7 MAE (dB)": test_mae.loc["full_smatrix_neural"],
+        "test IL(7,1) MAE (dB)": test_mae.loc["full_smatrix_neural"],
         "artifact size": artifact_lookup.loc["full_smatrix_neural"],
         "output scope": "200 × 12 × 12 complex S-matrix",
         "physics status": "reciprocity guaranteed; passivity observed only",
-        "give up": "the lower S7 error of the six-curve model",
+        "give up": "the lower IL(7,1) error of the six-curve model",
     },
 ]
 display_model_choices(
@@ -2166,9 +2302,10 @@ display_model_choices(
 
 # %% [markdown]
 # The appropriate choice depends on the job. Scalar Ridge is the compact, transparent
-# one-path fitted reference. Curve Neural has the lowest selected six-path S7 test MAE.
+# one-path fitted reference. Curve Neural has the lowest selected six-path $IL_{7,1}$
+# test MAE.
 # Full S-Matrix Neural is the choice when phase, reflections, every port pair, and exact
-# reciprocal construction matter more than minimum S7 error.
+# reciprocal construction matter more than minimum $IL_{7,1}$ error.
 
 # %%
 transitions = {(row["predecessor"], row["current"]): row for row in transition_rows}
@@ -2198,7 +2335,7 @@ display(Markdown(f"""
   `{scalar_test_mae:.4f} dB` for Scalar Ridge. Ridge learned a frequency-dependent
   fitted mapping, but this specification did not improve on the average curve's
   design-independent prediction.
-- **Scalar and Vector Ridge are the same S7 solution.** Their coefficients,
+- **Scalar and Vector Ridge are the same $IL_{7,1}$ solution.** Their coefficients,
   intercept, scaler, and test predictions agree at numerical precision. Vector output
   simplifies six-path prediction; it does not create cross-output learning.
 - **More point-wise nonlinearity was not automatically better.** Powers-only Ridge
@@ -2225,9 +2362,13 @@ display(Markdown(f"""
   first-difference MAE rose slightly. On the deep-null subset, truth reaches
   `{deep_null_summary['truth maximum (dB)']:.2f} dB`, but prediction reaches only
   `{deep_null_summary['prediction maximum (dB)']:.2f} dB`.
-- **The final model broadened the prediction task.** Full S-Matrix Neural
-  predicts complex phase, reflections, and every port pair with exact reciprocal
-  construction. Its overall S7 error is higher, although its high-frequency S7 MAE is
+- **The final model learned beyond the complete-matrix mean reference.** Its test
+  Complex MAE is
+  `{complex_table.query("split == 'test'")['ComplexMAE'].iloc[0]:.4f}` versus
+  `{full_reference_table.query("split == 'test'")['ComplexMAE'].iloc[0]:.4f}` for the
+  training-mean response. Full S-Matrix Neural also predicts complex phase,
+  reflections, and every port pair with exact reciprocal construction. Its overall
+  $IL_{7,1}$ error is higher, although its high-frequency $IL_{7,1}$ MAE is
   `{test_diagnostics.loc['full_smatrix_neural', 'HighFrequencyMAE_dB']:.3f}` versus
   `{test_diagnostics.loc['curve_neural', 'HighFrequencyMAE_dB']:.3f} dB` for Curve
   Neural. The observed maximum singular value is
@@ -2287,11 +2428,12 @@ display_runtime_metrics(runtime_table, model_labels=MODEL_LABELS)
 
 # %% [markdown]
 # Curve Neural has the lowest native six-path test MAE at 7.4598 dB. Full S-Matrix
-# Neural reaches a test Complex NRMSE of 0.7889; its constructed prediction is
-# reciprocal to numerical precision and shows no passivity violation on the evaluated
-# grid. The cost comparison is equally clear: Random Forest occupies 6.11 GiB, whereas
-# the neural model files range from hundreds of KiB to 1.52 MiB. Runtime values
-# describe this execution environment, not universal deployment latency.
+# Neural reduces test Complex NRMSE from 0.8343 for the training-mean complete-matrix
+# reference to 0.7889; its constructed prediction is reciprocal to numerical precision
+# and shows no passivity violation on the evaluated grid. The cost comparison is
+# equally clear: Random Forest occupies 6.11 GiB, whereas the neural model files range
+# from hundreds of KiB to 1.52 MiB. Runtime values describe this execution environment,
+# not universal deployment latency.
 #
 # ## A.2 Validation sweeps from model selection
 #
@@ -2428,11 +2570,13 @@ display_reproduction_summary(reproduction_summary, model_labels=MODEL_LABELS)
 evaluated_splits = results.groupby("model_name")["split"].apply(set)
 for model_name in MODEL_ORDER:
     if not {"validation", "test"}.issubset(evaluated_splits[model_name]):
-        raise AssertionError(f"Missing validation/test S7 metrics for {model_name}.")
+        raise AssertionError(
+            f"Missing validation/test IL(7,1) metrics for {model_name}."
+        )
 if set(test_design_mae) != {"global_mean", "mean_curve", *MODEL_ORDER}:
     raise AssertionError("The paired comparison store has a missing model/reference.")
 if not np.isfinite(results.select_dtypes(include=[np.number])).all().all():
-    raise AssertionError("A recomputed S7 metric is NaN or infinite.")
+    raise AssertionError("A recomputed IL(7,1) metric is NaN or infinite.")
 
 test_prediction_physics = physics_table.query(
     "split == 'test' and matrix == 'prediction'"
@@ -2447,8 +2591,8 @@ print("No model was trained, registered, promoted, or used from latest.json.")
 
 # %% [markdown]
 # All 80 metric-reproduction checks pass. The largest difference uses only about 29%
-# of its permitted numerical tolerance, every selected model has finite held-out S7
-# metrics, and reciprocal symmetry remains below the audit threshold. NB07 therefore
-# reproduces the saved evidence for all eight selected runs without training or
-# promoting a model. This is a reproducibility result, not proof of performance beyond
-# the evaluated data.
+# of its permitted numerical tolerance, every selected model has finite held-out
+# $IL_{7,1}$ metrics, and reciprocal symmetry remains below the audit threshold. NB07
+# therefore reproduces the saved evidence for all eight selected runs without training
+# or promoting a model. This is a reproducibility result, not proof of performance
+# beyond the evaluated data.

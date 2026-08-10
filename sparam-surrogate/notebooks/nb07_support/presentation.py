@@ -184,7 +184,7 @@ def display_s7_diagnostics(
     predecessor_label: str | None = None,
 ) -> None:
     """
-    Display distribution, fixed-example, and frequency-MAE S7 diagnostics.
+    Display distribution, fixed-example, and frequency-MAE IL(7,1) diagnostics.
     """
     current_color = "tab:blue"
 
@@ -224,7 +224,7 @@ def display_s7_diagnostics(
             current_label,
             current_color,
         )
-    distribution_figure.suptitle("Test IL_S7_1_DB distribution across designs")
+    distribution_figure.suptitle(r"Test $IL_{7,1}$ distribution across designs")
     distribution_figure.tight_layout()
 
     example_figure, example_axis = plt.subplots(figsize=(8.5, 4.6))
@@ -251,7 +251,7 @@ def display_s7_diagnostics(
     example_axis.set(
         title=f"Fixed test design: SIMU_INDEX {example_id}",
         xlabel="Frequency (GHz)",
-        ylabel="IL_S7_1_DB (dB)",
+        ylabel=r"$IL_{7,1}$ (dB)",
         xlim=(frequencies_ghz[0], frequencies_ghz[-1]),
     )
     example_axis.grid(True, alpha=0.25)
@@ -287,7 +287,7 @@ def display_s7_diagnostics(
     frequency_axis.set(
         title="Test MAE by frequency",
         xlabel="Frequency (GHz)",
-        ylabel="MAE of IL_S7_1_DB (dB)",
+        ylabel=r"MAE of $IL_{7,1}$ (dB)",
         xlim=(frequencies_ghz[0], frequencies_ghz[-1]),
     )
     frequency_axis.grid(True, alpha=0.25)
@@ -393,7 +393,7 @@ def display_headline_metrics(
     model_labels: Mapping[str, str],
 ) -> None:
     """
-    Display train, validation, and test S7 MAE and RMSE tables.
+    Display train, validation, and test IL(7,1) MAE and RMSE tables.
     """
     headline = results.pivot(
         index="model_name",
@@ -423,10 +423,15 @@ def display_headline_metrics(
         metric_name="RMSE_dB",
         model_labels=model_labels,
     )
-    _display_table(headline_mae, title="S7 MAE (dB)", precision=4, na_rep="—")
+    _display_table(
+        headline_mae,
+        title=r"$IL_{7,1}$ MAE (dB)",
+        precision=4,
+        na_rep="—",
+    )
     _display_table(
         headline_rmse,
-        title="S7 RMSE (dB)",
+        title=r"$IL_{7,1}$ RMSE (dB)",
         precision=4,
         na_rep="—",
     )
@@ -476,7 +481,7 @@ def display_model_choices(
     """
     choice_summary = choice_table.loc[
         :,
-        ["use case", "choose", "test S7 MAE (dB)", "artifact size"],
+        ["use case", "choose", "test IL(7,1) MAE (dB)", "artifact size"],
     ].rename(columns={"use case": "Use case", "choose": "Model"})
     choice_summary["Model"] = choice_summary["Model"].map(model_labels)
     choice_tradeoffs = choice_table.loc[
@@ -495,7 +500,7 @@ def display_model_choices(
     _display_table(
         choice_summary,
         title="Accuracy and saved-model size",
-        formatter={"test S7 MAE (dB)": "{:.4f}"},
+        formatter={"test IL(7,1) MAE (dB)": "{:.4f}"},
     )
     _display_table(
         choice_tradeoffs,
@@ -802,7 +807,7 @@ def _distribution_panel(
     axis.set(
         title=title,
         xlabel="Frequency (GHz)",
-        ylabel="IL_S7_1_DB (dB)",
+        ylabel=r"$IL_{7,1}$ (dB)",
         xlim=(frequencies_ghz[0], frequencies_ghz[-1]),
     )
     axis.grid(True, alpha=0.25)
