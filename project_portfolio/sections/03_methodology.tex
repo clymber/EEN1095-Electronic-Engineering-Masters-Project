@@ -6,19 +6,143 @@
 % Detailed derivations and implementation material should move to Appendix D.
 
 \subsection{Dataset and Preprocessing}
-% TODO: Describe the selected SI/PI-Database topology, design parameters,
-% frequency grid, Touchstone parsing, missing-file validation, split strategy,
-% scaling, target representation, and leakage prevention.
+Experiments used the SI/PI-Database topology ``Link on 8 Cavity PCB with two
+10$\times$10 Via-Arrays'' \cite{schierholz2021sipi}, distributed as
+\nolinkurl{linkOn8CavityStackBetween10x10Array_19_08_2021}. As shown in
+Fig.~\ref{fig:pcb-topology}, six traces connect ports $P_1$--$P_6$ to
+$P_7$--$P_{12}$. Each design is specified by ten continuous parameters:
+relative permittivity (\texttt{EPS}), loss tangent (\texttt{TAND}), via pitch
+(\texttt{PITCH}), trace length (\texttt{TRACE\_LEN}), via-array margin
+(\texttt{START}), via radius (\texttt{VIAR}), antipad radius
+(\texttt{ANTIPADR}), dielectric thickness (\texttt{TDIEL}), inter-trace spacing
+(\texttt{DISTTL}), and trace width (\texttt{TLWIDTH}). The material parameters
+are dimensionless and the geometric parameters are recorded in mil.
 
-\subsection{Baseline Models}
-% TODO: Summarise the non-neural and neural baselines used for comparison.
-% Keep only the information needed to reproduce and interpret the results.
+The parameter table was joined to 12-port Touchstone \texttt{.s12p} files by
+simulation identifier. Of 7,048 parameter rows, 18 had no matching Touchstone
+file; these were removed, while 609 files without parameter records were
+ignored, leaving 7,030 aligned designs. Each file was parsed as a complex
+$12\times12$ S-matrix at 200 uniformly spaced frequencies from 0.5 to 100~GHz.
+Selected-path experiments used positive insertion loss
+\begin{equation}
+    IL_{i,j}(f)=-20\log_{10}|S_{i,j}(f)|.
+    \label{eq:insertion-loss}
+\end{equation}
+
+The 7,030 designs were shuffled once using project seed 128 and divided into
+4,218 training, 1,406 validation, and 1,406 test designs. All frequencies from
+one design retained the same split label. Three data representations were then
+constructed. The point-wise models expanded each design into 200 rows, with the
+ten design parameters and frequency as 11 inputs and either one or six
+insertion-loss targets. This produced 843,600/281,200/281,200
+training/validation/test rows. The curve model instead retained one sample per
+design, pairing 10 inputs with a $200\times6$ insertion-loss tensor. The
+full-S-matrix model also retained one sample per design, but paired the inputs
+with a $200\times288$ tensor containing the real and imaginary components of
+all 144 matrix entries. The latter two models therefore did not use the
+frequency-expanded table.
+
+Preprocessing was fitted separately for each model. Point-wise Ridge and neural
+models owned their training-fitted standardisation and, where applicable,
+polynomial expansion; the random forest used the unscaled inputs. The curve
+model standardised the ten design inputs and each of its six target channels
+using pooled training-curve points. The full-S-matrix model standardised its
+design inputs and scaled each complex entry by one training-set root-mean-square
+magnitude shared by its real and imaginary components. Every fitted transform
+was applied unchanged to validation and test data. Consequently, no design or
+frequency sample contributed statistics across split boundaries. Training
+fitted model parameters, while validation results selected hyperparameters and
+neural checkpoints. Test designs were held out from fitting, but intermediate
+test results were inspected during model development; the reported test
+evaluation is therefore retrospective rather than an untouched confirmatory
+experiment.
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=0.94\textwidth]{pcb_topology.png}
+    \caption{Top view of the selected PCB topology. Six traces connect the
+    left ports $P_1$--$P_6$ to the right ports $P_7$--$P_{12}$ through two via
+    arrays. The annotations identify the port numbering and representative
+    geometric variables used as model inputs. Reproduced from
+    \cite{schierholz2021sipi} under the
+    \href{https://creativecommons.org/licenses/by/4.0/}{CC BY 4.0 licence}.}
+    \label{fig:pcb-topology}
+\end{figure*}
+
+\subsection{Point-Wise Baseline Models}
+\label{sec:pointwise-baselines}
+For design $n$ at sampled frequency $f_k$, all six baselines received the same
+input
+\begin{equation}
+    \mathbf{x}^{(n,k)}=
+    [(\mathbf{u}^{(n)})^{\mathsf{T}},f_k]^{\mathsf{T}}
+    \in\mathbb{R}^{p+1},
+    \label{eq:pointwise-input}
+\end{equation}
+where $\mathbf{u}^{(n)}=[u_1^{(n)},\ldots,u_p^{(n)}]^{\mathsf{T}}$ is the
+design-parameter vector, $p=10$, and $f_k$ is recorded in GHz. Scalar Ridge
+predicted only $IL_{7,1}^{(n)}(f_k)$; the remaining models predicted
+\begin{equation}
+    \begin{aligned}
+    \mathbf{y}^{(n,k)}=[
+        &IL_{7,1}^{(n)}(f_k),IL_{8,2}^{(n)}(f_k),IL_{9,3}^{(n)}(f_k),\\
+        &IL_{10,4}^{(n)}(f_k),IL_{11,5}^{(n)}(f_k),
+        IL_{12,6}^{(n)}(f_k)]^{\mathsf{T}}
+        \in\mathbb{R}^{6},
+    \end{aligned}
+    \label{eq:pointwise-targets}
+\end{equation}
+
+The first phase tested the linear formulation. Scalar and Vector Ridge fitted
+$\ell_2$-regularised least-squares models to standardised inputs, with the
+regularisation strength selected by validation MAE. For Vector Ridge, this MAE
+was averaged over all six outputs. Multi-output Ridge fits one coefficient
+vector per target without coupling the targets; with the common selected
+regularisation, its $IL_{7,1}$ component is therefore the same fitted problem as
+Scalar Ridge. Their comparison tests output scope rather than additional
+predictive capacity.
+
+The second phase added explicit or local nonlinearity while retaining the
+six-output task. Polynomial Ridge first standardised the inputs, expanded each
+feature independently as
+$x_\ell\mapsto[x_\ell,x_\ell^2,\ldots,x_\ell^D]$, standardised the expanded
+columns, and
+then fitted Ridge regression. The degree $D$ and regularisation strength were
+selected jointly by validation MAE. This powers-only map contains no interaction
+terms such as $x_\ell x_r$. Random Forest instead fitted an ensemble of regression
+trees to the unscaled inputs, allowing local partitions of the joint
+design-frequency space; its configured depth and leaf-size candidates were
+evaluated using validation MAE.
+
+The third phase tested learned nonlinear features. The Neural MLP mapped the
+standardised inputs through ReLU layers of widths 128, 128, and 64 to a linear
+six-unit output. Inputs and targets were standardised using training data, and
+Adam minimised mean squared error in the scaled target space. Learning-rate
+reduction and early stopping monitored validation loss, with the best weights
+restored. The Polynomial Neural MLP used the same architecture and training
+procedure after a fixed fifth-degree powers-only expansion and a second
+training-fitted feature standardisation. Comparing these two MLPs therefore
+isolates the explicit univariate powers from the learned nonlinear mapping.
+
+A deterministic selected-path reference was also defined from the training
+designs:
+\begin{equation}
+    \overline{IL}_{7,1}^{\mathrm{train}}(f_k)=
+    \frac{1}{N_{\mathrm{train}}}
+    \sum_{n\in\mathcal{D}_{\mathrm{train}}}IL_{7,1}^{(n)}(f_k).
+    \label{eq:mean-il-reference}
+\end{equation}
+It predicts this same frequency-dependent mean curve for every validation or
+test design and thus measures the value added by conditioning on the design
+parameters.
 
 \subsection{Broadband Neural Model}
-% TODO: Describe the final network architecture, input and output tensors,
-% training procedure, loss function, and model-selection criteria.
+% TODO: Describe the curve architecture, input and output tensors, training
+% procedure, loss function, and model-selection criteria.
 
-\subsection{Physical-Consistency Mechanisms}
-% TODO: Explain the implemented constraints and checks, such as reciprocity,
-% passivity, insertion-loss validity, or causality. Define every symbol and
-% every subscript or superscript when equations are introduced.
+\subsection{Reciprocal Full-S-Matrix and Physical Diagnostics}
+% TODO: Describe the frequency-conditioned residual model, 78 unique complex
+% upper-triangle entries represented by 156 real channels, reconstruction, loss,
+% and selection. Reciprocity is guaranteed by construction. Passivity and
+% finite-band causality were diagnostics, not enforced losses, in the selected
+% run. Define every symbol and every subscript or superscript.

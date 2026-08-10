@@ -15,3 +15,21 @@ Use paths relative to this directory, for example:
 
 Because `main.tex` defines `\graphicspath{{media/}}`, the filename alone is sufficient.
 Prefer vector PDF figures for plots and diagrams; use PNG for raster images where necessary.
+
+## Notebook figure provenance
+
+- `pcb_topology.png` is copied from
+  `sparam-surrogate/notebooks/resources/pcb_top_view.png`, displayed in NB01.
+  The original diagram is reproduced from Schierholz et al.,
+  *SI/PI-Database of PCB-Based Interconnects for Machine Learning
+  Applications*, DOI `10.1109/ACCESS.2021.3061788`, under CC BY 4.0. Retain
+  this attribution in the paper caption.
+- `s7_1_distribution_comparison.png` is the first plot output of the final
+  full-S-matrix diagnostic cell in NB07.
+- `s7_1_fixed_design_comparison.png` is the second plot output of that NB07
+  cell and uses fixed test design `SIMU_INDEX=5491`.
+- `s7_1_mae_by_frequency.png` is the third plot output of that NB07 cell.
+
+The NB07 images were exported from the paired executed notebook
+`nb07_selected_models_evaluation_analysis.ipynb`. Re-export them after NB07 is
+re-executed if its selected-run evidence changes.
