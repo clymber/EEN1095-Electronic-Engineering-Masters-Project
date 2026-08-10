@@ -44,6 +44,11 @@ dependencies:
   - notebook
   - pdftotext
 
+  # LaTeX for PDF generation
+  - latexmk
+  - chktex
+  - latexindent.pl
+
 
   # Tensorflow for macOS M1 GPU
   - pip:

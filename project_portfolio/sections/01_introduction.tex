@@ -24,6 +24,10 @@ This work follows a staged workflow: linear and nonlinear baselines establish
 reference performance; curve-aware neural models capture broadband structure;
 and a frequency-conditioned network predicts the reciprocal complex 12-port
 S-matrix from ten design parameters across 200 frequency points. Evaluation on
-held-out designs considers predictive error, reciprocity, passivity and
-difficult response regions. The experiments show that broader full-matrix
-prediction is feasible, but comes with reduced selected-path accuracy.
+designs held out from training considers predictive error, reciprocity, passivity
+and difficult response regions. The selected full-matrix model improves upon a
+training-mean complex reference and guarantees reciprocity. It predicts a
+broader response than the selected six-curve model but has higher $S_{7,1}$
+insertion-loss error; because their architectures, targets and losses also
+differ, the comparison does not attribute this difference solely to output
+scope.

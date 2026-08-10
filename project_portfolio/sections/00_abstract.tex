@@ -1,19 +1,19 @@
 \begin{abstract}
-Printed circuit board (PCB) interconnects introduce insertion loss, reflections
-and crosstalk that become increasingly important at high data rates.
-Electromagnetic simulations characterise these effects accurately but are
-expensive for repeated design-space exploration. This work develops a staged
-machine-learning surrogate workflow for one PCB topology, progressing from
-regression baselines to curve-aware neural models and finally a
-frequency-conditioned network that predicts the reciprocal complex 12-port
-scattering matrix from ten design parameters over 200 frequency points. On
-held-out designs, the final model achieved a complex mean absolute error of
-0.0686, preserved reciprocity exactly, and showed no passivity violations on the
-evaluated grid. The experiments also reveal a trade-off between complete
-response modelling and selected-path accuracy, with sharp transmission nulls
-remaining difficult to reproduce. The results demonstrate both the feasibility
-and limitations of complete scattering-matrix surrogate modelling for
-signal-integrity analysis.
+Printed circuit board (PCB) interconnects introduce frequency-dependent loss,
+reflections and crosstalk. Electromagnetic simulations characterise these
+effects accurately but are costly for repeated design-space exploration. This
+work develops a staged machine-learning surrogate for one PCB topology,
+progressing from regression baselines to curve-aware neural models and a
+frequency-conditioned network predicting a reciprocal complex 12-port
+scattering matrix from ten design parameters at 200 frequencies. On designs
+held out from training, the final model reduced complex mean absolute error from
+0.0804 for a training-mean reference to 0.0686, preserved reciprocity exactly,
+and produced no passivity violations on the evaluated grid. It predicted a
+broader response than the selected six-curve model but had higher $S_{7,1}$
+insertion-loss error; the formulations differ beyond output scope. Sharp
+transmission nulls remained difficult. These results demonstrate both the
+feasibility and limitations of complete scattering-matrix surrogate modelling
+for signal-integrity analysis.
 \end{abstract}
 
 \begin{IEEEkeywords}
