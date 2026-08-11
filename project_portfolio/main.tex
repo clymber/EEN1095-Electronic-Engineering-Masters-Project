@@ -1,6 +1,6 @@
-\documentclass[a4paper,conference]{IEEEtran}
+\documentclass[a4paper,journal]{IEEEtran}
 
-% IEEE conference template packages.
+% IEEE Transactions template packages.
 \usepackage{cite}
 \usepackage{amsmath,amssymb,amsfonts}
 \usepackage{algorithmic}
@@ -9,35 +9,27 @@
 \usepackage{xcolor}
 \usepackage{booktabs}
 \usepackage[hidelinks]{hyperref}
-\usepackage{fancyhdr}
 
 % All figure files should be stored in media/.
 \graphicspath{{media/}}
-
-% Portfolio-specific header and pagination required by the EEN1095 guide.
-\pagestyle{fancy}
-\fancyhf{}
-\fancyhead[L]{\footnotesize EEN1095 Project Portfolio}
-\fancyhead[R]{\footnotesize August 2026}
-\fancyfoot[C]{\thepage}
-\renewcommand{\headrulewidth}{0pt}
-\setlength{\headheight}{12pt}
 
 \def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
     T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
 
 \begin{document}
 
-\title{Using Machine Learning to Predict Scattering Parameters for Signal Integrity Purposes}
+\title{Using Machine Learning to Predict Scattering Parameters for Signal
+Integrity Purposes}
 
-\author{\IEEEauthorblockN{Chunyu Long}
-\IEEEauthorblockA{\textit{School of Electronic Engineering} \\
-\textit{Dublin City University}\\
-Dublin, Ireland}}
+\author{Chunyu Long%
+\thanks{Chunyu Long is with the School of Electronic Engineering,
+Dublin City University, Dublin, Ireland.}}
+
+% EEN1095 replaces the normal journal volume/issue header with this title/date.
+\markboth{EEN1095 Project Portfolio,~August~2026}%
+{Long: Machine Learning for Scattering-Parameter Prediction}
 
 \maketitle
-\thispagestyle{fancy}
-\setcounter{page}{1}
 
 \input{sections/00_abstract}
 \input{sections/01_introduction}

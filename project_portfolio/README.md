@@ -1,6 +1,7 @@
 # EEN1095 Main Research Paper
 
-LaTeX source for the six-page conference-style paper that forms the centrepiece of the EEN1095 project portfolio.
+LaTeX source for the six-page IEEE Transactions-style paper that forms the
+centrepiece of the EEN1095 project portfolio.
 
 ## Project structure
 
@@ -25,10 +26,14 @@ LaTeX source for the six-page conference-style paper that forms the centrepiece 
 
 1. Create a blank Overleaf project.
 2. Upload this complete folder or upload its ZIP archive.
-3. Set `main.tex` as the main document if Overleaf does not detect it automatically.
+3. Set `main.tex` as the main document if Overleaf does not detect it
+   automatically.
 4. Use the pdfLaTeX compiler.
 
 The project has no absolute paths, shell commands, or local-only dependencies.
+The root `IEEEtran.cls` is synchronised with the supplied Transactions template
+in `documents/IEEE-Transactions-LaTeX2e-templates-and-instructions/`; keep that
+copy with the source when uploading to Overleaf.
 
 ## Local build
 
@@ -38,7 +43,9 @@ latexmk -pdf main.tex
 
 The project-level `.latexmkrc` sets the generated PDF filename to
 `A00049113_EEN1095_Project_Portfolio.pdf`. The same filename is configured for
-LaTeX Workshop builds in VS Code.
+LaTeX Workshop builds in VS Code. Both workflows write the PDF, auxiliary files
+and SyncTeX data to `build/`; avoid invoking `pdflatex` directly without an
+explicit output directory.
 
 Clean generated files with:
 
@@ -49,9 +56,9 @@ latexmk -C
 ## Portfolio constraints reflected in the scaffold
 
 - A4 paper size.
-- IEEE two-column conference layout.
-- `EEN1095 Project Portfolio` and `August 2026` in the page header.
-- Main-paper page numbering.
+- IEEEtran two-column journal layout using the supplied Transactions template.
+- Native IEEE running heads with `EEN1095 Project Portfolio`, `August 2026`,
+  a short author/title head, and main-paper page numbering.
 - Separate source files for each paper section.
 - BibTeX references using the IEEE bibliography style.
 - All figures stored under `media/`.

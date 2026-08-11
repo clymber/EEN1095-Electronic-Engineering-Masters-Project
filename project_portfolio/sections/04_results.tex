@@ -5,7 +5,42 @@
 % State the experimental scenario unambiguously. Prefer a compact table for
 % headline metrics and a small number of information-dense figures.
 
-% TODO: Report held-out test metrics for the selected baselines and final
-% models. Include representative predicted-versus-reference responses and
-% physical-validity results. State how repeated runs or model selection were
-% handled.
+% TODO: Use one common $S_{7,1}$ MAE column for selected-model comparison and a
+% separate native-metric column with units. Compare the final complex model
+% (0.0686 MAE, 0.7889 NRMSE) with the training-set mean S-matrix reference
+% (0.0804 MAE, 0.8343 NRMSE). Report reciprocity, 0/281,200 passivity
+% violations, maximum singular value 0.9141, and causality residuals 0.4812
+% prediction/0.3173 truth. Use fixed SIMU_INDEX=5491 and aggregate deep-null
+% evidence. Say designs were held out from fitting, disclose validation-based
+% selection and single-seed runs, and do not present the test as untouched.
+
+The across-design behaviour in Fig.~\ref{fig:s71-distributions} and the fixed
+example in Fig.~\ref{fig:s71-example-frequency} complement the aggregate
+$S_{7,1}$ error metrics.
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\textwidth]{s7_1_distribution_comparison.png}
+    \caption{Test-set $IL_{7,1}$ distributions for the selected curve and
+    full-S-matrix neural models. Lines show the median response across designs;
+    shaded bands show the 10th--90th percentiles. The full-S-matrix result is
+    the $S_{7,1}$ path reconstructed from its complete reciprocal prediction.}
+    \label{fig:s71-distributions}
+\end{figure*}
+
+\begin{figure*}[t]
+    \centering
+    \begin{minipage}[t]{0.49\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{s7_1_fixed_design_comparison.png}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.49\textwidth}
+        \centering
+        \includegraphics[width=\linewidth]{s7_1_mae_by_frequency.png}
+    \end{minipage}
+    \caption{Selected-path test diagnostics. Left: truth and predictions for
+    fixed design \texttt{SIMU\_INDEX=5491}, chosen with seed 128 before
+    inspecting its error. Right: $IL_{7,1}$ MAE at each frequency; the shaded
+    interval marks the predefined high-frequency region.}
+    \label{fig:s71-example-frequency}
+\end{figure*}
