@@ -10,6 +10,10 @@ centrepiece of the EEN1095 project portfolio.
 ├── main.tex
 ├── references.bib
 ├── IEEEtran.cls
+├── appendices/
+│   └── appendix_e_testing_and_supplementary_results.tex
+├── evidence/
+│   └── README.md
 ├── sections/
 │   ├── 00_abstract.tex
 │   ├── 01_introduction.tex
@@ -21,6 +25,11 @@ centrepiece of the EEN1095 project portfolio.
 └── media/
     └── README.md
 ```
+
+`main.tex` builds only the six-page paper. The Appendix E fragment remains
+outside that page limit until the full portfolio wrapper is assembled. NB07
+regenerates the machine-readable paper evidence documented in
+`evidence/README.md`.
 
 ## Overleaf
 

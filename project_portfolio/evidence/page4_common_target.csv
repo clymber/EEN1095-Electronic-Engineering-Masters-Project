@@ -1,0 +1,11 @@
+model_name,model_label,scope,test_s7_mae_db,test_s7_deep_null_mae_db
+global_mean,Global training mean,constant,12.353463686930246,72.43178422703123
+mean_curve,Training mean curve,one mean curve,7.425361062210361,62.05671174108442
+scalar_ridge,Scalar Ridge,one IL value,7.5050732940497475,61.67312548788399
+vector_ridge,Vector Ridge,six IL values,7.505073294049895,61.67312548788329
+polynomial_ridge,Polynomial Ridge,six IL values,7.4968458768238815,62.181228119870305
+random_forest,Random Forest,six IL values,7.804254249888847,60.606315757311776
+neural_mlp,Neural MLP,six IL values,7.507316807629688,61.70676879754399
+polynomial_neural_mlp,Polynomial Neural MLP,six IL values,7.508710355514788,62.11624103794787
+curve_neural,Curve Neural,six IL curves,7.388283047789276,62.32649949987129
+full_smatrix_neural,Full S-Matrix Neural,complex 12-port matrix,10.790292837511334,63.06487229396209

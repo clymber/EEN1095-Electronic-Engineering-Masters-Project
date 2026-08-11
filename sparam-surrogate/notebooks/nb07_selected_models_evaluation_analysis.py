@@ -68,12 +68,14 @@ configure_stdio_relative_path()
 # %% tags=["remove-input"]
 import gc
 import os
+from pathlib import Path
 from time import perf_counter
 from typing import Any
 
 # Keep routine TensorFlow device and end-of-dataset messages out of stored cells.
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
+import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing  # noqa: F401 -- Make NumPy typing visible to scikit-rf 2.0.1.
 import pandas as pd
@@ -2165,6 +2167,233 @@ display_s7_diagnostics(
 # %%
 display_transition("curve_neural", "full_smatrix_neural")
 
+# %% [markdown]
+# ### Persisted paper evidence package
+#
+# The compact paper tables and fixed-design response panel are exported while the
+# selected predictions remain in memory. This makes the reported values and plotted
+# traces available outside the executed notebook. The export directory defaults to
+# `outputs/reports/nb07_paper_evidence` and can be overridden with
+# `SPARAM_REPORT_EXPORT_DIR` when assembling the portfolio.
+
+# %%
+report_evidence_dir = Path(
+    os.environ.get(
+        "SPARAM_REPORT_EXPORT_DIR",
+        str(cfg.paths.reports / "nb07_paper_evidence"),
+    )
+).resolve()
+report_evidence_dir.mkdir(parents=True, exist_ok=True)
+
+reference_test_predictions = {
+    "global_mean": np.full_like(truth_s7["test"], train_mean, dtype=float),
+    "mean_curve": np.broadcast_to(
+        train_mean_curve,
+        truth_s7["test"].shape,
+    ),
+}
+reference_test_diagnostics = {
+    name: s7_diagnostics(truth_s7["test"], prediction)
+    for name, prediction in reference_test_predictions.items()
+}
+test_result_table = (
+    pd.DataFrame(result_rows)
+    .query("split == 'test'")
+    .set_index("model_name")
+)
+scope_labels = {
+    "global_mean": "constant",
+    "mean_curve": "one mean curve",
+    "scalar_ridge": "one IL value",
+    "vector_ridge": "six IL values",
+    "polynomial_ridge": "six IL values",
+    "random_forest": "six IL values",
+    "neural_mlp": "six IL values",
+    "polynomial_neural_mlp": "six IL values",
+    "curve_neural": "six IL curves",
+    "full_smatrix_neural": "complex 12-port matrix",
+}
+paper_common_target_rows = []
+for name in ("global_mean", "mean_curve", *MODEL_ORDER):
+    diagnostics = (
+        reference_test_diagnostics[name]
+        if name in reference_test_diagnostics
+        else test_result_table.loc[name]
+    )
+    paper_common_target_rows.append(
+        {
+            "model_name": name,
+            "model_label": MODEL_LABELS[name],
+            "scope": scope_labels[name],
+            "test_s7_mae_db": float(diagnostics["MAE_dB"]),
+            "test_s7_deep_null_mae_db": float(
+                diagnostics["DeepNullMAE_dB"]
+            ),
+        }
+    )
+paper_common_target_table = pd.DataFrame(paper_common_target_rows)
+paper_common_target_table.to_csv(
+    report_evidence_dir / "page4_common_target.csv",
+    index=False,
+)
+full_complex_comparison_table.to_csv(
+    report_evidence_dir / "page4_full_matrix_comparison.csv",
+    index=False,
+)
+pd.DataFrame(transition_rows).to_csv(
+    report_evidence_dir / "paired_bootstrap_transitions.csv",
+    index=False,
+)
+physics_table.to_csv(
+    report_evidence_dir / "full_matrix_physics_diagnostics.csv",
+    index=False,
+)
+provenance.to_csv(
+    report_evidence_dir / "selected_run_provenance.csv",
+    index=False,
+)
+
+full_example_position = int(
+    np.flatnonzero(np.asarray(full_test.simulation_indices) == example_id)[0]
+)
+example_true_channels = np.asarray(
+    full_test.targets[full_example_position : full_example_position + 1]
+)
+example_predicted_channels = np.asarray(
+    full_model.predict(
+        full_test.features[full_example_position : full_example_position + 1]
+    )
+)
+example_true_matrix = real_imag_channels_to_smatrix(
+    example_true_channels,
+    n_ports,
+)[0]
+example_predicted_matrix = real_imag_channels_to_smatrix(
+    example_predicted_channels,
+    n_ports,
+)[0]
+
+response_evidence = pd.DataFrame(
+    {
+        "frequency_ghz": frequencies_ghz,
+        "truth_il_s7_1_db": truth_s7["test"][example_position],
+        "curve_il_s7_1_db": previous_test_s7[example_position],
+        "full_matrix_il_s7_1_db": full_s7["test"][example_position],
+        "truth_s1_1_real": example_true_matrix[:, 0, 0].real,
+        "truth_s1_1_imag": example_true_matrix[:, 0, 0].imag,
+        "prediction_s1_1_real": example_predicted_matrix[:, 0, 0].real,
+        "prediction_s1_1_imag": example_predicted_matrix[:, 0, 0].imag,
+        "truth_s8_1_real": example_true_matrix[:, 7, 0].real,
+        "truth_s8_1_imag": example_true_matrix[:, 7, 0].imag,
+        "prediction_s8_1_real": example_predicted_matrix[:, 7, 0].real,
+        "prediction_s8_1_imag": example_predicted_matrix[:, 7, 0].imag,
+    }
+)
+response_evidence.to_csv(
+    report_evidence_dir / f"response_design_{example_id}.csv",
+    index=False,
+)
+
+with plt.rc_context(
+    {
+        "font.size": 7.5,
+        "axes.titlesize": 8,
+        "axes.labelsize": 7.5,
+        "legend.fontsize": 6.5,
+        "xtick.labelsize": 6.5,
+        "ytick.labelsize": 6.5,
+    }
+):
+    figure, axes = plt.subplots(
+        3,
+        1,
+        figsize=(3.5, 4.15),
+        sharex=True,
+        constrained_layout=True,
+    )
+    axes[0].plot(
+        frequencies_ghz,
+        response_evidence["truth_il_s7_1_db"],
+        color="black",
+        linewidth=1.1,
+        label="truth",
+    )
+    axes[0].plot(
+        frequencies_ghz,
+        response_evidence["curve_il_s7_1_db"],
+        color="0.35",
+        linestyle="--",
+        linewidth=1.0,
+        label="curve",
+    )
+    axes[0].plot(
+        frequencies_ghz,
+        response_evidence["full_matrix_il_s7_1_db"],
+        color="0.60",
+        linestyle=":",
+        linewidth=1.2,
+        label="full matrix",
+    )
+    axes[0].set_title(r"(a) Transmission $IL_{7,1}$")
+    axes[0].set_ylabel("Insertion loss (dB)")
+    axes[0].legend(loc="upper left", frameon=False, ncol=3)
+
+    complex_panels = (
+        (axes[1], "s1_1", r"(b) Reflection $S_{1,1}$"),
+        (axes[2], "s8_1", r"(c) Crosstalk $S_{8,1}$"),
+    )
+    for axis, key, title in complex_panels:
+        axis.plot(
+            frequencies_ghz,
+            response_evidence[f"truth_{key}_real"],
+            color="black",
+            linewidth=1.0,
+            label="truth Re",
+        )
+        axis.plot(
+            frequencies_ghz,
+            response_evidence[f"prediction_{key}_real"],
+            color="black",
+            linestyle="--",
+            linewidth=0.9,
+            label="prediction Re",
+        )
+        axis.plot(
+            frequencies_ghz,
+            response_evidence[f"truth_{key}_imag"],
+            color="0.50",
+            linewidth=1.0,
+            label="truth Im",
+        )
+        axis.plot(
+            frequencies_ghz,
+            response_evidence[f"prediction_{key}_imag"],
+            color="0.50",
+            linestyle=":",
+            linewidth=1.0,
+            label="prediction Im",
+        )
+        axis.set_title(title)
+        axis.set_ylabel("Complex amplitude")
+    axes[1].legend(loc="upper right", frameon=False, ncol=2)
+
+    for axis in axes:
+        axis.grid(True, color="0.9", linewidth=0.5)
+    axes[2].set_xlabel("Frequency (GHz)")
+
+    figure.savefig(
+        report_evidence_dir / "page4_response_evidence.pdf",
+        bbox_inches="tight",
+    )
+    figure.savefig(
+        report_evidence_dir / "page4_response_evidence.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
+    plt.close(figure)
+
+print(f"Persisted paper evidence: {report_evidence_dir}")
+
 # %%
 release_loaded_model(full_model)
 del (
@@ -2588,6 +2817,15 @@ print("Final NB07 audit passed.")
 print(f"Eight selected runs evaluated: {', '.join(MODEL_ORDER)}")
 print(f"Fixed example SIMU_INDEX: {example_id}")
 print("No model was trained, registered, promoted, or used from latest.json.")
+
+reproduction_table.to_csv(
+    report_evidence_dir / "metric_reproduction_checks.csv",
+    index=False,
+)
+reproduction_summary.to_csv(
+    report_evidence_dir / "metric_reproduction_summary.csv",
+    index=False,
+)
 
 # %% [markdown]
 # All 80 metric-reproduction checks pass. The largest difference uses only about 29%

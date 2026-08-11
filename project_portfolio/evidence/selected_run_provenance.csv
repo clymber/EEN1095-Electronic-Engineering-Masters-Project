@@ -1,0 +1,9 @@
+model_name,run_id,target_scope,artifact_size,parameter_count
+scalar_ridge,20260804T143344Z_scalar_ridge,scalar,2.50 KiB,
+vector_ridge,20260804T143708Z_vector_ridge,vector,3.00 KiB,
+polynomial_ridge,20260804T143713Z_polynomial_ridge,vector,5.43 KiB,
+random_forest,20260804T143727Z_random_forest,vector,6.11 GiB,
+neural_mlp,20260804T144030Z_neural_mlp,vector,346.55 KiB,26694.0
+polynomial_neural_mlp,20260804T144859Z_polynomial_neural_mlp,vector,414.30 KiB,32326.0
+curve_neural,20260808T125830Z_curve_neural,curve,479.73 KiB,35870.0
+full_smatrix_neural,20260804T152940Z_full_smatrix_neural,full_smatrix_curve,1.52 MiB,125852.0

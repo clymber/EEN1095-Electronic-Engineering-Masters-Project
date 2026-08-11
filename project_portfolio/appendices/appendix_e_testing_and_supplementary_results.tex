@@ -1,0 +1,229 @@
+% Appendix E source fragment. Do not input this file into the six-page paper.
+% The overall portfolio wrapper should provide the Appendix E title page and
+% appendix numbering before inputting this content.
+\section{Testing and Supplementary Results}
+\label{app:testing-results}
+
+\subsection{Evaluation Definitions}
+For a dB response with $N$ evaluated values, the reported error metrics are
+\begin{align}
+    \operatorname{MAE}_{\mathrm{dB}}
+      &=\frac{1}{N}\sum_{i=1}^{N}|y_i-\widehat{y}_i|, \\
+    \operatorname{RMSE}_{\mathrm{dB}}
+      &=\sqrt{\frac{1}{N}\sum_{i=1}^{N}(y_i-\widehat{y}_i)^2}.
+    \label{eq:appendix-db-errors}
+\end{align}
+The deep-null subset is
+$\mathcal{D}=\{i:y_i\geq69.189752\ \mathrm{dB}\}$, where the threshold is the
+99th percentile of the pooled six-path training targets. The common-target test
+set contains 3,310 such $IL_{7,1}$ design--frequency points, and
+\begin{equation}
+    \operatorname{DeepNullMAE}
+      =\frac{1}{|\mathcal{D}|}
+       \sum_{i\in\mathcal{D}}|y_i-\widehat{y}_i|.
+    \label{eq:appendix-deep-null}
+\end{equation}
+This S7-only quantity must not be confused with the native six-path deep-null
+values stored by the Curve and Full-S-Matrix runs.
+
+For complete complex matrices, with each $S$-parameter counted once per design,
+frequency and port pair,
+\begin{align}
+    \operatorname{ComplexMAE}
+      &=\frac{1}{N}\sum_{i=1}^{N}
+        |\widehat{S}_i-S_i|, \\
+    \operatorname{ComplexNRMSE}
+      &=\sqrt{\frac{\sum_i|\widehat{S}_i-S_i|^2}
+                         {\sum_i|S_i|^2}}.
+    \label{eq:appendix-complex-errors}
+\end{align}
+These dimensionless complex-domain metrics are not numerically comparable with
+dB error.
+
+The reciprocity residual is the normalised Frobenius norm
+$\|\widehat{\mathbf S}-\widehat{\mathbf S}^{\mathsf T}\|_F/
+\|\widehat{\mathbf S}\|_F$. Sampled passivity requires
+$\sigma_{\max}(\widehat{\mathbf S})\leq1$ at each design and frequency. The
+causality result is a normalised Hilbert-transform residual over only the
+available 0.5--100~GHz positive-frequency band; it is a relative diagnostic,
+not a full-band causality test.
+
+\subsection{Selected-Model Validation and Test Errors}
+Table~\ref{tab:appendix-s7-errors} gives the complete common-target MAE and RMSE
+record. All values were recomputed by NB07 from the runs named in
+Table~\ref{tab:appendix-selected-runs}.
+
+\begin{table*}[t]
+    \caption{Selected-model $IL_{7,1}$ validation and test errors (dB).}
+    \label{tab:appendix-s7-errors}
+    \centering
+    \begin{tabular}{@{}lrrrr@{}}
+        \toprule
+        & \multicolumn{2}{c}{Validation} & \multicolumn{2}{c}{Test} \\
+        Model & MAE & RMSE & MAE & RMSE \\
+        \midrule
+        Scalar Ridge     &  7.3237 & 10.8112 &  7.5051 & 12.3342 \\
+        Vector Ridge     &  7.3237 & 10.8112 &  7.5051 & 12.3342 \\
+        Polynomial Ridge &  7.2987 & 10.7929 &  7.4968 & 12.3411 \\
+        Random Forest    &  7.6717 & 11.4302 &  7.8043 & 12.6891 \\
+        Neural MLP       &  7.3296 & 10.8119 &  7.5073 & 12.3324 \\
+        Polynomial MLP   &  7.3183 & 10.8090 &  7.5087 & 12.3425 \\
+        Curve Neural     &  7.1679 & 10.7409 &  7.3883 & 12.3097 \\
+        Full S-Matrix    & 10.6129 & 13.0990 & 10.7903 & 14.3446 \\
+        \bottomrule
+    \end{tabular}
+\end{table*}
+
+\begin{table*}[t]
+    \caption{Common-target $IL_{7,1}$ test MAE and DeepNullMAE (dB).}
+    \label{tab:appendix-deep-null-errors}
+    \centering
+    \begin{tabular}{@{}lrr@{}}
+        \toprule
+        Predictor & MAE & DeepNullMAE \\
+        \midrule
+        Global training mean & 12.3535 & 72.4318 \\
+        Training mean curve  &  7.4254 & 62.0567 \\
+        Scalar Ridge         &  7.5051 & 61.6731 \\
+        Vector Ridge         &  7.5051 & 61.6731 \\
+        Polynomial Ridge     &  7.4968 & 62.1812 \\
+        Random Forest        &  7.8043 & 60.6063 \\
+        Neural MLP           &  7.5073 & 61.7068 \\
+        Polynomial MLP       &  7.5087 & 62.1162 \\
+        Curve Neural         &  7.3883 & 62.3265 \\
+        Full S-Matrix        & 10.7903 & 63.0649 \\
+        \bottomrule
+    \end{tabular}
+\end{table*}
+
+\subsection{Paired Design-Level Comparisons}
+For each transition, NB07 first averages absolute $IL_{7,1}$ error over the 200
+frequencies of each test design. It then forms the paired difference
+$d_n=\operatorname{MAE}_{n,\mathrm{current}}-
+\operatorname{MAE}_{n,\mathrm{previous}}$. Five thousand percentile-bootstrap
+samples resample the 1,406 complete test designs with replacement using seed
+7135. Negative differences favour the current model. The intervals are
+conditional on the fixed saved models and do not include retraining,
+hyperparameter-search or repeated-test-exposure uncertainty.
+
+\begin{table*}[t]
+    \caption{Paired test-design bootstrap comparisons.}
+    \label{tab:appendix-bootstrap}
+    \centering
+    \scriptsize
+    \begin{tabular}{@{}lrrrl@{}}
+        \toprule
+        Transition & $\Delta$ MAE (dB) & Change & 95\% interval (dB)
+                   & Interpretation \\
+        \midrule
+        Mean curve $\rightarrow$ Scalar Ridge
+          & +0.0797 & +1.07\% & [+0.0515,+0.1081] & directional \\
+        Scalar $\rightarrow$ Vector Ridge
+          & +0.0000 & +0.00\% & [+0.0000,+0.0000] & equivalent \\
+        Vector $\rightarrow$ Polynomial Ridge
+          & -0.0082 & -0.11\% & [-0.0348,+0.0195] & equivalent \\
+        Polynomial Ridge $\rightarrow$ Random Forest
+          & +0.3074 & +4.10\% & [+0.2020,+0.4082] & meaningful increase \\
+        Random Forest $\rightarrow$ Neural MLP
+          & -0.2969 & -3.80\% & [-0.4013,-0.1884] & meaningful reduction \\
+        Vector Ridge $\rightarrow$ Neural MLP
+          & +0.0022 & +0.03\% & [-0.0051,+0.0095] & equivalent \\
+        Neural MLP $\rightarrow$ Polynomial MLP
+          & +0.0014 & +0.02\% & [-0.0307,+0.0339] & equivalent \\
+        Polynomial MLP $\rightarrow$ Curve Neural
+          & -0.1204 & -1.60\% & [-0.1613,-0.0774] & directional \\
+        Curve Neural $\rightarrow$ Full S-Matrix
+          & +3.4020 & +46.05\% & [+3.3104,+3.4901] & meaningful increase \\
+        \bottomrule
+    \end{tabular}
+\end{table*}
+
+The practical-equivalence band was predeclared as $[-0.10,+0.10]$~dB.
+``Directional'' means the interval excludes zero but crosses one boundary of
+that band. ``Meaningful increase/reduction'' means the whole interval lies
+outside the band.
+
+\subsection{Complete-Matrix Accuracy and Physical Diagnostics}
+\begin{table*}[t]
+    \caption{Complete-matrix Complex MAE and Complex NRMSE.}
+    \label{tab:appendix-complex-errors}
+    \centering
+    \begin{tabular}{@{}llrr@{}}
+        \toprule
+        Predictor & Split & Complex MAE & Complex NRMSE \\
+        \midrule
+        Training-mean matrix & validation & 0.081178 & 0.837008 \\
+                             & test       & 0.080399 & 0.834299 \\
+        Full S-Matrix Neural & validation & 0.069033 & 0.790785 \\
+                             & test       & 0.068567 & 0.788925 \\
+        \bottomrule
+    \end{tabular}
+\end{table*}
+
+\begin{table*}[t]
+    \caption{Complete-matrix physical diagnostics.}
+    \label{tab:appendix-physics}
+    \centering
+    \scriptsize
+    \begin{tabular}{@{}llrrrr@{}}
+        \toprule
+        Split & Matrix & Reciprocity & Passivity violations
+              & Maximum $\sigma$ & Causality residual \\
+        \midrule
+        validation & truth      & $3.41\times10^{-11}$ & 0/281,200
+                   & 0.999998 & 0.318476 \\
+        validation & prediction & 0 & 0/281,200
+                   & 0.924104 & 0.481261 \\
+        test & truth      & $7.00\times10^{-11}$ & 0/281,200
+             & 0.999978 & 0.317284 \\
+        test & prediction & 0 & 0/281,200
+             & 0.914132 & 0.481240 \\
+        \bottomrule
+    \end{tabular}
+\end{table*}
+
+Only reciprocity is guaranteed, because it follows from matrix reconstruction.
+The passivity counts cover the sampled design--frequency matrices only. The
+finite positive-frequency causality residual cannot establish causality over an
+unbounded, two-sided spectrum.
+
+\subsection{Selected Runs and Reproduction Record}
+\begin{table*}[t]
+    \caption{Selected runs loaded by NB07.}
+    \label{tab:appendix-selected-runs}
+    \centering
+    \scriptsize
+    \begin{tabular}{@{}ll@{}}
+        \toprule
+        Model & Run identifier \\
+        \midrule
+        Scalar Ridge     & \nolinkurl{20260804T143344Z_scalar_ridge} \\
+        Vector Ridge     & \nolinkurl{20260804T143708Z_vector_ridge} \\
+        Polynomial Ridge & \nolinkurl{20260804T143713Z_polynomial_ridge} \\
+        Random Forest    & \nolinkurl{20260804T143727Z_random_forest} \\
+        Neural MLP       & \nolinkurl{20260804T144030Z_neural_mlp} \\
+        Polynomial MLP   & \nolinkurl{20260804T144859Z_polynomial_neural_mlp} \\
+        Curve Neural     & \nolinkurl{20260808T125830Z_curve_neural} \\
+        Full S-Matrix    & \nolinkurl{20260804T152940Z_full_smatrix_neural} \\
+        \bottomrule
+    \end{tabular}
+\end{table*}
+
+NB07 loads these entries from \nolinkurl{outputs/models/selected.json}, checks
+that every artifact exists, verifies benchmark run identifiers, aligns the
+design-level splits, and recomputes saved metrics. Its final audit performed 80
+metric-reproduction checks: all passed within their recorded tolerances. No
+model was trained, promoted or selected in NB07.
+
+The reproducible evaluation inputs are the named dataset, the project seed 128,
+the 4,218/1,406/1,406 design split, the eight selected run manifests and the
+paired NB07 source/notebook. Earlier NB03--NB06 development inspected test
+results, so this record supports retrospective held-out evaluation rather than
+an untouched final confirmation.
+
+The machine-readable evidence exported by NB07 is stored in
+\nolinkurl{project_portfolio/evidence/}: the common-target and complete-matrix
+tables, all paired transitions, physical diagnostics, selected-run provenance,
+80 metric checks, and the plotted fixed-design response data. The paper figure
+is regenerated from \nolinkurl{response_design_5491.csv}; it is not a manually
+selected response.
