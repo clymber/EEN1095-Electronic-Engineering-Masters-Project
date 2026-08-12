@@ -37,5 +37,36 @@ SPARAM_REPORT_EXPORT_DIR=../project_portfolio/evidence \
 - `metric_reproduction_checks.csv`: all 80 persisted/recomputed comparisons.
 - `metric_reproduction_summary.csv`: per-model pass summary.
 
+## Appendix D model inventory
+
+NB08 loads the selected Keras and scikit-learn artifacts without training or
+changing model selection. It exports the neural topology diagrams and
+`appendix_d_neural_model_inventory.csv`, which records the selected run,
+input/output shapes and parameter count for each displayed model.
+It also displays the selected scikit-learn estimator pipelines and a clearly
+labelled, depth-limited tree from the Random Forest as supporting notebook
+views; these are not presented as Keras graphs or separately exported figures.
+
+The authoritative paired notebook source is:
+
+```text
+sparam-surrogate/notebooks/nb08_appendix_d_model_graphs.py
+```
+
+From `sparam-surrogate/`:
+
+```bash
+conda run -n meng jupytext --sync \
+  notebooks/nb08_appendix_d_model_graphs.py
+conda run -n meng jupyter nbconvert \
+  notebooks/nb08_appendix_d_model_graphs.ipynb \
+  --to notebook --execute --inplace \
+  --ExecutePreprocessor.timeout=300 \
+  --ExecutePreprocessor.kernel_name=sparam-surrogate
+```
+
+The non-neural models are documented by equations and configuration tables in
+Appendix D because scikit-learn estimators are not Keras computation graphs.
+
 The paper copy of the vector figure is
 `project_portfolio/media/page4_response_evidence.pdf`.

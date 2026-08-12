@@ -37,3 +37,12 @@ Prefer vector PDF figures for plots and diagrams; use PNG for raster images wher
 The NB07 images were exported from the paired executed notebook
 `nb07_selected_models_evaluation_analysis.ipynb`. Re-export them after NB07 is
 re-executed if its selected-run evidence changes.
+
+## Appendix D neural-model diagrams
+
+The four PNG files under `appendix_d/` were generated from the selected saved
+Keras artifacts by the paired NB08 notebook. They show layer names, tensor
+shapes, activations and trainability; preprocessing and wrapper-level inverse
+scaling or reciprocity reconstruction are described in the appendix text.
+Regenerate the diagrams after changing a selected model rather than editing
+the PNG files manually.

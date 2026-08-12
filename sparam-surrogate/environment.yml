@@ -21,6 +21,8 @@ dependencies:
   - matplotlib
   - seaborn
   - tabulate
+  - graphviz
+  - pydot
 
   # Jupyter and related tools
   - jupyterlab
@@ -54,4 +56,3 @@ dependencies:
   - pip:
       - tensorflow-macos==2.16.2
       - tensorflow-metal==1.2.0
-
