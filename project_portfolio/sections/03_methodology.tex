@@ -1,29 +1,24 @@
+% Keep the technical description on its prescribed second and third pages.
+\clearpage
 \section{Dataset and Methodology}
 \label{sec:methodology}
 
-% Target length: approximately two pages together with any necessary model
-% diagrams, equations, and implementation details retained in the paper.
-% Detailed derivations and implementation material should move to Appendix D.
-
 \subsection{Dataset and Preprocessing}
-Experiments used the SI/PI-Database topology ``Link on 8 Cavity PCB with two
-10$\times$10 Via-Arrays'' \cite{schierholz2021sipi}, distributed as
-\nolinkurl{linkOn8CavityStackBetween10x10Array_19_08_2021}. As shown in
-Fig.~\ref{fig:pcb-topology}, six traces connect ports $P_1$--$P_6$ to
-$P_7$--$P_{12}$. Each design is specified by ten continuous parameters:
-relative permittivity (\texttt{EPS}), loss tangent (\texttt{TAND}), via pitch
-(\texttt{PITCH}), trace length (\texttt{TRACE\_LEN}), via-array margin
-(\texttt{START}), via radius (\texttt{VIAR}), antipad radius
-(\texttt{ANTIPADR}), dielectric thickness (\texttt{TDIEL}), inter-trace spacing
-(\texttt{DISTTL}), and trace width (\texttt{TLWIDTH}). The material parameters
-are dimensionless and the geometric parameters are recorded in mil.
+Experiments used the ``Link on 8 Cavity PCB with two 10$\times$10 Via-Arrays''
+topology from the signal-integrity/power-integrity (SI/PI) Database
+\cite{schierholz2021sipi}. As shown in Fig.~\ref{fig:pcb-topology}, six traces
+connect ports $P_1$--$P_6$ to $P_7$--$P_{12}$. Each design is specified by ten
+continuous parameters: relative permittivity, loss tangent, via pitch, trace
+length, via-array margin, via radius, antipad radius, dielectric thickness,
+inter-trace spacing and trace width. The material parameters are dimensionless
+and the geometric parameters are recorded in mil.
 
 The parameter table was joined to 12-port Touchstone \texttt{.s12p} files by
 simulation identifier. Of 7,048 parameter rows, 18 had no matching Touchstone
 file; these were removed, while 609 files without parameter records were
 ignored, leaving 7,030 aligned designs. Each file was parsed as a complex
 $12\times12$ S-matrix at 200 uniformly spaced frequencies from 0.5 to 100~GHz.
-Selected-path experiments used positive insertion loss
+Selected-path experiments used positive insertion loss (IL)
 \begin{equation}
     IL_{i,j}(f)=-20\log_{10}|S_{i,j}(f)|.
     \label{eq:insertion-loss}
@@ -57,6 +52,23 @@ test results were inspected during model development; the reported test
 evaluation is therefore retrospective rather than an untouched confirmatory
 experiment.
 
+\subsection{Evaluation Protocol}
+Selected-path errors were reported as mean absolute error (MAE) in decibels.
+Deep-null MAE applies the same error only where the reference insertion loss
+exceeds a threshold calculated from the training responses. Complete-matrix
+accuracy was measured directly in the complex domain using complex MAE and
+normalised root-mean-square error (NRMSE) across every design, frequency and
+port pair. The decibel and complex-domain values answer different questions and
+were not compared numerically.
+
+For each headline model transition, absolute $IL_{7,1}$ error was first averaged
+over the 200 frequencies of each test design. A paired percentile bootstrap then
+resampled the 1,406 complete designs 5,000 times and formed the current-minus-
+predecessor difference. These intervals quantify variation across the fixed
+test designs; they do not include retraining or model-selection uncertainty.
+The project-defined $\pm0.10$~dB band aids interpretation of paired intervals;
+it is not an engineering acceptance tolerance.
+
 \begin{figure}[t]
     \centering
     \includegraphics[width=\columnwidth]{pcb_topology.png}
@@ -65,7 +77,8 @@ experiment.
     arrays. The annotations identify the port numbering and representative
     geometric variables used as model inputs. Reproduced from
     \cite{schierholz2021sipi} under the
-    \href{https://creativecommons.org/licenses/by/4.0/}{CC BY 4.0 licence}.}
+    \href{https://creativecommons.org/licenses/by/4.0/}{Creative Commons
+    Attribution 4.0 (CC BY 4.0) licence}.}
     \label{fig:pcb-topology}
 \end{figure}
 
@@ -114,18 +127,20 @@ trees to the unscaled inputs, allowing local partitions of the joint
 design-frequency space; its configured depth and leaf-size candidates were
 evaluated using validation MAE.
 
-The third phase tested learned nonlinear features. The Neural MLP mapped the
-standardised inputs through ReLU layers of widths 128, 128, and 64 to a linear
-six-unit output. Inputs and targets were standardised using training data, and
-Adam minimised mean squared error in the scaled target space. Learning-rate
-reduction and early stopping monitored validation loss, with the best weights
-restored. The Polynomial Neural MLP used the same architecture and training
-procedure after a fixed fifth-degree powers-only expansion and a second
-training-fitted feature standardisation. Comparing these two MLPs therefore
-isolates the explicit univariate powers from the learned nonlinear mapping.
+The third phase tested learned nonlinear features. The neural multilayer
+perceptron (MLP) mapped the standardised inputs through rectified linear unit
+(ReLU) layers of widths 128, 128, and 64 to a linear six-unit output. Inputs and
+targets were standardised using training data, and the Adam optimiser minimised
+mean squared error (MSE) in the scaled target space. Learning-rate reduction and
+early stopping monitored validation loss, with the best weights restored. The
+Polynomial Neural MLP used the same architecture and training procedure after a
+fixed fifth-degree powers-only expansion and a second training-fitted feature
+standardisation. Comparing these two MLPs therefore isolates the explicit
+univariate powers from the learned nonlinear mapping.
 
-A deterministic selected-path reference was also defined from the training
-designs:
+A pooled global reference assigned the mean of every training $IL_{7,1}$ value
+to all designs and frequencies. A stronger frequency-dependent reference was
+also defined from the training designs:
 \begin{equation}
     \overline{IL}_{7,1}^{\mathrm{train}}(f_k)=
     \frac{1}{N_{\mathrm{train}}}
@@ -138,8 +153,9 @@ parameters.
 
 \subsection{Broadband Neural Model}
 \label{sec:broadband-neural}
-The curve model replaced independent design-frequency rows with one sample per
-design. For $K=200$ frequencies and $q=6$ paths, its target was
+The whole-curve neural model, labelled Curve Neural in the results, replaced
+independent design-frequency rows with one sample per design. For $K=200$
+frequencies and $q=6$ paths, its target was
 $\mathbf{L}^{(n)}\in\mathbb{R}^{K\times q}$, where
 $L_{k,c}^{(n)}$ is the positive insertion loss of path $c$ for design $n$ at
 $f_k$. Thus, the model mapped only $\mathbf{u}^{(n)}\in\mathbb{R}^{10}$ to all
@@ -205,7 +221,7 @@ Section~\ref{sec:broadband-neural}.
 Each complex entry was scaled by one training-set root-mean-square magnitude
 shared by its real and imaginary components. The selected loss combined
 normalised complex MSE with a weight-0.1 Huber penalty on off-diagonal
-log-magnitude error. Validation Complex NRMSE selected the restored checkpoint.
+log-magnitude error. Validation complex NRMSE selected the restored checkpoint.
 The passivity-loss weight was zero and the loss contained no causality term;
 therefore, neither property was enforced during training.
 
@@ -216,8 +232,8 @@ counted as passive on the sampled grid when its largest singular value satisfied
 $\sigma_{\max}(\widehat{\mathbf{S}})\leq1$. Causality was assessed using a
 normalised Hilbert-transform residual between the real and imaginary responses
 over the available positive-frequency band. This last quantity is only a
-finite-band diagnostic: the data omit DC, negative frequencies, and frequencies
-above 100~GHz, so it cannot establish full-band causality.
+finite-band diagnostic: the data omit direct current (DC), negative frequencies,
+and frequencies above 100~GHz, so it cannot establish full-band causality.
 
 For a same-task deterministic reference, the complete training response was
 averaged at each frequency:
@@ -227,9 +243,5 @@ averaged at each frequency:
     \sum_{n\in\mathcal{D}_{\mathrm{train}}}\mathbf{S}^{(n)}(f_k).
     \label{eq:mean-smatrix-reference}
 \end{equation}
-This same matrix curve was assigned to every validation or test design and was
-evaluated with the model's Complex MAE and Complex NRMSE. The formulation shares
-the broadband complex forward-modelling objective of Akinwande \textit{et al.}
-\cite{akinwande2024complex}, but the implementation here is a real-valued
-residual network with separate real and imaginary channels, not a complex-valued
-neural network.
+This same matrix curve was assigned to every validation or test design and
+evaluated using the model's complex MAE and complex NRMSE.

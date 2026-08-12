@@ -1,5 +1,6 @@
 % Keep the bounded answer and references on the final paper page.
 \clearpage
+\balance
 \section{Conclusion}
 \label{sec:conclusion}
 
@@ -7,7 +8,7 @@ The approved research question was only partly answered. A documented staged
 investigation progressed from point-wise insertion-loss baselines to a
 whole-curve model and then to a design-conditioned approximation of the
 complete complex 12-port response over 200 frequencies for one PCB topology.
-The full-matrix model reduced test Complex MAE from 0.0804 for the training-mean
+The full-matrix model reduced test complex MAE from 0.0804 for the training-mean
 matrix to 0.0686 and guaranteed reciprocity by construction. This establishes
 feasibility beyond a design-independent reference, but not task-specific
 accuracy sufficient for signal-integrity decisions: no engineering tolerance
@@ -28,9 +29,9 @@ demonstrated. The findings are limited to the selected topology and sampled
 ranges, one selected training seed, and a test set that was held out from
 fitting but inspected during development.
 
-The principal contribution is therefore a documented exploration showing that
-selected-path accuracy, complete-matrix scope and physical validity must be
-evaluated separately. Generic point-wise complexity did not consistently lower
+The principal contribution is therefore a documented exploration in which
+selected-path accuracy, coverage of the complete matrix and physical validity
+are evaluated separately. Generic point-wise complexity did not consistently lower
 $IL_{7,1}$ error, the whole-curve formulation produced the strongest retained
 selected-path result, and reciprocal reconstruction enabled complete-matrix
 prediction. Reciprocity was guaranteed, passivity was observed on the sampled

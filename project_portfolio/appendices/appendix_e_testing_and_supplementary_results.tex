@@ -5,7 +5,8 @@
 \label{app:testing-results}
 
 \subsection{Evaluation Definitions}
-For a dB response with $N$ evaluated values, the reported error metrics are
+For a decibel (dB) response with $N$ evaluated values, the reported mean
+absolute error (MAE) and root-mean-square error (RMSE) are
 \begin{align}
     \operatorname{MAE}_{\mathrm{dB}}
       &=\frac{1}{N}\sum_{i=1}^{N}|y_i-\widehat{y}_i|, \\
@@ -23,11 +24,11 @@ set contains 3,310 such $IL_{7,1}$ design--frequency points, and
        \sum_{i\in\mathcal{D}}|y_i-\widehat{y}_i|.
     \label{eq:appendix-deep-null}
 \end{equation}
-This S7-only quantity must not be confused with the native six-path deep-null
-values stored by the Curve and Full-S-Matrix runs.
+This $S_{7,1}$-only quantity must not be confused with the native six-path
+deep-null values stored by the Curve and Full-S-Matrix runs.
 
 For complete complex matrices, with each $S$-parameter counted once per design,
-frequency and port pair,
+frequency and port pair, the complex-domain MAE and normalised RMSE (NRMSE) are
 \begin{align}
     \operatorname{ComplexMAE}
       &=\frac{1}{N}\sum_{i=1}^{N}
@@ -50,8 +51,9 @@ not a full-band causality test.
 
 \subsection{Selected-Model Validation and Test Errors}
 Table~\ref{tab:appendix-s7-errors} gives the complete common-target MAE and RMSE
-record. All values were recomputed by NB07 from the runs named in
-Table~\ref{tab:appendix-selected-runs}.
+record. The multilayer perceptron abbreviation (MLP) is used in model labels.
+All values were recomputed by Notebook 07 (NB07), the selected-model evaluation
+notebook, from the runs named in Table~\ref{tab:appendix-selected-runs}.
 
 \begin{table*}[t]
     \caption{Selected-model $IL_{7,1}$ validation and test errors (dB).}
@@ -145,7 +147,7 @@ outside the band.
 
 \subsection{Complete-Matrix Accuracy and Physical Diagnostics}
 \begin{table*}[t]
-    \caption{Complete-matrix Complex MAE and Complex NRMSE.}
+    \caption{Complete-matrix complex MAE and complex NRMSE.}
     \label{tab:appendix-complex-errors}
     \centering
     \begin{tabular}{@{}llrr@{}}
@@ -170,11 +172,11 @@ outside the band.
         Split & Matrix & Reciprocity & Passivity violations
               & Maximum $\sigma$ & Causality residual \\
         \midrule
-        validation & truth      & $3.41\times10^{-11}$ & 0/281,200
+        validation & simulation & $3.41\times10^{-11}$ & 0/281,200
                    & 0.999998 & 0.318476 \\
         validation & prediction & 0 & 0/281,200
                    & 0.924104 & 0.481261 \\
-        test & truth      & $7.00\times10^{-11}$ & 0/281,200
+        test & simulation & $7.00\times10^{-11}$ & 0/281,200
              & 0.999978 & 0.317284 \\
         test & prediction & 0 & 0/281,200
              & 0.914132 & 0.481240 \\
@@ -215,11 +217,11 @@ design-level splits, and recomputes saved metrics. Its final audit performed 80
 metric-reproduction checks: all passed within their recorded tolerances. No
 model was trained, promoted or selected in NB07.
 
-The reproducible evaluation inputs are the named dataset, the project seed 128,
-the 4,218/1,406/1,406 design split, the eight selected run manifests and the
-paired NB07 source/notebook. Earlier NB03--NB06 development inspected test
-results, so this record supports retrospective held-out evaluation rather than
-an untouched final confirmation.
+The evaluation inputs needed for reproduction are the named dataset, project
+seed 128, the 4,218/1,406/1,406 design split, the eight selected run manifests
+and the paired NB07 source/notebook. Earlier NB03--NB06 development inspected
+test results, so this record supports retrospective held-out evaluation rather
+than an untouched final confirmation.
 
 The machine-readable evidence exported by NB07 is stored in
 \nolinkurl{project_portfolio/evidence/}: the common-target and complete-matrix

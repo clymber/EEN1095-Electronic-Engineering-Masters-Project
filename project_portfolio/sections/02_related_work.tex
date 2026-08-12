@@ -1,7 +1,6 @@
 \section{Machine-Learning Modelling of Scattering-Parameter Responses}
 \label{sec:related-work}
 
-% 1. From PCB datasets to direct S-parameter prediction
 Schierholz \textit{et al.} introduced an open database of PCB interconnects and
 demonstrated neural-network prediction of selected S-parameter magnitude and
 phase \cite{schierholz2021sipi}. Their results established the feasibility of
@@ -11,7 +10,6 @@ frequency-dependent behaviour. This highlights a central difficulty for
 broadband surrogate modelling: more complex responses are harder to represent
 accurately.
 
-% 2 — Learning the broadband frequency response
 Broadband prediction also raises an architectural challenge because neighbouring
 frequency points are strongly correlated. Swaminathan \textit{et al.} identified
 poor scaling of conventional fully connected networks for such responses
@@ -22,7 +20,6 @@ along frequency \cite{torun2019spectral}. This provides a more structured
 alternative to treating frequency points independently, although the
 architecture itself does not guarantee physically valid predictions.
 
-% 3. Physical consistency, complex prediction, and the gap
 Physical consistency is therefore an additional requirement. Chen and Tan
 showed that an unconstrained neural network could produce non-physical
 insertion-loss predictions, demonstrating that prediction error alone is
@@ -31,8 +28,9 @@ insufficient for evaluating an SI surrogate \cite{chen2021physics}. Akinwande
 $S_{21}$ using a complex-valued neural network with passivity and causality
 enforcement \cite{akinwande2024complex}. This preserves phase information and
 addresses physical behaviour explicitly, but still targets selected responses
-rather than the complete multiport matrix. Taken together, the literature
-progresses from selected S-parameter prediction towards structured, complex and
-physically consistent broadband modelling; complete prediction of a
-high-port-count complex S-matrix remains comparatively underexplored. This
-motivates the reciprocal full 12-port formulation evaluated in this work.
+rather than the complete multiport matrix. Complex multiport surrogates have
+been demonstrated for other radio-frequency structures
+\cite{karahan2024multiport}. However, the PCB SI studies reviewed here focus on
+selected responses rather than learned, design-conditioned prediction of every
+complex entry of a broadband 12-port interconnect matrix. This motivates the
+reciprocal full 12-port formulation evaluated in this work.

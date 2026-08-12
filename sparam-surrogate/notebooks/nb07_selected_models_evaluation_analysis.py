@@ -2302,6 +2302,8 @@ with plt.rc_context(
         "legend.fontsize": 6.5,
         "xtick.labelsize": 6.5,
         "ytick.labelsize": 6.5,
+        "pdf.fonttype": 42,
+        "ps.fonttype": 42,
     }
 ):
     figure, axes = plt.subplots(
@@ -2316,7 +2318,7 @@ with plt.rc_context(
         response_evidence["truth_il_s7_1_db"],
         color="black",
         linewidth=1.1,
-        label="truth",
+        label="simulation",
     )
     axes[0].plot(
         frequencies_ghz,
@@ -2348,7 +2350,7 @@ with plt.rc_context(
             response_evidence[f"truth_{key}_real"],
             color="black",
             linewidth=1.0,
-            label="truth Re",
+            label="simulation Re",
         )
         axis.plot(
             frequencies_ghz,
@@ -2363,7 +2365,7 @@ with plt.rc_context(
             response_evidence[f"truth_{key}_imag"],
             color="0.50",
             linewidth=1.0,
-            label="truth Im",
+            label="simulation Im",
         )
         axis.plot(
             frequencies_ghz,
@@ -2375,7 +2377,14 @@ with plt.rc_context(
         )
         axis.set_title(title)
         axis.set_ylabel("Complex amplitude")
-    axes[1].legend(loc="upper right", frameon=False, ncol=2)
+    axes[1].legend(
+        loc="upper right",
+        frameon=True,
+        facecolor="white",
+        framealpha=0.9,
+        edgecolor="0.7",
+        ncol=2,
+    )
 
     for axis in axes:
         axis.grid(True, color="0.9", linewidth=0.5)

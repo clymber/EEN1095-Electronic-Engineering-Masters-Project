@@ -31,11 +31,11 @@ data interface rather than only enlarging the regressor.
 
 \subsection{Whole-Curve Modelling Improved the Selected Path}
 The whole-curve model produced the lowest selected $IL_{7,1}$ error, and its
-paired improvement over Polynomial MLP crossed zero but not the complete
-predeclared practical-equivalence band. Joint prediction therefore gave the
-strongest retained selected-path result, but the evidence supports association,
-not a causal claim about frequency structure: the interface, scaling,
-architecture and loss changed together.
+paired interval excluded zero but crossed the project-defined $-0.10$~dB
+practical boundary. Joint prediction therefore gave the strongest retained
+selected-path result, but the evidence supports association, not a causal claim
+about frequency structure: the interface, scaling, architecture and loss
+changed together.
 
 This result is directionally consistent with the S-TCNN principle of Torun
 \textit{et al.}, which uses transposed convolution to exploit correlation along
@@ -55,17 +55,39 @@ larger output scope, because the curve and matrix models also used different
 architectures, scaling and objectives. Selected-path accuracy and response
 coverage must therefore be reported as distinct axes.
 
-Physical validity forms a third axis. Chen and Tan showed that low numerical
-error can coexist with non-physical insertion-loss responses and therefore
-motivated physics-enforced evaluation \cite{chen2021physics}. The absence of
-sampled passivity violations here is encouraging but weaker evidence: no
-passivity term was trained and behaviour outside the evaluated grid is unknown.
+Physical validity forms a third axis. Chen and Tan showed that small numerical
+error can coexist with non-physical insertion loss, motivating physics-enforced
+evaluation \cite{chen2021physics}. Their reported negative insertion-loss
+behaviour was not observed in the selected full-matrix predictions: no sampled
+test matrix violated passivity. This is encouraging but weaker than enforcement,
+because no passivity term was trained and behaviour outside the evaluated grid
+is unknown.
 Akinwande \textit{et al.} predicted selected complex broadband responses with a
 complex-valued network and explicit passivity and causality treatment
 \cite{akinwande2024complex}. In contrast, the present real-valued model covers
-a complete 12-port matrix but enforces only reciprocity. Its larger predicted
-than true finite-band causality residual reinforces that architectural
-reciprocity cannot substitute for passivity or causality constraints.
+a complete 12-port matrix but enforces only reciprocity. The prediction's larger
+finite-band causality residual than the simulated target's reinforces that
+architectural reciprocity cannot substitute for passivity or causality
+constraints.
+
+\subsection{Implications for Surrogate Design}
+Two practical lessons follow from the progression. First, the reference must
+match the structure of the task. Beating a single global mean satisfied the
+original weak baseline check, but comparison with a frequency-dependent mean
+curve showed that Scalar Ridge added no selected-path benefit. Without that
+stronger reference, the value of conditioning on design parameters would have
+been overstated.
+
+Second, model choice depends on the intended output rather than one ranking.
+The curve model is preferable among the retained models when the immediate aim
+is accurate prediction of the six selected insertion-loss paths. The
+full-matrix model instead provides one mutually consistent source for
+reflection, transmission, crosstalk and phase, and it can support derived SI
+quantities for any port pair. Its lower same-task complex error establishes
+design dependence beyond the mean matrix, but no downstream SI tolerance was
+defined. The study therefore supports choosing the representation against a
+declared engineering use case and evaluating numerical accuracy and physical
+properties separately.
 
 \subsection{Confidence and Scope}
 The evidence is conditional on one selected training seed, so optimisation
