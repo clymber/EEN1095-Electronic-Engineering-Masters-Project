@@ -11,8 +11,11 @@ centrepiece of the EEN1095 project portfolio.
 ├── references.bib
 ├── IEEEtran.cls
 ├── appendices/
+│   ├── appendix_b_status_report.tex
 │   ├── appendix_d_design_and_implementation_details.tex
 │   └── appendix_e_testing_and_supplementary_results.tex
+├── documents/
+│   └── ChunyuLong_A00049113_StatusReport.pdf
 ├── evidence/
 │   └── README.md
 ├── sections/
@@ -28,11 +31,12 @@ centrepiece of the EEN1095 project portfolio.
     └── README.md
 ```
 
-`main.tex` builds only the six-page paper. The Appendix D and E fragments
+`main.tex` builds only the six-page paper. The Appendix B, D and E fragments
 remain outside that page limit until the full portfolio wrapper is assembled.
-NB07 regenerates the machine-readable testing evidence, while NB08 regenerates
-the selected neural-model diagrams and inventory documented in
-`evidence/README.md`.
+Appendix B imports the unchanged EEN1101 status-report PDF and requires the
+future wrapper to load `pdfpages`. NB07 regenerates the machine-readable testing
+evidence, while NB08 regenerates the selected neural-model diagrams and
+inventory documented in `evidence/README.md`.
 
 ## Overleaf
 
