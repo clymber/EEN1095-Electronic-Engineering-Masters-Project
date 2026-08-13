@@ -7,16 +7,38 @@
 Experiments used the ``Link on 8 Cavity PCB with two 10$\times$10 Via-Arrays''
 topology from the signal-integrity/power-integrity (SI/PI) Database
 \cite{schierholz2021sipi}. As shown in Fig.~\ref{fig:pcb-topology}, six traces
-connect ports $P_1$--$P_6$ to $P_7$--$P_{12}$. Each design is specified by ten
-continuous parameters: relative permittivity, loss tangent, via pitch, trace
-length, via-array margin, via radius, antipad radius, dielectric thickness,
-inter-trace spacing and trace width. The material parameters are dimensionless
-and the geometric parameters are recorded in mil.
+connect ports $P_1$--$P_6$ to $P_7$--$P_{12}$. Table~\ref{tab:pcb-variables}
+lists the ten continuous design variables.
 
-The parameter table was joined to 12-port Touchstone \texttt{.s12p} files by
-simulation identifier. Of 7,048 parameter rows, 18 had no matching Touchstone
-file; these were removed, while 609 files without parameter records were
-ignored, leaving 7,030 aligned designs. Each file was parsed as a complex
+\begin{table}[htbp]
+    \caption{Ten PCB design variables used as model inputs.}
+    \label{tab:pcb-variables}
+    \centering
+    \scriptsize
+    \setlength{\tabcolsep}{3pt}
+    \begin{tabular}{@{}lp{0.27\columnwidth}lp{0.25\columnwidth}@{}}
+        \toprule
+        \textbf{Code} & \textbf{Meaning} & \textbf{Code} & \textbf{Meaning} \\
+        \midrule
+        \texttt{EPS}        & Relative permittivity
+          & \texttt{TAND}      & Loss tangent \\
+        \texttt{PITCH}      & Via pitch
+          & \texttt{TRACE\_LEN} & Trace length \\
+        \texttt{START}      & Via-array offset
+          & \texttt{VIAR}      & Via radius \\
+        \texttt{ANTIPADR}   & Antipad radius
+          & \texttt{TDIEL}     & Dielectric thickness \\
+        \texttt{DISTTL}     & Inter-trace spacing
+          & \texttt{TLWIDTH}   & Trace width \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+The material variables \texttt{EPS} and \texttt{TAND} are dimensionless; all
+geometric variables are recorded in mil. During data cleaning, 18 parameter
+records without matching Touchstone files were removed, and 609 Touchstone
+files without matching design records were ignored. This left 7,030 aligned
+designs. Each file was parsed as a complex
 $12\times12$ S-matrix at 200 uniformly spaced frequencies from 0.5 to 100~GHz.
 Selected-path experiments used positive insertion loss (IL)
 \begin{equation}
@@ -24,18 +46,15 @@ Selected-path experiments used positive insertion loss (IL)
     \label{eq:insertion-loss}
 \end{equation}
 
-The 7,030 designs were shuffled once using project seed 128 and divided into
-4,218 training, 1,406 validation, and 1,406 test designs. All frequencies from
-one design retained the same split label. Three data representations were then
-constructed. The point-wise models expanded each design into 200 rows, with the
-ten design parameters and frequency as 11 inputs and either one or six
-insertion-loss targets. This produced 843,600/281,200/281,200
-training/validation/test rows. The curve model instead retained one sample per
-design, pairing 10 inputs with a $200\times6$ insertion-loss tensor. The
-full-S-matrix model also retained one sample per design, but paired the inputs
-with a $200\times288$ tensor containing the real and imaginary components of
-all 144 matrix entries. The latter two models therefore did not use the
-frequency-expanded table.
+The 7,030 designs were shuffled using a configurable random seed, set to 128 for the
+reported experiments, and split at design level into 60\% training (4,218 designs), 20\%
+validation (1,406), and 20\% test (1,406). All 200 frequencies from each design remained
+in the same split. Three data representations were then constructed. The point-wise
+models expanded each design into 200 frequency rows, with the ten parameters and
+frequency as 11 inputs and one or six insertion-loss targets. The curve and
+full-S-matrix models instead retained one sample per design, pairing 10 inputs with
+respective $200\times6$ insertion-loss and $200\times288$ real/imaginary matrix tensors.
+Neither used the frequency-expanded table.
 
 Preprocessing was fitted separately for each model. Point-wise Ridge and neural
 models owned their training-fitted standardisation and, where applicable,
@@ -72,10 +91,8 @@ it is not an engineering acceptance tolerance.
 \begin{figure}[t]
     \centering
     \includegraphics[width=\columnwidth]{pcb_topology.png}
-    \caption{Top view of the selected PCB topology. Six traces connect the
-    left ports $P_1$--$P_6$ to the right ports $P_7$--$P_{12}$ through two via
-    arrays. The annotations identify the port numbering and representative
-    geometric variables used as model inputs. Reproduced from
+    \caption{Selected PCB topology showing the six traces, port numbering and
+    representative geometric inputs. Reproduced from
     \cite{schierholz2021sipi} under the
     \href{https://creativecommons.org/licenses/by/4.0/}{Creative Commons
     Attribution 4.0 (CC BY 4.0) licence}.}
@@ -235,13 +252,11 @@ over the available positive-frequency band. This last quantity is only a
 finite-band diagnostic: the data omit direct current (DC), negative frequencies,
 and frequencies above 100~GHz, so it cannot establish full-band causality.
 
-For a same-task deterministic reference, the complete training response was
-averaged at each frequency:
+For a same-task reference, the training-mean response below was assigned to
+every validation and test design and evaluated using the same complex metrics:
 \begin{equation}
     \overline{\mathbf{S}}_{\mathrm{train}}(f_k)=
     \frac{1}{N_{\mathrm{train}}}
     \sum_{n\in\mathcal{D}_{\mathrm{train}}}\mathbf{S}^{(n)}(f_k).
     \label{eq:mean-smatrix-reference}
 \end{equation}
-This same matrix curve was assigned to every validation or test design and
-evaluated using the model's complex MAE and complex NRMSE.
