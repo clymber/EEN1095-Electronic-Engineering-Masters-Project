@@ -1,3 +1,4 @@
+% !TEX root = ../main.tex
 % Appendix D source fragment. Do not input this file into the six-page paper.
 % The overall portfolio wrapper should provide the Appendix D title page and
 % appendix numbering before inputting this content.
@@ -181,13 +182,13 @@ univariate powers while keeping the learned hidden architecture fixed.
         \centering
         \includegraphics[width=\linewidth,height=0.72\textheight,
                          keepaspectratio]
-          {appendix_d/neural_mlp_topology.png}
+          {appendix_d/neural_mlp_topology.pdf}
     \end{minipage}\hfill
     \begin{minipage}[t]{0.46\textwidth}
         \centering
         \includegraphics[width=\linewidth,height=0.72\textheight,
                          keepaspectratio]
-          {appendix_d/polynomial_neural_mlp_topology.png}
+          {appendix_d/polynomial_neural_mlp_topology.pdf}
     \end{minipage}
     \caption{Saved point-wise MLP topologies. The raw-input model is shown on
     the left and the polynomial-input model on the right. The graphs are
@@ -226,7 +227,7 @@ parameters and proceeds as follows:
 \begin{figure*}[p]
     \centering
     \includegraphics[height=0.87\textheight,keepaspectratio]
-      {appendix_d/curve_neural_topology.png}
+      {appendix_d/curve_neural_topology.pdf}
     \caption{Topology of the selected whole-curve neural model. Transposed
     convolutions expand the latent sequence to 200 frequencies before the fixed
     frequency coordinates and final curve-refinement layers are applied.}
@@ -279,7 +280,7 @@ $200\times156$ scaled real/imaginary output.
 \begin{figure*}[p]
     \centering
     \includegraphics[height=0.90\textheight,keepaspectratio]
-      {appendix_d/full_smatrix_neural_topology.png}
+      {appendix_d/full_smatrix_neural_topology.pdf}
     \caption{Topology of the selected frequency-conditioned full-matrix neural
     model. The graph ends at the 156 unique real-valued channels. Reciprocal
     mirroring and inverse scaling occur in the model wrapper after this Keras
@@ -353,7 +354,7 @@ alone.
 \end{table*}
 
 \subsection{Requirements-to-Verification Traceability}
-Detailed numerical results are reported in Appendix~\ref{app:testing-results}.
+Detailed numerical results are reported in Appendix E.
 Table~\ref{tab:appendix-d-traceability} connects the approved technical intent
 to the implemented design and its verification evidence. It distinguishes
 implemented checks from objectives that were not completed.

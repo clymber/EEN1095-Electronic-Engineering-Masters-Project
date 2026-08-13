@@ -1,44 +1,151 @@
 \documentclass[a4paper,journal]{IEEEtran}
 
-% IEEE Transactions template packages.
-\usepackage{cite}
 \usepackage{amsmath,amssymb,amsfonts}
-\usepackage{algorithmic}
-\usepackage{graphicx}
-\usepackage{textcomp}
-\usepackage{xcolor}
 \usepackage{booktabs}
-\usepackage{balance}
-\usepackage[hidelinks]{hyperref}
+\usepackage{fancyhdr}
+\usepackage{graphicx}
+\usepackage[hidelinks,hypertexnames=false]{hyperref}
+\usepackage{pdfpages}
 
-% All figure files should be stored in media/.
 \graphicspath{{media/}}
 
-\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
-    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+\setlength{\headheight}{14.5pt}
+\fancypagestyle{portfolioappendix}{%
+    \fancyhf{}%
+    \fancyhead[R]{\thepage}%
+    \renewcommand{\headrulewidth}{0pt}%
+    \renewcommand{\footrulewidth}{0pt}%
+}
+
+\newcommand{\PortfolioImportedPageCommand}{%
+    \thispagestyle{portfolioappendix}%
+}
+\newcommand{\PortfolioAppendixPageStyle}{%
+    \pagestyle{portfolioappendix}%
+}
+\newcommand{\PortfolioContentPageCommand}{%
+    \thispagestyle{portfolioappendix}%
+}
+% Imported PDF entries already carry their paper/appendix identifiers in the
+% supplied title. Suppress IEEEtran's additional I-A/D-J prefixes in Contents.
+\makeatletter
+\renewcommand{\AM@addtotoc@hook}{%
+    \def\thesection{}%
+    \def\thesubsection{}%
+    \def\@IEEEsectpunct{}%
+}
+\makeatother
+\newcommand{\PortfolioAppendixTitle}[2]{%
+    \onecolumn
+    \thispagestyle{empty}
+    \centering
+    \vspace*{0.34\textheight}
+    {\fontsize{24}{29}\selectfont\bfseries Appendix #1\par}
+    \vspace{1.5em}
+    {\fontsize{24}{29}\selectfont\bfseries #2\par}
+    \clearpage
+}
+\newcommand{\StartAppendixPages}[1]{%
+    \renewcommand{\thepage}{#1.\arabic{page}}%
+    \setcounter{page}{1}%
+    \pagestyle{portfolioappendix}%
+}
 
 \begin{document}
+\onecolumn
+\pagenumbering{gobble}
+\makeatletter
+\renewcommand{\@pnumwidth}{3em}
+\makeatother
 
-\title{Using Machine Learning to Predict Scattering Parameters for Signal
-Integrity Purposes}
+\begin{titlepage}
+    \thispagestyle{empty}
+    \centering
+    \vspace*{0.22\textheight}
+    {\fontsize{24}{29}\selectfont\bfseries
+      Using Machine Learning to Predict Scattering Parameters\par
+      for Signal Integrity Purposes\par}
+    \vspace{2.2em}
+    {\fontsize{24}{29}\selectfont\bfseries Project Portfolio\par}
+    \vfill
+    {\large Chunyu Long\par}
+    \vspace{0.5em}
+    {\large Student ID: A00049113\par}
+    \vspace{1.5em}
+    {\large Supervisor: Dr Marissa Condon\par}
+    \vspace{1.5em}
+    {\large August 2026\par}
+    \vspace*{0.08\textheight}
+\end{titlepage}
 
-\author{Chunyu Long}
+\section*{Acknowledgements}
+I would like to thank my supervisor, Dr Marissa Condon, for her guidance
+throughout this project. I also acknowledge the authors and maintainers of the
+SI/PI-Database for making the simulated PCB-interconnect data available for
+research.
 
-% EEN1095 replaces the normal journal volume/issue header with this title/date.
-\markboth{EEN1095 Project Portfolio,~August~2026}%
-{Long: Machine Learning for Scattering-Parameter Prediction}
+\clearpage
+\tableofcontents
 
-\maketitle
+\clearpage
+\pagenumbering{arabic}
+\setcounter{page}{1}
+\includepdf[
+    pages=-,
+    fitpaper=true,
+    pagecommand={\thispagestyle{empty}},
+    addtotoc={
+        1,section,1,{Research Paper},paper:main,
+        1,subsection,2,{Abstract, Introduction and Prior Work},paper:page-one,
+        2,subsection,2,{Dataset and Methodology},paper:methodology,
+        4,subsection,2,{Experimental Results},paper:results,
+        5,subsection,2,{Analysis and Discussion},paper:analysis,
+        6,subsection,2,{Conclusion and References},paper:conclusion
+    }
+]{build/A00049113_EEN1095_Research_Paper.pdf}
 
-\input{sections/00_abstract}
-\input{sections/01_introduction}
-\input{sections/02_related_work}
-\input{sections/03_methodology}
-\input{sections/04_results}
-\input{sections/05_analysis}
-\input{sections/06_conclusion}
+\PortfolioAppendixTitle{A}{Use of GenAI}
+\StartAppendixPages{A}
+\addcontentsline{toc}{section}{Appendix A --- Use of GenAI}
+\input{appendices/appendix_a_use_of_genai}
 
-\bibliographystyle{IEEEtran}
-\bibliography{references}
+\PortfolioAppendixTitle{B}{Status Report}
+\StartAppendixPages{B}
+\addcontentsline{toc}{section}{Appendix B --- Status Report}
+\input{appendices/appendix_b_status_report}
+
+\PortfolioAppendixTitle{C}{Project Plan, Progress, and Achievements}
+\StartAppendixPages{C}
+\addcontentsline{toc}{section}{Appendix C --- Project Plan, Progress, and
+Achievements}
+\input{appendices/appendix_c_project_plan_progress_achievements}
+
+\PortfolioAppendixTitle{D}{Design and Implementation Details}
+\StartAppendixPages{D}
+\twocolumn
+\appendices
+\setcounter{section}{3}
+\input{appendices/appendix_d_design_and_implementation_details}
+
+\PortfolioAppendixTitle{E}{Testing and Supplementary Results}
+\StartAppendixPages{E}
+\addcontentsline{toc}{section}{Appendix E --- Testing and Supplementary Results}
+\includepdf[
+    pages=-,
+    fitpaper=true,
+    pagecommand={\PortfolioImportedPageCommand},
+    addtotoc={
+        1,subsection,2,{E.1 Evaluation Definitions},app:e-definitions,
+        1,subsection,2,{E.2 Common-target Results},app:e-common-results,
+        2,subsection,2,{E.3 Complete-matrix Results},app:e-matrix-results,
+        3,subsection,2,{E.4 Selected Runs and Reproduction Record},
+          app:e-reproduction
+    }
+]{build/A00049113_EEN1095_Appendix_E_Content.pdf}
+
+\PortfolioAppendixTitle{F}{Project Repository}
+\StartAppendixPages{F}
+\addcontentsline{toc}{section}{Appendix F --- Project Repository}
+\input{appendices/appendix_f_project_repository}
 
 \end{document}

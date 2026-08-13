@@ -13,8 +13,9 @@ Use paths relative to this directory, for example:
 \end{figure}
 ```
 
-Because `main.tex` defines `\graphicspath{{media/}}`, the filename alone is sufficient.
-Prefer vector PDF figures for plots and diagrams; use PNG for raster images where necessary.
+Because `research_paper.tex` defines `\graphicspath{{media/}}`, the filename
+alone is sufficient. Prefer vector PDF figures for plots and diagrams; use PNG
+for raster images where necessary.
 
 ## Notebook figure provenance
 
@@ -43,6 +44,7 @@ re-executed if its selected-run evidence changes.
 The four PNG files under `appendix_d/` were generated from the selected saved
 Keras artifacts by the paired NB08 notebook. They show layer names, tensor
 shapes, activations and trainability; preprocessing and wrapper-level inverse
-scaling or reciprocity reconstruction are described in the appendix text.
-Regenerate the diagrams after changing a selected model rather than editing
-the PNG files manually.
+scaling or reciprocity reconstruction are described in the appendix text. The
+same-stem PDF files wrap those raster diagrams losslessly so pdfLaTeX can import
+them more quickly. Regenerate both formats after changing a selected model
+rather than editing either format manually.

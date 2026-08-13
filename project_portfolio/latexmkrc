@@ -1,0 +1,59 @@
+# Build the two standalone PDFs imported by main.tex before Latexmk
+# compiles the selected main document. Overleaf reads this file automatically.
+sub build_portfolio_prerequisite {
+    my ($source, $jobname) = @_;
+    my @options = (
+        '-pdf',
+        '-interaction=nonstopmode',
+        '-halt-on-error',
+        '-auxdir=build',
+        '-outdir=build',
+        "-jobname=$jobname",
+    );
+
+    print "Latexmk: building portfolio prerequisite $source\n";
+    my $status = system 'latexmk', @options, $source;
+    if ($status != 0) {
+        die "Latexmk: failed to build portfolio prerequisite $source\n";
+    }
+}
+
+# Tell plain Latexmk and Overleaf which of the three root documents is the
+# complete portfolio.
+@default_files = ('main.tex');
+
+my $cleanup_requested = grep {
+    m{^-{1,2}(?:c|C|CA|CF)\z}
+} @ARGV;
+my @requested_sources = grep {
+    m{\.tex\z}
+} @ARGV;
+my $portfolio_requested = !@requested_sources || grep {
+    m{(?:^|[\\/])main\.tex\z}
+} @requested_sources;
+
+# Recursive Latexmk processes read this file too. The environment flag keeps
+# those sub-builds from starting the prerequisite build again.
+if (
+    !$ENV{'EEN1095_PORTFOLIO_SUBBUILD'}
+    && !$cleanup_requested
+    && $portfolio_requested
+) {
+    local $ENV{'EEN1095_PORTFOLIO_SUBBUILD'} = 1;
+
+    if (!-d 'build') {
+        mkdir 'build'
+            or die "Latexmk: could not create the build directory: $!\n";
+    }
+
+    build_portfolio_prerequisite(
+        'research_paper.tex',
+        'A00049113_EEN1095_Research_Paper',
+    );
+    build_portfolio_prerequisite(
+        'appendix_e.tex',
+        'A00049113_EEN1095_Appendix_E_Content',
+    );
+}
+
+1;
