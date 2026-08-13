@@ -14,7 +14,8 @@ centrepiece of the EEN1095 project portfolio.
 │   ├── appendix_b_status_report.tex
 │   ├── appendix_c_project_plan_progress_achievements.tex
 │   ├── appendix_d_design_and_implementation_details.tex
-│   └── appendix_e_testing_and_supplementary_results.tex
+│   ├── appendix_e_testing_and_supplementary_results.tex
+│   └── appendix_f_project_repository.tex
 ├── documents/
 │   ├── ChunyuLong_A00049113_StatusReport.pdf
 │   └── ProjectPlan_A00049113_v4.0.pdf
@@ -33,13 +34,15 @@ centrepiece of the EEN1095 project portfolio.
     └── README.md
 ```
 
-`main.tex` builds only the six-page paper. The Appendix B--E fragments remain
+`main.tex` builds only the six-page paper. The Appendix B--F fragments remain
 outside that page limit until the full portfolio wrapper is assembled.
 Appendices B and C import unchanged EEN1101 PDFs and require the future wrapper
 to load `pdfpages`. Appendix C also requires `booktabs` and provides page-style
 hooks for the imported plan and its C.2--C.5 content. NB07 regenerates the
 machine-readable testing evidence, while NB08 regenerates the selected
 neural-model diagrams and inventory documented in `evidence/README.md`.
+Appendix F indexes the submitted repository and requires `booktabs` and
+`hyperref` in the final wrapper.
 
 ## Overleaf
 

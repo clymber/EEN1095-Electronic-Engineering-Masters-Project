@@ -1,0 +1,248 @@
+% Appendix F source fragment. Do not input this file into the six-page paper.
+% The overall portfolio wrapper must load booktabs and hyperref, create the
+% blank Appendix F title page, establish F.1/F.2/... page numbering, and define
+% the optional content-page hooks below.
+\providecommand{\PortfolioAppendixPageStyle}{}
+\providecommand{\PortfolioContentPageCommand}{}
+
+% The repository tables use the full page width for readable paths.
+\onecolumn
+\PortfolioAppendixPageStyle
+\PortfolioContentPageCommand
+\phantomsection
+\addcontentsline{toc}{subsection}{F.1 Repository Overview}
+\subsection*{F.1 Repository Overview}
+\label{app:f-overview}
+
+The project repository accompanies the electronic portfolio as a separate Loop
+submission. The intended archive name is
+\nolinkurl{A00049113_project_repository.zip}. It contains the implementation,
+executed notebooks, tests and compact result records needed to inspect the
+portfolio claims. The archive does not depend on an external cloud link.
+
+The repository root is the directory that contains \nolinkurl{README.md},
+\nolinkurl{sparam-surrogate/} and \nolinkurl{project_portfolio/}. Start with the
+root README. It explains the directory structure, software environment, data
+dependency and quickest inspection route. Table~\ref{tab:appendix-f-core}
+identifies nine core items for detailed review.
+
+\begin{table}[!htbp]
+    \caption{Core repository items for detailed review.}
+    \label{tab:appendix-f-core}
+    \centering
+    \scriptsize
+    \begin{tabular}{@{}p{0.04\textwidth}p{0.34\textwidth}
+                         p{0.54\textwidth}@{}}
+        \toprule
+        No. & Path or indexed file set & Purpose \\
+        \midrule
+        1
+          & \nolinkurl{README.md}
+          & Main repository guide. It gives setup, inspection and data-access
+            instructions and repeats this core/supplementary distinction. \\
+        2
+          & \nolinkurl{project_portfolio/}
+          & Six-page paper source, Appendix B--F source, references, figures,
+            and the compact evidence used by the paper and appendices. Build
+            products remain under its ignored \nolinkurl{build/} directory. \\
+        3
+          & \nolinkurl{sparam-surrogate/src/sparam_surrogate/}
+          & Production Python package. It implements data alignment and loading,
+            model wrappers, the reciprocal complete-matrix representation,
+            physical diagnostics, run records and plotting utilities. \\
+        4
+          & \nolinkurl{sparam-surrogate/environment.yml},
+            \nolinkurl{pyproject.toml}, \nolinkurl{configs/default.json},
+            \nolinkurl{env_setup.sh}, and \nolinkurl{Makefile}
+          & Environment, dependency, dataset, split, model and notebook-build
+            configuration. These files define the seed and the expected
+            directory layout. \\
+        5
+          & \nolinkurl{sparam-surrogate/notebooks/nb01_*.py} through
+            \nolinkurl{nb08_*.py}, with their paired executed
+            \nolinkurl{.ipynb} files
+          & Complete exploratory and modelling path. The readable Jupytext
+            \nolinkurl{.py} files are paired sources. The executed
+            \nolinkurl{.ipynb} files retain displayed results. Individual
+            filenames and purposes are listed in Table~\ref{tab:appendix-f-nbs}.
+            \\
+        6
+          & \nolinkurl{sparam-surrogate/outputs/models/selected.json} and the
+            compact records from the eight selected run directories
+          & Frozen model selection and provenance. The compact record for each
+            run comprises configuration, environment, manifest, metadata,
+            metrics, training history and key figures. Large model binaries are
+            treated separately in Section F.4. \\
+        7
+          & \nolinkurl{project_portfolio/evidence/}
+          & Machine-readable result tables, selected-run provenance, bootstrap
+            comparisons, physical diagnostics, metric-reproduction checks and
+            the Appendix D neural-model inventory. \\
+        8
+          & \nolinkurl{sparam-surrogate/tests/}
+          & Unit and integration tests for data handling, model contracts,
+            physical reconstruction, run records and result utilities. \\
+        9
+          & \nolinkurl{sparam-surrogate/reports/pdf/nb01_*.pdf} through
+            \nolinkurl{nb07_*.pdf}
+          & Read-only notebook reports for assessors who prefer rendered PDFs.
+            NB08 is available as an executed notebook and its exported diagrams
+            are included under \nolinkurl{project_portfolio/media/appendix_d/}.
+            \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\clearpage
+\PortfolioContentPageCommand
+\phantomsection
+\addcontentsline{toc}{subsection}{F.2 Notebook Identifier Map}
+\subsection*{F.2 Notebook Identifier Map}
+\label{app:f-notebooks}
+
+In the authored appendices, labels NB01 through NB08 are evidence locators for
+the numbered Jupyter notebooks. They are not technical acronyms. Each notebook
+has an executed \nolinkurl{.ipynb} file and a same-stem Jupytext
+\nolinkurl{.py} source file. A range such as NB03--NB06 includes every notebook
+from NB03 to NB06.
+Paths in Table~\ref{tab:appendix-f-nbs} are relative to
+\nolinkurl{sparam-surrogate/}.
+
+\begin{table}[!htbp]
+    \caption{Notebook labels, filenames and purposes.}
+    \label{tab:appendix-f-nbs}
+    \centering
+    \scriptsize
+    \begin{tabular}{@{}p{0.07\textwidth}p{0.40\textwidth}
+                         p{0.44\textwidth}@{}}
+        \toprule
+        Label & Executed notebook filename & Purpose \\
+        \midrule
+        NB01
+          & \nolinkurl{notebooks/nb01_dataset_exploration.ipynb}
+          & Explores the chosen PCB dataset, parameter distributions, geometry
+            relationships and representative Touchstone responses. \\
+        NB02
+          & \nolinkurl{notebooks/nb02_data_preprocessing.ipynb}
+          & Aligns parameter and Touchstone records, creates the fixed
+            design-level split, builds preprocessing artifacts and checks for
+            split leakage. \\
+        NB03
+          & \nolinkurl{notebooks/nb03_non_neural_modelling.ipynb}
+          & Trains and evaluates Scalar Ridge, Vector Ridge, Polynomial Ridge
+            and Random Forest baselines. \\
+        NB04
+          & \nolinkurl{notebooks/nb04_neural_baseline.ipynb}
+          & Trains and evaluates the point-wise neural and polynomial-neural
+            multilayer-perceptron baselines. \\
+        NB05
+          & \nolinkurl{notebooks/nb05_curve_neural_model.ipynb}
+          & Develops the whole-curve neural model and its validation-based
+            frequency-feature, decoder and loss comparisons. \\
+        NB06
+          & \nolinkurl{notebooks/nb06_full_smatrix_physics.ipynb}
+          & Trains the reciprocal complete complex S-matrix model and computes
+            its accuracy and physical diagnostics. \\
+        NB07
+          & \nolinkurl{notebooks/nb07_selected_models_evaluation_analysis.ipynb}
+          & Reloads the selected runs without retraining. It reproduces metrics,
+            compares models and exports the final paper and Appendix E evidence.
+            \\
+        NB08
+          & \nolinkurl{notebooks/nb08_appendix_d_model_graphs.ipynb}
+          & Reloads selected estimators without retraining. It explains their
+            structures and exports neural topology diagrams and the Appendix D
+            model inventory. \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\clearpage
+\PortfolioContentPageCommand
+\phantomsection
+\addcontentsline{toc}{subsection}{F.3 Inspection and Use Instructions}
+\subsection*{F.3 Inspection and Use Instructions}
+\label{app:f-instructions}
+
+The core results can be inspected without retraining a model. A reviewer can
+follow this short route:
+
+\begin{enumerate}
+    \item Open \nolinkurl{README.md}, then inspect the paper and Appendices D--E
+          under \nolinkurl{project_portfolio/}.
+    \item Open the executed NB07 notebook or its PDF report for the selected
+          comparisons. Check the corresponding comma-separated value files in
+          \nolinkurl{project_portfolio/evidence/} for machine-readable values.
+    \item Open NB08 and the exported images in
+          \nolinkurl{project_portfolio/media/appendix_d/} for model structures.
+    \item Inspect \nolinkurl{outputs/models/selected.json} and the referenced
+          compact run records to trace a selected result to its configuration,
+          metrics and saved-run identifier.
+\end{enumerate}
+
+To run the code, create the declared Conda environment on a compatible Apple
+Silicon system, then install the package from the repository root:
+
+\begin{verbatim}
+conda env create -f sparam-surrogate/environment.yml
+conda run -n meng pip install -e ./sparam-surrogate
+cd sparam-surrogate
+conda run -n meng python -c \
+  "import numpy.typing,pytest;raise SystemExit(pytest.main())"
+\end{verbatim}
+
+The neural dependencies in \nolinkurl{environment.yml} target Apple Silicon.
+Other platforms require the appropriate TensorFlow build. The raw
+SI/PI-Database dataset is not embedded in the core archive because of its size.
+Its exact identifier and expected local path are recorded in
+\nolinkurl{sparam-surrogate/configs/default.json}. After placing the dataset at
+that path, the notebooks should be run in numerical order. NB07 and NB08 require
+the selected-run records and any model binaries needed for regeneration.
+The explicit \nolinkurl{numpy.typing} import is a compatibility step for the
+installed NumPy/scikit-rf combination. With that step, all 251 tests pass in the
+declared environment.
+
+To verify a notebook pair without executing it, run:
+
+\begin{verbatim}
+conda run -n meng jupytext --diff \
+  sparam-surrogate/notebooks/<notebook>.py \
+  sparam-surrogate/notebooks/<notebook>.ipynb
+\end{verbatim}
+
+\clearpage
+\PortfolioContentPageCommand
+\phantomsection
+\addcontentsline{toc}{subsection}{F.4 Supplementary Material and Packaging}
+\subsection*{F.4 Supplementary Material and Packaging}
+\label{app:f-supplementary}
+
+The following material is supplementary unless it is explicitly included in a
+core item above:
+
+\begin{itemize}
+    \item the raw dataset and generated processed-data caches;
+    \item unselected exploratory runs, temporary predictions, routine logs and
+          notebook execution stamps;
+    \item large saved model binaries, including the selected Random Forest
+          binary, which is approximately 6.1~GB;
+    \item extra plots, archived reports and development notes that are not
+          cited by the portfolio; and
+    \item LaTeX intermediate files under \nolinkurl{project_portfolio/build/}.
+\end{itemize}
+
+The selected model binaries are useful for exact notebook regeneration, but
+they are not needed to inspect the submitted source, executed notebooks,
+compact run records or exported evidence. If Loop capacity permits, the final
+archive may include the selected binaries as supplementary material. Otherwise,
+their omission must remain explicit in the root README. In that case, the
+workflow should be described as documented and version-controlled rather than
+fully reproducible from the archive alone.
+
+The Loop ZIP must be assembled from the working repository rather than from
+\texttt{git archive}. Executed notebooks, rendered notebook reports, data and
+run outputs are intentionally excluded from Git. Before submission, the archive
+must be unpacked into a temporary directory. All nine core items must then be
+opened or checked from that copy. External links may provide background or raw
+data access, but they do not replace the source, result summaries and evidence
+submitted inside the ZIP.
