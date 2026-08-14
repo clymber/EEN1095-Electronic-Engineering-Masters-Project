@@ -1,0 +1,25 @@
+% !TEX root = ../main.tex
+\section{Introduction}
+\label{sec:introduction}
+
+High-speed printed circuit board (PCB) interconnects range from planar traces to complex
+multilayer routing structures. Their electrical behaviour varies
+with frequency and can significantly degrade signal integrity. These effects are
+described by scattering parameters (S-parameters) to evaluate signal-integrity (SI),
+which quantify insertion and return losses as well as crosstalk
+\cite{pozar2011microwave}. Electromagnetic simulation can accurately capture this
+behaviour. But when there are many geometric and material variations, the evaluation
+becomes computationally expensive \cite{bruns2007numerical}. Machine learning offer a
+faster alternative by learning the relationship between design parameters and simulated
+responses \cite{swaminathan2020demystifying,akinwande2024complex}.
+
+This work follows a staged workflow. Linear and non-linear baselines establish reference
+performance. Then, neural models learn broadband response as a continuous curve. A
+frequency-conditioned network predicts the reciprocal complex 12-port S-matrix from ten
+design parameters across 200 frequency points. Evaluation on designs held out from
+training considers predictive error, reciprocity, passivity and difficult response
+regions. The selected full-matrix model improves upon a training-mean complex reference
+and guarantees reciprocity. It predicts a broader response than the selected six-curve
+model but has higher $S_{7,1}$ insertion-loss (IL) error. Since their architectures and
+targets also differ, the comparison does not attribute this difference solely to output
+scope.

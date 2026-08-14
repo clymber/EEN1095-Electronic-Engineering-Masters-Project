@@ -1,0 +1,5 @@
+model_name,model_label,run_id,input_shape,output_shape,parameter_count,topology_figure
+neural_mlp,Neural MLP,20260804T144030Z_neural_mlp,"(None, 11)","(None, 6)",26694,media/appendix_d/neural_mlp_topology.png
+polynomial_neural_mlp,Polynomial Neural MLP,20260804T144859Z_polynomial_neural_mlp,"(None, 55)","(None, 6)",32326,media/appendix_d/polynomial_neural_mlp_topology.png
+curve_neural,S-TCNN-Style Curve Neural,20260808T125830Z_curve_neural,"[(None, 10), (None, 200, 9)]","(None, 200, 6)",35870,media/appendix_d/curve_neural_topology.png
+full_smatrix_neural,Frequency-Conditioned Full S-Matrix Neural,20260804T152940Z_full_smatrix_neural,"(None, 10)","(None, 200, 156)",125852,media/appendix_d/full_smatrix_neural_topology.png

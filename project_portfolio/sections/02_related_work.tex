@@ -1,0 +1,36 @@
+% !TEX root = ../main.tex
+\section{Machine-Learning Modelling of Scattering-Parameter Responses}
+\label{sec:related-work}
+
+Schierholz \textit{et al.} introduced an open database of PCB interconnects and
+demonstrated neural-network prediction of selected S-parameter magnitude and
+phase \cite{schierholz2021sipi}. Their results proved the feasibility of data-driven
+S-parameter modelling and reproduced important response features. But prediction
+accuracy deteriorated for electrically long links with stronger frequency-dependent
+behaviour. It highlights a central difficulty for broadband modelling: more complex
+responses are harder to represent
+accurately.
+
+Broadband prediction also raises an architectural challenge because neighbouring
+frequency points are strongly correlated. Swaminathan \textit{et al.} identified
+poor scaling of conventional fully connected networks for such responses
+\cite{swaminathan2020demystifying}. Torun \textit{et al.} addressed the problem with
+the spectral transposed convolutional neural network (S-TCNN), using transposed
+convolution to generate a complete spectral response and exploit correlation
+along frequency \cite{torun2019spectral}. It provides a more structured
+alternative to treating frequency points independently, although the
+architecture itself does not guarantee physically valid predictions.
+
+Hence, physical consistency is an additional requirement. Chen and Tan
+showed that an unconstrained neural network could produce non-physical
+IL predictions, demonstrating that prediction error alone is
+insufficient for evaluating an SI model \cite{chen2021physics}. Akinwande
+\textit{et al.} extended the principle to broadband complex $S_{11}$ and
+$S_{21}$ using a complex-valued neural network with passivity and causality
+enforcement \cite{akinwande2024complex}. This research preserves phase information and
+addresses physical behaviour explicitly, but still targets selected responses, not the
+complete multi-port matrix. Complex multi-port surrogates have been demonstrated for
+other radio-frequency structures \cite{karahan2024multiport}. However, the PCB SI
+studies reviewed here focus on selected responses, instead of learned,
+design-conditioned prediction of every complex entry of a broadband 12-port interconnect
+matrix. It motivates the reciprocal full 12-port formulation evaluated in this work.

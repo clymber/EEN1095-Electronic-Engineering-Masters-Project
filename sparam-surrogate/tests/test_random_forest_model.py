@@ -5,6 +5,7 @@ Tests for Random Forest surrogate models.
 import numpy as np
 import pytest
 
+from sparam_surrogate.config.surrogate_config import RandomForestModelConfig
 from sparam_surrogate.models import (
     RANDOM_FOREST_MAX_DEPTH_GRID,
     RANDOM_FOREST_MIN_SAMPLES_LEAF_GRID,
@@ -80,6 +81,26 @@ class TestRandomForestModel:
         assert model.n_estimators == RANDOM_FOREST_N_ESTIMATORS
         assert model.max_depths == RANDOM_FOREST_MAX_DEPTH_GRID
         assert model.min_samples_leafs == RANDOM_FOREST_MIN_SAMPLES_LEAF_GRID
+
+    def test_from_config_uses_configured_candidate_grid(self) -> None:
+        """
+        Model config objects initialize Random Forest hyperparameters.
+        """
+        cfg = RandomForestModelConfig(
+            n_estimators=12,
+            max_depths=(None, 5),
+            min_samples_leafs=(1, 3),
+            random_state=9,
+            n_jobs=1,
+        )
+
+        model = RandomForestModel.from_config(cfg)
+
+        assert model.n_estimators == cfg.n_estimators
+        assert model.max_depths == cfg.max_depths
+        assert model.min_samples_leafs == cfg.min_samples_leafs
+        assert model.random_state == cfg.random_state
+        assert model.n_jobs == cfg.n_jobs
 
     def test_fit_records_validation_results_and_predicts_vector_values(self) -> None:
         """

@@ -1,59 +1,53 @@
 """
-Lazy deep-learning dataset views backed by the cleaned preprocessing CSV.
+Point-wise dataset views backed by the frequency-expanded CSV.
 """
 
 import os
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 from time import perf_counter
 from typing import Any, cast
 
 import numpy as np
 import pandas as pd
-import tensorflow as tf
 from tqdm import tqdm
 
 from sparam_surrogate.config import PROJECT_ROOT
 
+from ._skrf_compat import rf
+from .parameter_dataset_builder import ParameterDatasetBuilder
 
-class DLDataset:
+
+class PointwiseDataset:
     """
-    Represent one train, validation, or test split from the cleaned CSV.
+    Represent one split from the frequency-expanded CSV.
 
     The dataset stores feature rows, source metadata, and an optional target
-    loader. Eager targets may be cached on disk, while TensorFlow targets remain
-    lazy and are loaded as the dataset is iterated.
+    loader. Materialized target arrays may be cached on disk.
     """
 
-    REQUIRED_METADATA_COLUMNS = (
-        "SIMU_INDEX",
-        "FREQ_GHZ",
-        "TOUCHSTONE_REL_PATH",
-        "SPLIT_TYPE",
+    PARAMETER_COLUMNS = ParameterDatasetBuilder.PARAMETER_COLUMNS
+    FREQUENCY_COLUMN = "FREQ_GHZ"
+    SIMULATION_COLUMN = ParameterDatasetBuilder.SIMULATION_COLUMN
+    TOUCHSTONE_COLUMN = ParameterDatasetBuilder.TOUCHSTONE_COLUMN
+    SPLIT_COLUMN = ParameterDatasetBuilder.SPLIT_COLUMN
+    COLUMNS = (
+        *PARAMETER_COLUMNS,
+        FREQUENCY_COLUMN,
+        SIMULATION_COLUMN,
+        TOUCHSTONE_COLUMN,
+        SPLIT_COLUMN,
     )
-    DEFAULT_FEATURE_COLUMNS = (
-        "EPS",
-        "TAND",
-        "PITCH",
-        "TRACE_LEN",
-        "START",
-        "VIAR",
-        "ANTIPADR",
-        "TDIEL",
-        "DISTTL",
-        "TLWIDTH",
-        "FREQ_GHZ",
-    )
+    FEATURE_COLUMNS = (*PARAMETER_COLUMNS, FREQUENCY_COLUMN)
     PROGRESS_MODE_ENV = "SPARAM_SURROGATE_PROGRESS"
     FINAL_PROGRESS_MODE = "final"
     CACHE_DIR = PROJECT_ROOT / "data" / "processed"
-    CLEANED_FILENAME = "sipi_dataset_cleaned.csv"
+    FREQUENCY_EXPANDED_FILENAME = "frequency_expanded_dataset.csv"
 
     def __init__(
         self,
         dataframe: pd.DataFrame,
-        feature_columns: Sequence[str],
-        split_type: str,
+        split_type: str = "train",
         target_loader: Callable[[np.ndarray, Mapping[str, Any]], Any] | None = None,
         cache: bool = False,
         source_csv: Path | str | None = None,
@@ -61,38 +55,82 @@ class DLDataset:
         """
         Create a split-specific lazy dataset view.
         """
-        self._feature_columns = tuple(str(column) for column in feature_columns)
         self._split_type = str(split_type)
         self._dataframe = self._filtered_dataframe(dataframe)
         self._cache = bool(cache)
-        self._source_csv = Path(source_csv or self.CACHE_DIR / self.CLEANED_FILENAME)
+        self._source_csv = Path(
+            source_csv or self.CACHE_DIR / self.FREQUENCY_EXPANDED_FILENAME
+        )
         if target_loader is None:
             self._target_loader = None
         else:
             self.set_target_loader(target_loader)
 
     @classmethod
-    def from_cleaned_csv(
+    def from_frequency_expanded_csv(
         cls,
-        cleaned_csv: Path | str,
-        feature_columns: Sequence[str] | None = None,
+        frequency_expanded_csv: Path | str,
         target_loader: Callable[[np.ndarray, Mapping[str, Any]], Any] | None = None,
         cache: bool = False,
-    ) -> tuple["DLDataset", "DLDataset", "DLDataset"]:
+    ) -> tuple["PointwiseDataset", "PointwiseDataset", "PointwiseDataset"]:
         """
-        Build train, validation, and test split views from a cleaned CSV.
+        Build train, validation, and test views from a frequency-expanded CSV.
 
-        The default feature order matches the cleaned dataset builder: all PCB
-        design parameters followed by ``FREQ_GHZ``.
+        Feature order is all design parameters followed by ``FREQ_GHZ``.
         """
-        source_csv = Path(cleaned_csv)
-        cleaned = pd.read_csv(source_csv)
-        selected_features = tuple(feature_columns or cls.DEFAULT_FEATURE_COLUMNS)
+        source_csv = Path(frequency_expanded_csv)
+        expanded = pd.read_csv(source_csv)
         return (
-            cls(cleaned, selected_features, "train", target_loader, cache, source_csv),
-            cls(cleaned, selected_features, "val", target_loader, cache, source_csv),
-            cls(cleaned, selected_features, "test", target_loader, cache, source_csv),
+            cls(expanded, "train", target_loader, cache, source_csv),
+            cls(expanded, "val", target_loader, cache, source_csv),
+            cls(expanded, "test", target_loader, cache, source_csv),
         )
+
+    @classmethod
+    def build_frequency_expanded_csv(
+        cls,
+        split_parameter_csv: Path | str,
+        output_csv: Path | str,
+        force: bool = False,
+    ) -> pd.DataFrame:
+        """
+        Build or load the frequency-expanded point-wise CSV.
+        """
+        split_parameter_csv = Path(split_parameter_csv)
+        output_csv = Path(output_csv)
+        if (
+            output_csv.is_file()
+            and not force
+            and output_csv.stat().st_mtime_ns
+            >= split_parameter_csv.stat().st_mtime_ns
+        ):
+            return pd.read_csv(output_csv)
+
+        split_parameters = pd.read_csv(split_parameter_csv)
+        touchstone_path = Path(str(split_parameters.iloc[0][cls.TOUCHSTONE_COLUMN]))
+        if not touchstone_path.is_absolute():
+            touchstone_path = PROJECT_ROOT / touchstone_path
+        frequencies_ghz = np.asarray(
+            rf.Network(str(touchstone_path.resolve())).f,
+            dtype=float,
+        ) / 1e9
+
+        rows: list[dict[str, object]] = []
+        for _, design in split_parameters.iterrows():
+            for frequency_ghz in frequencies_ghz:
+                row: dict[str, object] = {
+                    column: float(design[column]) for column in cls.PARAMETER_COLUMNS
+                }
+                row[cls.FREQUENCY_COLUMN] = float(frequency_ghz)
+                row[cls.SIMULATION_COLUMN] = int(design[cls.SIMULATION_COLUMN])
+                row[cls.TOUCHSTONE_COLUMN] = str(design[cls.TOUCHSTONE_COLUMN])
+                row[cls.SPLIT_COLUMN] = str(design[cls.SPLIT_COLUMN])
+                rows.append(row)
+
+        expanded = pd.DataFrame(rows, columns=cls.COLUMNS)
+        output_csv.parent.mkdir(parents=True, exist_ok=True)
+        expanded.to_csv(output_csv, index=False)
+        return expanded
 
     @property
     def dataframe(self) -> pd.DataFrame:
@@ -106,7 +144,7 @@ class DLDataset:
         """
         Return feature columns in tensor order.
         """
-        return self._feature_columns
+        return self.FEATURE_COLUMNS
 
     @property
     def split_type(self) -> str:
@@ -120,7 +158,7 @@ class DLDataset:
         """
         Return feature values as a two-dimensional float array.
         """
-        return self._dataframe.loc[:, self._feature_columns].to_numpy(dtype=float)
+        return self._dataframe.loc[:, self.FEATURE_COLUMNS].to_numpy(dtype=float)
 
     @property
     def row_metadata(self) -> pd.DataFrame:
@@ -175,7 +213,6 @@ class DLDataset:
 
         return targets
 
-
     def set_target_loader(
         self,
         target_loader: Callable[[np.ndarray, Mapping[str, Any]], Any],
@@ -186,7 +223,6 @@ class DLDataset:
         if not callable(target_loader):
             raise TypeError("target_loader must be callable.")
         self._target_loader = target_loader
-
 
     @property
     def targets(self) -> np.ndarray:
@@ -208,80 +244,6 @@ class DLDataset:
         self.CACHE_DIR.mkdir(parents=True, exist_ok=True)
         np.savez(cache_path, targets=targets)
         return targets
-
-
-    def to_tf_dataset(
-        self,
-        batch_size: int,
-        shuffle: bool = False,
-        prefetch: bool = True,
-    ) -> "tf.data.Dataset":
-        """
-        Build a ``tf.data.Dataset`` with targets loaded during iteration.
-        """
-        target_loader = self._require_target_loader()
-        if getattr(target_loader, "representation", None) == "complex":
-            raise ValueError(
-                "complex target loaders are not supported by to_tf_dataset(); "
-                "use a real-valued representation."
-            )
-        features = self.features.astype(np.float32)
-        metadata = self.row_metadata
-        simulation_indices = metadata["SIMU_INDEX"].to_numpy(dtype=np.int64)
-        frequencies_ghz = metadata["FREQ_GHZ"].to_numpy(dtype=np.float32)
-        touchstone_paths = (
-            metadata["TOUCHSTONE_REL_PATH"].astype(str).to_numpy(dtype=np.bytes_)
-        )
-
-        dataset = tf.data.Dataset.from_tensor_slices(
-            (features, simulation_indices, frequencies_ghz, touchstone_paths)
-        )
-        if shuffle:
-            dataset = dataset.shuffle(buffer_size=len(self))
-
-        feature_width = len(self._feature_columns)
-        target_shape = getattr(target_loader, "target_shape", None)
-
-        def mapper(feature_row, simulation_index, frequency_ghz, touchstone_path):
-            def python_target(
-                feature_value,
-                simulation_value,
-                frequency_value,
-                path_value,
-            ):
-                def to_numpy(value):
-                    return value.numpy() if hasattr(value, "numpy") else value
-
-                raw_path_value = to_numpy(path_value)
-                if isinstance(raw_path_value, np.ndarray):
-                    raw_path_value = raw_path_value.item()
-                raw_path = raw_path_value.decode("utf-8")
-                row_metadata = {
-                    "SIMU_INDEX": int(to_numpy(simulation_value)),
-                    "FREQ_GHZ": float(to_numpy(frequency_value)),
-                    "TOUCHSTONE_REL_PATH": raw_path,
-                }
-                target = target_loader(
-                    np.asarray(to_numpy(feature_value)),
-                    row_metadata,
-                )
-                return np.asarray(target, dtype=np.float32)
-
-            target = tf.py_function(
-                python_target,
-                [feature_row, simulation_index, frequency_ghz, touchstone_path],
-                Tout=tf.float32,
-            )
-            feature_row.set_shape((feature_width,))
-            if target_shape is not None:
-                target.set_shape(tuple(target_shape))
-            return feature_row, target
-
-        dataset = dataset.map(mapper)
-        dataset = dataset.batch(int(batch_size))
-        if prefetch:
-            dataset = dataset.prefetch(tf.data.AUTOTUNE)
-        return dataset
 
     def _require_target_loader(
         self,
@@ -310,18 +272,7 @@ class DLDataset:
         """
         Select this dataset's split rows from a cleaned dataframe.
         """
-        if not isinstance(dataframe, pd.DataFrame):
-            raise TypeError("dataframe must be a pandas DataFrame.")
-
-        required = [*self._feature_columns, *self.REQUIRED_METADATA_COLUMNS]
-        missing = [column for column in required if column not in dataframe.columns]
-        if missing:
-            raise ValueError("Required columns missing: " + ", ".join(missing))
-
         filtered = dataframe.loc[
             dataframe["SPLIT_TYPE"].astype(str) == self._split_type
         ].copy()
-        if filtered.empty:
-            raise ValueError(f"No rows found for split_type={self._split_type!r}.")
-
         return filtered.reset_index(drop=True)

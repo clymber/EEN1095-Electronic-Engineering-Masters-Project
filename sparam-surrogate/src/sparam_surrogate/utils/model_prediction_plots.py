@@ -14,7 +14,7 @@ from matplotlib.figure import Figure
 if TYPE_CHECKING:
     import pandas as pd
 
-    from sparam_surrogate.data import DLDataset, TouchstoneLoader
+    from sparam_surrogate.data import PointwiseDataset, TouchstoneLoader
     from sparam_surrogate.models.base import SparamModel
 
 SIMULATION_COLUMN = "SIMU_INDEX"
@@ -23,7 +23,7 @@ FREQUENCY_COLUMN = "FREQ_GHZ"
 
 def plot_design_prediction_curves(
     model: SparamModel,
-    dataset: DLDataset,
+    dataset: PointwiseDataset,
     target_loader: TouchstoneLoader,
     design_ids: Sequence[int | float] | np.ndarray,
 ) -> Figure:
@@ -114,7 +114,7 @@ def plot_design_prediction_curves(
 
 def plot_design_model_comparison_curves(
     models: Mapping[str, SparamModel],
-    dataset: DLDataset,
+    dataset: PointwiseDataset,
     target_loader: TouchstoneLoader,
     design_ids: Sequence[int | float] | np.ndarray,
 ) -> Figure:

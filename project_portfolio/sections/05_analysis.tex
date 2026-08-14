@@ -1,0 +1,102 @@
+% !TEX root = ../main.tex
+% Keep the interpretation on its prescribed fifth paper page.
+% \clearpage
+\section{Analysis and Discussion}
+\label{sec:analysis}
+
+The staged results do not form a monotonic accuracy ladder. Instead, they show
+which aspects of the prediction task changed as the formulation progressed
+from individual insertion-loss values to complete complex matrices.
+
+\subsection{Point-Wise Capacity Was Not Sufficient}
+The first finding is that generic point-wise complexity did not consistently
+reduce selected-path error in the secured configurations. Scalar and Vector
+Ridge necessarily gave the same $IL_{7,1}$ solution. In the meantime, the polynomial,
+forest and MLP variants remained close to, or worse than, the stronger
+frequency-dependent mean-curve reference. Evidently, adding capacity
+without a more appropriate broadband representation did not reliably extract
+additional design-conditioned information for this path. It does not show that
+non-linear point-wise models are generally ineffective. Because only selected
+configurations and one split were evaluated.
+
+Schierholz \textit{et al.} demonstrated direct prediction of selected
+S-parameter magnitude and phase on the source database. Additionally, they also reported
+greater difficulty for electrically long, strongly frequency-dependent links
+\cite{schierholz2021sipi}. The present sharp-null errors are consistent with
+that qualitative difficulty, although the different targets and protocols
+preclude a numerical ranking. Similarly, Swaminathan \textit{et al.} described
+the poor scaling of conventional fully connected networks for broadband SI/PI
+responses \cite{swaminathan2020demystifying}. The narrow spread among the
+point-wise models provides project-specific motivation for changing the
+data interface, instead of only enlarging the regressor.
+
+\subsection{Whole-Curve Modelling Improved the Selected Path}
+The whole-curve model produced the lowest selected $IL_{7,1}$ error. Furthermore, its
+paired interval excluded zero but crossed the project-defined $-0.10$~dB
+practical boundary. Consequently, joint prediction gave the strongest retained
+selected-path result. Yet, the evidence supports association, not a causal claim
+about frequency structure: the interface, scaling, architecture and loss
+changed together.
+
+This result is directionally consistent with the S-TCNN principle of Torun
+\textit{et al.}, which uses transposed convolution to exploit correlation along
+a generated spectral response \cite{torun2019spectral}. The current decoder
+adapts that principle to six PCB insertion-loss curves, compared to reproducing
+their architecture or application. Consequently, the comparison supports the
+design rationale but cannot establish superiority across datasets. The
+remaining deep-null errors also indicate that whole-curve structure alone did
+not resolve weak-response regions.
+
+\subsection{Scope, Accuracy and Physical Validity Are Separate}
+The full-S-matrix model answered a broader question: it learned
+design-conditioned reflection, transmission, crosstalk and phase information
+for every port pair, improved on a same-task mean matrix, even guaranteed
+reciprocity. Its higher extracted $IL_{7,1}$ error does not prove a cost of
+larger output scope, seeing that the curve and matrix models also used different
+architectures, scaling and objectives. Selected-path accuracy and response
+coverage must be reported as distinct axes.
+
+Physical validity forms a third axis. Chen and Tan showed that small numerical
+error can coexist with non-physical insertion loss, which motivates physics-enforced
+evaluation \cite{chen2021physics}. Their reported negative insertion-loss
+behaviour was not observed in the selected full-matrix predictions: no sampled
+test matrix violated passivity. This result is encouraging but weaker than enforcement, as long as no passivity term was trained and behaviour outside the evaluated grid is unknown.
+Akinwande \textit{et al.} predicted selected complex broadband responses with a
+complex-valued network and explicit passivity and causality treatment
+\cite{akinwande2024complex}. In contrast, the present real-valued model covers
+a complete 12-port matrix but enforces only reciprocity. The prediction's larger
+finite-band causality residual than the simulated target's reinforces that
+architectural reciprocity cannot substitute for passivity or causality
+constraints.
+
+\subsection{Implications for Surrogate Design}
+Two practical lessons follow from the progression. First, the reference must
+match the structure of the task. Beating a single global mean satisfied the original
+weak baseline check. On the other hand, comparison with a frequency-dependent mean curve
+showed that Scalar Ridge added no selected-path benefit. Without that stronger
+reference, the value of conditioning on design parameters would have
+been overstated.
+
+Second, model choice depends on the intended output, instead of one ranking.
+The curve model is preferable among the retained models when the immediate aim
+is accurate prediction of the six selected insertion-loss paths. The
+full-matrix model rather provides one mutually consistent source for
+reflection, transmission, crosstalk and phase. In addition, it can support derived SI
+quantities for any port pair. Its lower same-task complex error establishes
+design dependence beyond the mean matrix. Still, no downstream SI tolerance was
+defined. In the end, the study supports choosing the representation against a
+declared engineering use case. It also evaluates numerical accuracy and physical
+properties separately.
+
+\subsection{Confidence and Scope}
+The evidence is conditional on one selected training seed, so optimisation
+variability is unknown. Test designs were excluded from fitting, though their
+results were inspected during development. The bootstrap intervals quantify
+variation across those fixed test designs, not uncertainty from retraining,
+model search or repeated exposure. Random held-out designs from one topology
+and sampled parameter ranges do not establish extrapolation, cross-topology
+generalisation or task-specific accuracy sufficient for an SI decision. The
+passivity result covers only sampled matrices, and the positive finite band
+limits the causality diagnostic. Finally, the planned controlled parameter
+study and electromagnetic-simulation timing comparison were not completed. So,
+neither physical sensitivity nor computational saving can be inferred.

@@ -1,0 +1,9 @@
+model_name,checks,largest_tolerance_fraction,status
+scalar_ridge,4,0.015302372702308276,pass
+vector_ridge,8,0.015302372702308276,pass
+polynomial_ridge,8,0.010257865667995247,pass
+random_forest,8,0.056711968454692396,pass
+neural_mlp,8,2.5459936381366788e-05,pass
+polynomial_neural_mlp,8,2.5653292823335505e-05,pass
+curve_neural,8,0.006817639466305536,pass
+full_smatrix_neural,32,0.29236225929096804,pass

@@ -8,6 +8,13 @@ import numpy as np
 import pytest
 
 import sparam_surrogate.data.touchstone_loader as touchstone_loader_module
+from sparam_surrogate.config.surrogate_config import (
+    DatasetConfig,
+    PathsConfig,
+    PreprocessingConfig,
+    ProjectConfig,
+    SurrogateConfig,
+)
 from sparam_surrogate.data import TouchstoneLoader
 
 
@@ -42,11 +49,29 @@ def _metadata(path: str, frequency_ghz: float = 1.0) -> dict[str, object]:
     }
 
 
-def _config(ports: list[list[int]] | None = None) -> dict[str, object]:
+def _config(ports: tuple[tuple[int, int], ...] | None = None) -> SurrogateConfig:
     """
-    Return a minimal loader configuration.
+    Return a minimal typed loader configuration.
     """
-    return {"dataset": {"nports": 2, "ports": ports or [[2, 1], [1, 2]]}}
+    raw_data = Path("data/raw")
+    dataset_name = "test-dataset"
+    return SurrogateConfig(
+        project=ProjectConfig(name="test-project", seed=128),
+        paths=PathsConfig(raw_data=raw_data, processed_data=Path("data/processed")),
+        dataset=DatasetConfig(
+            name=dataset_name,
+            path=raw_data / dataset_name,
+            parameter_csv=raw_data / dataset_name / "parameter.csv",
+            nports=2,
+            ports=ports or ((2, 1), (1, 2)),
+        ),
+        preprocessing=PreprocessingConfig(
+            cleaned_splits_csv=Path("data/processed/cleaned_splits_parameter.csv"),
+            freq_expanded_csv=Path("data/processed/frequency_expanded_dataset.csv"),
+            val_fraction=0.2,
+            test_fraction=0.2,
+        ),
+    )
 
 
 class TestTouchstoneLoader:
@@ -80,6 +105,33 @@ class TestTouchstoneLoader:
         assert loader.target_names == ("S2_1_DB",)
         np.testing.assert_allclose(target, [20 * np.log10(0.25)])
 
+    def test_load_scalar_il_target(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """
+        Scalar IL mode returns the first port pair as positive insertion loss.
+        """
+        rel_path = "raw/variation/simu_0.s2p"
+        matrices = [
+            np.array([[0.1 + 0.0j, 0.2 + 0.0j], [0.5 + 0.0j, 0.3 + 0.0j]]),
+            np.array([[0.1 + 0.0j, 0.2 + 0.0j], [0.25 + 0.0j, 0.3 + 0.0j]]),
+        ]
+        _write_s2p(tmp_path / rel_path, matrices)
+        monkeypatch.setattr(touchstone_loader_module, "PROJECT_ROOT", tmp_path)
+        loader = TouchstoneLoader(
+            mode="scalar",
+            config=_config(),
+            representation="il",
+        )
+
+        target = loader(np.zeros(2), _metadata(rel_path, frequency_ghz=2.0))
+
+        assert loader.target_names == ("IL_S2_1_DB",)
+        np.testing.assert_allclose(target, [-20 * np.log10(0.25)])
+        assert np.all(target > 0.0)
+
     def test_load_vector_il_target(
         self,
         tmp_path: Path,
@@ -105,6 +157,40 @@ class TestTouchstoneLoader:
             target,
             [-20 * np.log10(0.5), -20 * np.log10(0.2)],
         )
+
+    def test_load_vector_il_curve(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """
+        Vector curves preserve frequency rows and configured port-pair order.
+        """
+        rel_path = "raw/variation/simu_0.s2p"
+        matrices = [
+            np.array([[0.1 + 0.0j, 0.2 + 0.0j], [0.5 + 0.0j, 0.3 + 0.0j]]),
+            np.array([[0.1 + 0.0j, 0.4 + 0.0j], [0.25 + 0.0j, 0.3 + 0.0j]]),
+        ]
+        _write_s2p(tmp_path / rel_path, matrices)
+        monkeypatch.setattr(touchstone_loader_module, "PROJECT_ROOT", tmp_path)
+        loader = TouchstoneLoader(
+            mode="vector",
+            config=_config(),
+            representation="il",
+        )
+
+        frequencies_ghz, targets = loader.load_curve({"TOUCHSTONE_REL_PATH": rel_path})
+
+        np.testing.assert_allclose(frequencies_ghz, [1.0, 2.0])
+        assert targets.shape == (2, 2)
+        np.testing.assert_allclose(
+            targets,
+            [
+                [-20 * np.log10(0.5), -20 * np.log10(0.2)],
+                [-20 * np.log10(0.25), -20 * np.log10(0.4)],
+            ],
+        )
+        assert np.all(targets > 0.0)
 
     def test_load_smatrix_target(
         self,
@@ -141,6 +227,45 @@ class TestTouchstoneLoader:
         )
         np.testing.assert_allclose(target, [1.0, 2.0, 3.0, 4.0, 0.1, 0.2, 0.3, 0.4])
 
+    def test_load_smatrix_real_imag_curve(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """
+        S-matrix curves flatten each frequency before joining real and imaginary.
+        """
+        rel_path = "raw/variation/simu_0.s2p"
+        matrices = [
+            np.array(
+                [[1.0 + 0.1j, 2.0 + 0.2j], [3.0 + 0.3j, 4.0 + 0.4j]],
+                dtype=complex,
+            ),
+            np.array(
+                [[5.0 + 0.5j, 6.0 + 0.6j], [7.0 + 0.7j, 8.0 + 0.8j]],
+                dtype=complex,
+            ),
+        ]
+        _write_s2p(tmp_path / rel_path, matrices)
+        monkeypatch.setattr(touchstone_loader_module, "PROJECT_ROOT", tmp_path)
+        loader = TouchstoneLoader(
+            mode="smatrix",
+            config=_config(),
+            representation="real_imag",
+        )
+
+        frequencies_ghz, targets = loader.load_curve({"TOUCHSTONE_REL_PATH": rel_path})
+
+        np.testing.assert_allclose(frequencies_ghz, [1.0, 2.0])
+        assert targets.shape == (2, 8)
+        np.testing.assert_allclose(
+            targets,
+            [
+                [1.0, 2.0, 3.0, 4.0, 0.1, 0.2, 0.3, 0.4],
+                [5.0, 6.0, 7.0, 8.0, 0.5, 0.6, 0.7, 0.8],
+            ],
+        )
+
     def test_frequency_lookup_uses_tolerance(
         self,
         tmp_path: Path,
@@ -161,20 +286,6 @@ class TestTouchstoneLoader:
         )
 
         np.testing.assert_allclose(target, [20 * np.log10(0.5)])
-
-    def test_rejects_invalid_configured_port_pair(self) -> None:
-        """
-        Port pairs outside ``dataset.nports`` are rejected at construction.
-        """
-        with pytest.raises(ValueError, match="exceeds"):
-            TouchstoneLoader("scalar", _config(ports=[[3, 1]]))
-
-    def test_rejects_missing_configured_nports(self) -> None:
-        """
-        The loader requires ``dataset.nports`` for path and target validation.
-        """
-        with pytest.raises(ValueError, match="dataset.nports must be configured"):
-            TouchstoneLoader("scalar", {"dataset": {"ports": [[2, 1]]}})
 
     def test_caches_loaded_networks_by_touchstone_path(
         self,

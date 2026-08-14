@@ -7,7 +7,7 @@ sparam-surrogate/configs/local.json
 
 # Local logging and temporary files.
 sparam-surrogate/.notebook-stamps/
-sparam-surrogate/outputs/logs
+sparam-surrogate/outputs/
 sparam-surrogate/reports/pdf/
 sparam-surrogate/reports/html/
 
@@ -233,3 +233,14 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# LaTeX intermediate files
+project_portfolio/build/
+project_portfolio/A00049113_EEN1095_Project_Portfolio.*
+project_portfolio/main.aux
+project_portfolio/main.log
+project_portfolio/main.pdf
+project_portfolio/main.toc
+project_portfolio/evidence/page4_response_evidence.pdf
+project_portfolio/evidence/page4_response_evidence.png
+A00049113_EEN1095_Overleaf.zip

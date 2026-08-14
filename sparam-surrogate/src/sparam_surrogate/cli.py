@@ -25,8 +25,12 @@ from pathlib import Path
 
 import sparam_surrogate.config.mylogging as mylogging
 from sparam_surrogate import __app_name__, __version__, utils
-from sparam_surrogate.config import load_config
-from sparam_surrogate.data import MLDatasetBuilder, RawData
+from sparam_surrogate.config import SurrogateConfig
+from sparam_surrogate.data import (
+    ParameterDatasetBuilder,
+    PointwiseDataset,
+    RawData,
+)
 
 
 # %%
@@ -55,11 +59,15 @@ class CLI:
 
     @property
     def app_name(self) -> str:
-        """Return the application name."""
+        """
+        Return the application name.
+        """
         return self._app_name
 
     def add_subcommand_unzip(self) -> None:
-        """Add the unzip subcommand."""
+        """
+        Add the unzip subcommand.
+        """
         unzip_parser = self._subparsers.add_parser(
             "unzip",
             help="Extract a ZIP archive.",
@@ -84,16 +92,18 @@ class CLI:
 
     def add_subcommand_preprocess(self) -> None:
         """
-        Add the cleaned-CSV preprocessing subcommand to the CLI parser.
+        Add the frequency-expanded preprocessing subcommand to the CLI parser.
 
-        The command builds ``sipi_dataset_cleaned.csv`` and assigns
-        train/validation/test split labels. It does not create model-specific
+        The command builds the design-level cleaned CSV before expanding it
+        into ``frequency_expanded_dataset.csv``. It does not create model-specific
         eager arrays.
         """
         preproc_parser = self._subparsers.add_parser(
             "preprocess",
-            help="Build the cleaned lazy preprocessing CSV.",
-            description=("Build sipi_dataset_cleaned.csv from one raw SI/PI topology."),
+            help="Build the frequency-expanded preprocessing CSV.",
+            description=(
+                "Build frequency_expanded_dataset.csv from one raw SI/PI topology."
+            ),
         )
         preproc_parser.add_argument(
             "-i",
@@ -139,9 +149,16 @@ class CLI:
             metavar="<random seed>",
             help="Split random seed. Defaults to configs/default.json.",
         )
+        preproc_parser.add_argument(
+            "--force",
+            action="store_true",
+            help="Rebuild preprocessing CSVs even when caches are current.",
+        )
 
     def add_subcommand_train(self) -> None:
-        """Add the train subcommand."""
+        """
+        Add the train subcommand.
+        """
         train_parser = self._subparsers.add_parser(
             "train",
             help="Train a surrogate model.",
@@ -174,7 +191,9 @@ class CLI:
         )
 
     def add_subcommand_predict(self) -> None:
-        """Add the predict subcommand."""
+        """
+        Add the predict subcommand.
+        """
         pred_parser = self._subparsers.add_parser(
             "predict",
             help="Make predictions with a trained surrogate model.",
@@ -208,13 +227,17 @@ class CLI:
     def parse_cli(
         self, args: Sequence[str] | None = None, namespace: None = None
     ) -> argparse.Namespace:
-        """Parse command-line arguments."""
+        """
+        Parse command-line arguments.
+        """
         return self._parser.parse_args(args, namespace)
 
 
 # %%
 def main() -> int:
-    """Run the command-line interface."""
+    """
+    Run the command-line interface.
+    """
     # Set up logging
     mylogging.set_logging_cfg()
     logger = mylogging.get_md_logger("sparam_surrogate.cli")
@@ -237,31 +260,52 @@ def main() -> int:
                 logger.info("Extracted %s to %s", cli.infile, dest)
                 return 0
             case "preprocess":
-                cfg = load_config()
+                cfg = SurrogateConfig.from_config()
                 nports = (
                     cli.nports
                     if cli.nports is not None
-                    else int(cfg["dataset"]["nports"])
+                    else cfg.dataset.nports
                 )
                 val_fraction = (
                     cli.val_fraction
                     if cli.val_fraction is not None
-                    else float(cfg["training"]["val_fraction"])
+                    else cfg.preprocessing.val_fraction
                 )
                 test_fraction = (
                     cli.test_fraction
                     if cli.test_fraction is not None
-                    else float(cfg["training"]["test_fraction"])
+                    else cfg.preprocessing.test_fraction
                 )
-                seed = cli.seed if cli.seed is not None else int(cfg["project"]["seed"])
+                seed = cli.seed if cli.seed is not None else cfg.project.seed
                 raw_data = RawData(cli.input_dir, nports=nports)
-                builder = MLDatasetBuilder(raw_data, cli.output_dir)
-                builder.split(
+                cleaned_splits_csv = (
+                    cli.output_dir
+                    / cfg.preprocessing.cleaned_splits_csv.name
+                )
+                parameter_builder = ParameterDatasetBuilder(
+                    raw_data,
+                    cleaned_splits_csv,
+                )
+                parameter_builder.build(
                     val_fraction=val_fraction,
                     test_fraction=test_fraction,
                     seed=seed,
+                    force=cli.force,
                 )
-                logger.info("Preprocessed CSV saved to %s", builder.cleaned_path)
+                freq_expanded_csv = (
+                    cli.output_dir
+                    / cfg.preprocessing.freq_expanded_csv.name
+                )
+                PointwiseDataset.build_frequency_expanded_csv(
+                    parameter_builder.cleaned_splits_path,
+                    freq_expanded_csv,
+                    force=cli.force,
+                )
+                logger.info(
+                    "Cleaned split parameter CSV saved to %s",
+                    parameter_builder.cleaned_splits_path,
+                )
+                logger.info("Preprocessed CSV saved to %s", freq_expanded_csv)
                 return 0
             case "train":
                 # TODO

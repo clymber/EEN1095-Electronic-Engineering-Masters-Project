@@ -6,15 +6,17 @@
     "paths": {
         "data_root": "data",
         "raw_data": "data/raw",
-        "interim_data": "data/interim",
         "processed_data": "data/processed",
         "outputs": "outputs",
+        "benchmarks": "outputs/benchmarks",
         "logs": "outputs/logs",
         "figures": "outputs/figures",
         "models": "outputs/models",
-        "reports": "outputs/reports"
+        "reports": "outputs/reports",
+        "runs": "outputs/runs"
     },
     "dataset": {
+        "name": "linkOn8CavityStackBetween10x10Array_19_08_2021",
         "parameter_file": "parameter.csv",
         "variation_dir": "variation",
         "touchstone_pattern": "simu_{index}.s12p",
@@ -28,10 +30,113 @@
             [12, 6]
         ]
     },
-    "training": {
+    "preprocessing": {
+        "cleaned_splits_csv": "cleaned_splits_parameter.csv",
+        "freq_expanded_csv": "frequency_expanded_dataset.csv",
         "test_fraction": 0.2,
-        "val_fraction": 0.2,
-        "batch_size": 32,
-        "epochs": 100
-  }
+        "val_fraction": 0.2
+    },
+    "models": {
+        "scalar_ridge": {
+            "alphas": [
+                0.00001,
+                0.00005,
+                0.0001,
+                0.0005,
+                0.001,
+                0.005,
+                0.01,
+                0.1,
+                1.0,
+                10.0
+            ]
+        },
+        "vector_ridge": {
+            "alphas": [
+                0.00001,
+                0.00005,
+                0.0001,
+                0.0005,
+                0.001,
+                0.005,
+                0.01,
+                0.1,
+                1.0,
+                10.0
+            ]
+        },
+        "polynomial_ridge": {
+            "degrees": [
+                3,
+                4,
+                5
+            ],
+            "alphas": [
+                50.0,
+                100.0,
+                200.0,
+                500.0,
+                1000.0
+            ]
+        },
+        "random_forest": {
+            "n_estimators": 128,
+            "max_depths": [
+                null
+            ],
+            "min_samples_leafs": [
+                2
+            ],
+            "random_state": 128,
+            "n_jobs": -1
+        },
+        "neural_mlp": {
+            "batch_size": 512,
+            "epochs": 100,
+            "prediction_batch_size": 4096,
+            "learning_rate": 0.00003,
+            "gradient_clip_norm": 0.5,
+            "early_stopping_patience": 18,
+            "reduce_lr_patience": 6,
+            "reduce_lr_factor": 0.5,
+            "min_learning_rate": 0.000001,
+            "random_state": 128
+        },
+        "polynomial_neural_mlp": {
+            "polynomial_degree": 5,
+            "batch_size": 512,
+            "epochs": 100,
+            "prediction_batch_size": 4096,
+            "learning_rate": 0.00003,
+            "gradient_clip_norm": 0.5,
+            "early_stopping_patience": 18,
+            "reduce_lr_patience": 6,
+            "reduce_lr_factor": 0.5,
+            "min_learning_rate": 0.000001,
+            "random_state": 128
+        },
+        "curve_neural": {
+            "latent_dim": 32,
+            "decoder_channels": [
+                32,
+                16,
+                8
+            ],
+            "kernel_size": 5,
+            "frequency_encoding": "fourier",
+            "fourier_order": 4,
+            "weight_decay": 0.0,
+            "derivative_loss_weight": 11.626038,
+            "batch_size": 64,
+            "epochs": 100,
+            "prediction_batch_size": 4096,
+            "learning_rate": 0.001,
+            "gradient_clip_norm": 0.5,
+            "early_stopping_patience": 8,
+            "reduce_lr_patience": 3,
+            "reduce_lr_factor": 0.5,
+            "min_learning_rate": 0.000001,
+            "random_state": 128
+        }
+    }
 }

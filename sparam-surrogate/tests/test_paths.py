@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Tests for the find_project_root function in sparam_surrogate.config.
 """
@@ -114,12 +113,12 @@ class TestRelativeToProjectRoot:
             project_root
             / "data"
             / "processed"
-            / "sipi_dataset_cleaned.csv"
+            / "frequency_expanded_dataset.csv"
         )
 
         result = relative_to_project_root(cleaned_path, project_root=project_root)
 
-        assert result == "data/processed/sipi_dataset_cleaned.csv"
+        assert result == "data/processed/frequency_expanded_dataset.csv"
 
     def test_relative_path_is_interpreted_from_project_root(
         self,
@@ -131,11 +130,11 @@ class TestRelativeToProjectRoot:
         project_root = tmp_path / "project"
 
         result = relative_to_project_root(
-            "data/interim/cache.npz",
+            "data/processed/cache.npz",
             project_root=project_root,
         )
 
-        assert result == "data/interim/cache.npz"
+        assert result == "data/processed/cache.npz"
 
     def test_rejects_paths_outside_project_root(self, tmp_path: Path) -> None:
         """

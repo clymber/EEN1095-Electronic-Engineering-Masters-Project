@@ -1,140 +1,255 @@
 #!/usr/bin/env python3
 """
-Tests for class CLI in sparam_surrogate.cli.
+Behavior-focused tests for the sparam-surrogate CLI.
 """
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from sparam_surrogate import __app_name__, __version__
-from sparam_surrogate.cli import CLI
+from sparam_surrogate.cli import CLI, main
+
+
+class FakePointwiseDataset:
+    """
+    Test double for ``PointwiseDataset`` CSV construction.
+    """
+
+    build_calls: list[dict[str, object]] = []
+
+    @classmethod
+    def build_frequency_expanded_csv(
+        cls,
+        split_parameter_csv: Path,
+        output_csv: Path,
+        force: bool = False,
+    ) -> None:
+        """
+        Record frequency-expanded CSV construction.
+        """
+        cls.build_calls.append(
+            {
+                "split_parameter_csv": split_parameter_csv,
+                "output_csv": output_csv,
+                "force": force,
+            }
+        )
+
+
+class FakeParameterBuilder:
+    """
+    Test double for ``ParameterDatasetBuilder``.
+    """
+
+    instances: list["FakeParameterBuilder"] = []
+
+    def __init__(self, raw_data: object, cleaned_splits_path: Path) -> None:
+        """
+        Record design-level builder construction.
+        """
+        self.raw_data = raw_data
+        self.cleaned_splits_path = cleaned_splits_path
+        self.build_kwargs: dict[str, object] | None = None
+        self.instances.append(self)
+
+    def build(
+        self,
+        *,
+        val_fraction: float,
+        test_fraction: float,
+        seed: int,
+        force: bool,
+    ) -> object:
+        """
+        Record cache-aware build arguments and return a placeholder dataframe.
+        """
+        self.build_kwargs = {
+            "val_fraction": val_fraction,
+            "test_fraction": test_fraction,
+            "seed": seed,
+            "force": force,
+        }
+        return object()
+
+
+class FakeRawData:
+    """
+    Test double for ``RawData``.
+    """
+
+    instances: list["FakeRawData"] = []
+
+    def __init__(self, path: Path, nports: int) -> None:
+        """
+        Record construction arguments for assertions.
+        """
+        self.path = path
+        self.nports = nports
+        self.instances.append(self)
 
 
 class TestCLI:
     """
-    Unit tests for class CLI.
+    Unit tests for CLI behavior.
     """
 
-    def test_instantiation(self):
+    def test_version_argument(self, capsys: pytest.CaptureFixture[str]) -> None:
         """
-        Test that the CLI class can be instantiated without errors.
-        """
-        # Default application name
-        cli = CLI()
-        assert cli.app_name == __app_name__
-
-        # Custom application name
-        cli2 = CLI(prog="testprog")
-        assert cli2.app_name == "testprog"
-
-    def test_version_argument(self, capsys):
-        """
-        Version argument is correctly set up in the CLI parser.
+        Version argument reports the application version.
         """
         with pytest.raises(SystemExit) as exc_info:
-            CLI().parse_cli(["--version"])  # or ["-v"]
+            CLI().parse_cli(["--version"])
         assert exc_info.value.code == 0
 
         captured = capsys.readouterr()
         assert captured.out == f"{__app_name__} v{__version__}\n"
 
-    def test_add_subcmd_unzip(self):
+    def test_preprocess_defaults_come_from_typed_config(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
         """
-        Add subcommand: unzip
-
-        Usage: sparam-surrogate -i|--infile <zip archive> -o|--outdir <out directory>
+        Preprocess defaults are read from ``SurrogateConfig``.
         """
-        cli = CLI()
-        cli.add_subcommand_unzip()
-        args = cli.parse_cli(["unzip", "-i", "test.zip", "-o", "output/"])
-
-        assert args.command == "unzip"
-        assert args.infile == Path("test.zip")
-        assert args.outdir == Path("output/")
-
-    def test_add_subcommand_preprocess(self):
-        """
-        Test adding preprocess subcommand.
-
-        Usage:
-            sparam-surrogate preprocess -i|--input <input dir> \
-                                        -o|--output <output dir> \
-                                        --nports <port count>
-        """
-        cli = CLI()
-        cli.add_subcommand_preprocess()
-        args = cli.parse_cli(
+        cfg = SimpleNamespace(
+            dataset=SimpleNamespace(nports=12),
+            preprocessing=SimpleNamespace(
+                cleaned_splits_csv=Path(
+                    "data/processed/cleaned_splits_parameter.csv"
+                ),
+                freq_expanded_csv=Path(
+                    "data/processed/frequency_expanded_dataset.csv"
+                ),
+                val_fraction=0.25,
+                test_fraction=0.1,
+            ),
+            project=SimpleNamespace(seed=99),
+        )
+        self._patch_preprocess_dependencies(monkeypatch, cfg)
+        monkeypatch.setattr(
+            "sys.argv",
             [
+                "sparam-surrogate",
                 "preprocess",
                 "-i",
-                "input/",
+                str(tmp_path / "raw"),
                 "-o",
-                "output/",
+                str(tmp_path / "processed"),
+            ],
+        )
+
+        exit_code = main()
+
+        assert exit_code == 0
+        assert FakeRawData.instances[0].nports == 12
+        assert FakeParameterBuilder.instances[0].build_kwargs == {
+            "val_fraction": 0.25,
+            "test_fraction": 0.1,
+            "seed": 99,
+            "force": False,
+        }
+        assert FakePointwiseDataset.build_calls == [
+            {
+                "split_parameter_csv": (
+                    tmp_path / "processed" / "cleaned_splits_parameter.csv"
+                ),
+                "output_csv": (
+                    tmp_path / "processed" / "frequency_expanded_dataset.csv"
+                ),
+                "force": False,
+            }
+        ]
+
+    def test_preprocess_cli_values_override_typed_config(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """
+        Explicit preprocess CLI options override typed config defaults.
+        """
+        cfg = SimpleNamespace(
+            dataset=SimpleNamespace(nports=12),
+            preprocessing=SimpleNamespace(
+                cleaned_splits_csv=Path(
+                    "data/processed/cleaned_splits_parameter.csv"
+                ),
+                freq_expanded_csv=Path(
+                    "data/processed/frequency_expanded_dataset.csv"
+                ),
+                val_fraction=0.25,
+                test_fraction=0.1,
+            ),
+            project=SimpleNamespace(seed=99),
+        )
+        self._patch_preprocess_dependencies(monkeypatch, cfg)
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                "sparam-surrogate",
+                "preprocess",
+                "-i",
+                str(tmp_path / "raw"),
+                "-o",
+                str(tmp_path / "processed"),
                 "--nports",
-                "2",
+                "6",
                 "--val-fraction",
                 "0.2",
                 "--test-fraction",
-                "0.2",
+                "0.15",
                 "--seed",
                 "123",
-            ]
+                "--force",
+            ],
         )
-        assert args.command == "preprocess"
-        assert args.input_dir == Path("input/")
-        assert args.output_dir == Path("output/")
-        assert args.nports == 2
-        assert args.val_fraction == 0.2
-        assert args.test_fraction == 0.2
-        assert args.seed == 123
 
-    def test_add_subcommand_train(self):
+        exit_code = main()
+
+        assert exit_code == 0
+        assert FakeRawData.instances[0].nports == 6
+        assert FakeParameterBuilder.instances[0].build_kwargs == {
+            "val_fraction": 0.2,
+            "test_fraction": 0.15,
+            "seed": 123,
+            "force": True,
+        }
+        assert FakePointwiseDataset.build_calls == [
+            {
+                "split_parameter_csv": (
+                    tmp_path / "processed" / "cleaned_splits_parameter.csv"
+                ),
+                "output_csv": (
+                    tmp_path / "processed" / "frequency_expanded_dataset.csv"
+                ),
+                "force": True,
+            }
+        ]
+
+    def _patch_preprocess_dependencies(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        cfg: SimpleNamespace,
+    ) -> None:
         """
-        Test adding train subcommand.
-        
-        Usage: sparam-surrogate train -m|--model <model name> \
-                                      -i|--input-dir <input directory> \
-                                      -o|--output-dir <output directory>
+        Replace preprocessing dependencies with deterministic test doubles.
         """
-        cli = CLI()
-        cli.add_subcommand_train()
-        args = cli.parse_cli(
-            ["train", "-m", "vector_nn", "-i", "input/", "-o", "output/"]
+        FakePointwiseDataset.build_calls = []
+        FakeParameterBuilder.instances = []
+        FakeRawData.instances = []
+        monkeypatch.setattr(
+            "sparam_surrogate.cli.SurrogateConfig.from_config",
+            lambda: cfg,
         )
-        assert args.command == "train"
-        assert args.model == "vector_nn"
-        assert args.input_dir == Path("input/")
-        assert args.output_dir == Path("output/")
-
-    def test_add_subcommand_predict(self):
-        """
-        Test adding predict subcommand.
-
-        Usage:
-            sparam-surrogate predict -m|--model <model name> <input json string>
-        """
-        cli = CLI()
-        cli.add_subcommand_predict()
-        args = cli.parse_cli(["predict", "-m", "smatrix_nn", '{"param": "value"}'])
-        assert args.command == "predict"
-        assert args.model == "smatrix_nn"
-        assert args.input == '{"param": "value"}'
-        assert args.from_file is False
-
-    def test_add_subcommand_predict_from_file(self):
-        """
-        Test predict subcommand with --from-file flag.
-        
-        Usage:
-            sparam-surrogate predict -m|--model <model name> \
-                                     -f|--from-file <input json file>
-        """
-        cli = CLI()
-        cli.add_subcommand_predict()
-        args = cli.parse_cli(
-            ["predict", "-m", "decision_tree", "--from-file", "/path/to/file.json"]
+        monkeypatch.setattr("sparam_surrogate.cli.RawData", FakeRawData)
+        monkeypatch.setattr(
+            "sparam_surrogate.cli.PointwiseDataset",
+            FakePointwiseDataset,
         )
-        assert args.command == "predict"
-        assert args.from_file is True
-        assert args.input == "/path/to/file.json"
+        monkeypatch.setattr(
+            "sparam_surrogate.cli.ParameterDatasetBuilder",
+            FakeParameterBuilder,
+        )

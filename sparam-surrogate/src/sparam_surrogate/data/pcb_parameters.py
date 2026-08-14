@@ -48,7 +48,9 @@ class PcbParameters:
 
     @property
     def dataframe(self) -> pd.DataFrame:
-        """Return the underlying parameter table."""
+        """
+        Return the underlying parameter table.
+        """
         return self._parameters
 
     @overload
@@ -58,18 +60,24 @@ class PcbParameters:
     def __getitem__(self, key: list[str] | pd.Index) -> pd.DataFrame: ...
 
     def __getitem__(self, key: str | list[str] | pd.Index) -> pd.Series | pd.DataFrame:
-        """Select parameter columns using DataFrame-style syntax."""
+        """
+        Select parameter columns using DataFrame-style syntax.
+        """
         return self._parameters[key]
 
     def assign_columns(self, **kw_args) -> "PcbParameters":
-        """Assign or overwrite parameter columns."""
+        """
+        Assign or overwrite parameter columns.
+        """
         self._parameters = self._parameters.assign(**kw_args)
         return self
 
     def _select_columns(
         self, columns: str | list[str] | pd.Index | None = None
     ) -> pd.DataFrame:
-        """Return the full table or a requested column subset."""
+        """
+        Return the full table or a requested column subset.
+        """
         if columns is None:
             return self._parameters
         if isinstance(columns, str):
@@ -98,7 +106,9 @@ class PcbParameters:
     def structural_summary(
         self, columns: str | list[str] | pd.Index | None = None
     ) -> None:
-        """Print a structural summary of selected parameter columns."""
+        """
+        Print a structural summary of selected parameter columns.
+        """
         self._select_columns(columns).info()
 
     def statistical_summary(
@@ -159,7 +169,9 @@ class PcbParameters:
         return fail_count
 
     def check_physical_range(self) -> int:
-        """Check physical ranges and return the number of failures."""
+        """
+        Check physical ranges and return the number of failures.
+        """
         fail_count = 0
         params = self._parameters
         constraints = {

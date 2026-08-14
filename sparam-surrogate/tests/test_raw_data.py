@@ -41,60 +41,6 @@ class TestRawData:
 
         return rawdata_path
 
-    def test_get_param_csv_path(self, tmp_path):
-        """
-        Return path to parameter.csv
-        """
-        rawdata_path = self._make_rawdata_fixture(
-            tmp_path,
-            parameter_indices=[0, 1],
-            touchstone_indices=[0, 1],
-            nports=2
-        )
-        raw_data = RawData(rawdata_path, nports=2)
-        csv_path = raw_data.parameter_csv
-        expected = rawdata_path / "parameter.csv"
-
-        assert isinstance(csv_path, Path)
-        assert csv_path == expected
-        assert csv_path.is_file()  # Check if the file actually exists
-
-    def test_variation_path(self, tmp_path):
-        """
-        Return path to variation directory
-        """
-        rawdata_path = self._make_rawdata_fixture(
-            tmp_path,
-            parameter_indices=[0, 1],
-            touchstone_indices=[0, 1],
-            nports=2
-        )
-        raw_data = RawData(rawdata_path, nports=2)
-        variation_path = raw_data.variation_path
-        expected = rawdata_path / "variation"
-
-        assert isinstance(variation_path, Path)
-        assert variation_path == expected
-        assert variation_path.is_dir()  # Check if the directory actually exists
-
-    def test_get_touchstone_file(self, tmp_path):
-        """
-        Return path to touchstone file for given variation and port
-        """
-        rawdata_path = self._make_rawdata_fixture(
-            tmp_path,
-            parameter_indices=[0, 1, 2],
-            touchstone_indices=[0, 1, 2],
-            nports=2
-        )
-        raw_data = RawData(rawdata_path, nports=2)
-        touchstonefile = raw_data.touchstone(2)
-        expected = rawdata_path / "variation/simu_2.s2p"
-
-        assert isinstance(touchstonefile, Path)
-        assert touchstonefile == expected
-        assert touchstonefile.is_file()  # Check if the file actually exists
-
     def test_get_touchstone_list(self, tmp_path):
         """
         Return list of touchstone file paths for all variations

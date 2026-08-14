@@ -12,7 +12,7 @@ import pandas as pd
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
-from sparam_surrogate.data import DLDataset  # noqa: E402
+from sparam_surrogate.data import PointwiseDataset  # noqa: E402
 from sparam_surrogate.models.base import SparamModel  # noqa: E402
 from sparam_surrogate.utils.model_prediction_plots import (  # noqa: E402
     plot_design_model_comparison_curves,
@@ -44,7 +44,7 @@ class _ScalarFrequencyModel(SparamModel):
         """
         Return a deterministic scalar prediction from frequency.
         """
-        return -np.asarray(X)[:, 1]
+        return -np.asarray(X)[:, -1]
 
 
 class _VectorFrequencyModel(_ScalarFrequencyModel):
@@ -58,7 +58,7 @@ class _VectorFrequencyModel(_ScalarFrequencyModel):
         """
         Return deterministic vector predictions from frequency.
         """
-        frequency = np.asarray(X)[:, 1]
+        frequency = np.asarray(X)[:, -1]
         return np.column_stack((-frequency, -2.0 * frequency))
 
 
@@ -102,20 +102,23 @@ class _VectorTargetLoader(_ScalarTargetLoader):
         return np.asarray([-frequency, -2.0 * frequency])
 
 
-def _test_dataset() -> DLDataset:
+def _test_dataset() -> PointwiseDataset:
     """
     Return a small two-design test dataset.
     """
     frame = pd.DataFrame(
         {
-            "DESIGN": [101.0, 101.0, 102.0, 102.0],
+            "EPS": [3.1, 3.1, 4.2, 4.2],
             "SIMU_INDEX": [101, 101, 102, 102],
             "FREQ_GHZ": [2.0, 1.0, 2.0, 1.0],
             "TOUCHSTONE_REL_PATH": ["design_101.s6p"] * 2 + ["design_102.s6p"] * 2,
             "SPLIT_TYPE": ["test"] * 4,
         }
     )
-    return DLDataset(frame, ("DESIGN", "FREQ_GHZ"), "test")
+    for column in PointwiseDataset.PARAMETER_COLUMNS:
+        if column not in frame:
+            frame[column] = 1.0
+    return PointwiseDataset(frame, "test")
 
 
 def test_scalar_model_uses_one_target_row_and_design_columns() -> None:

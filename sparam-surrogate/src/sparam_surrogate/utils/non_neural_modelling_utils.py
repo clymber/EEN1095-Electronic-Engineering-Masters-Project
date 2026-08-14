@@ -16,7 +16,9 @@ DEFAULT_RANDOM_SEED = 42
 
 
 def regression_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, float]:
-    """Return MAE and RMSE for scalar or vector predictions."""
+    """
+    Return MAE and RMSE for scalar or vector predictions.
+    """
     return {
         "MAE": float(mean_absolute_error(y_true, y_pred)),
         "RMSE": float(np.sqrt(mean_squared_error(y_true, y_pred))),
@@ -26,7 +28,9 @@ def regression_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, floa
 def per_target_metrics(
     y_true: np.ndarray, y_pred: np.ndarray, names: tuple[str, ...],
 ) -> pd.DataFrame:
-    """Return MAE and RMSE for each vector target column."""
+    """
+    Return MAE and RMSE for each vector target column.
+    """
     rows = []
     for column_index, target_name in enumerate(names):
         metrics = regression_metrics(y_true[:, column_index], y_pred[:, column_index])
@@ -40,7 +44,9 @@ def sample_positions(
     max_points: int = SCATTER_MAX_POINTS,
     random_seed: int = DEFAULT_RANDOM_SEED,
 ) -> np.ndarray:
-    """Return deterministic row positions for large scatter-style plots."""
+    """
+    Return deterministic row positions for large scatter-style plots.
+    """
     if n_rows <= max_points:
         return np.arange(n_rows)
     rng = np.random.default_rng(random_seed)
@@ -48,7 +54,9 @@ def sample_positions(
 
 
 def add_diagonal_reference(ax: Axes, y_true: np.ndarray, y_pred: np.ndarray) -> None:
-    """Add an ideal y=x reference line to a scatter plot."""
+    """
+    Add an ideal y=x reference line to a scatter plot.
+    """
     lower = float(np.min([np.min(y_true), np.min(y_pred)]))
     upper = float(np.max([np.max(y_true), np.max(y_pred)]))
     if np.isclose(lower, upper):
@@ -66,7 +74,9 @@ def scalar_prediction_summary_by_frequency(
     lower_quantile: float = 0.10,
     upper_quantile: float = 0.90,
 ) -> pd.DataFrame:
-    """Return scalar true/predicted median and quantile bands by frequency."""
+    """
+    Return scalar true/predicted median and quantile bands by frequency.
+    """
     if not 0.0 <= lower_quantile < upper_quantile <= 1.0:
         raise ValueError("Expected 0 <= lower_quantile < upper_quantile <= 1.")
 
@@ -106,7 +116,9 @@ def plot_scalar_prediction_band_by_frequency(
     lower_quantile: float = 0.10,
     upper_quantile: float = 0.90,
 ) -> Figure:
-    """Plot true and predicted scalar IL distributions across designs."""
+    """
+    Plot true and predicted scalar IL distributions across designs.
+    """
     summary = scalar_prediction_summary_by_frequency(
         dataframe,
         y_true,
@@ -149,9 +161,9 @@ def plot_scalar_prediction_band_by_frequency(
         linewidth=2.0,
         label="Predicted median",
     )
-    ax.set_title(f"Scalar Ridge Magnitude Distribution: {target_name}")
+    ax.set_title(f"Scalar Ridge Insertion-Loss Distribution: {target_name}")
     ax.set_xlabel("Frequency (GHz)")
-    ax.set_ylabel("Transmission Magnitude (dB)")
+    ax.set_ylabel("Insertion Loss (dB)")
     ax.grid(True, alpha=0.3)
     ax.legend()
     fig.tight_layout()
@@ -163,7 +175,9 @@ def plot_scalar_true_vs_predicted(
     y_pred: np.ndarray,
     target_name: str,
 ) -> Figure:
-    """Plot scalar true-vs-predicted scatter with an ideal diagonal."""
+    """
+    Plot scalar true-vs-predicted scatter with an ideal diagonal.
+    """
     positions = sample_positions(len(y_true))
     fig, ax = plt.subplots(figsize=(5.5, 5.5))
     ax.scatter(
@@ -175,8 +189,8 @@ def plot_scalar_true_vs_predicted(
     )
     add_diagonal_reference(ax, y_true[positions], y_pred[positions])
     ax.set_title(f"Predicted vs True: {target_name}")
-    ax.set_xlabel("True Transmission Magnitude (dB)")
-    ax.set_ylabel("Predicted Transmission Magnitude (dB)")
+    ax.set_xlabel("True Insertion Loss (dB)")
+    ax.set_ylabel("Predicted Insertion Loss (dB)")
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
     return fig
@@ -187,7 +201,9 @@ def scalar_mae_by_frequency(
     y_true: np.ndarray,
     y_pred: np.ndarray,
 ) -> pd.DataFrame:
-    """Return scalar MAE grouped by frequency."""
+    """
+    Return scalar MAE grouped by frequency.
+    """
     errors = pd.DataFrame(
         {
             "FREQ_GHZ": dataframe["FREQ_GHZ"].to_numpy(dtype=float),
@@ -207,7 +223,9 @@ def plot_scalar_mae_by_frequency(
     y_pred: np.ndarray,
     target_name: str,
 ) -> Figure:
-    """Plot scalar MAE as a function of frequency."""
+    """
+    Plot scalar MAE as a function of frequency.
+    """
     mae_curve = scalar_mae_by_frequency(dataframe, y_true, y_pred)
     fig, ax = plt.subplots(figsize=(8, 4.5))
     ax.plot(mae_curve["FREQ_GHZ"], mae_curve["MAE"], linewidth=2.0)
@@ -225,7 +243,9 @@ def plot_shared_target_mae_comparison(
     predictions: dict[str, np.ndarray],
     target_name: str,
 ) -> Figure:
-    """Plot MAE-by-frequency curves for several models on one scalar target."""
+    """
+    Plot MAE-by-frequency curves for several models on one scalar target.
+    """
     if not predictions:
         raise ValueError("predictions must contain at least one model.")
 
@@ -256,7 +276,9 @@ def plot_shared_target_prediction_bands(
     lower_quantile: float = 0.10,
     upper_quantile: float = 0.90,
 ) -> Figure:
-    """Plot true and per-model predicted distribution bands for one target."""
+    """
+    Plot true and per-model predicted distribution bands for one target.
+    """
     if not predictions:
         raise ValueError("predictions must contain at least one model.")
 
@@ -313,7 +335,7 @@ def plot_shared_target_prediction_bands(
 
     ax.set_title(f"{target_name} Predicted Distribution Comparison")
     ax.set_xlabel("Frequency (GHz)")
-    ax.set_ylabel("S7_1_DB (dB)")
+    ax.set_ylabel("Insertion Loss (dB)")
     ax.grid(True, alpha=0.3)
     ax.legend(ncol=2, fontsize="small")
     fig.tight_layout()
@@ -328,7 +350,9 @@ def vector_prediction_summary_by_frequency(
     lower_quantile: float = 0.10,
     upper_quantile: float = 0.90,
 ) -> pd.DataFrame:
-    """Return vector true/predicted median and quantile bands by frequency."""
+    """
+    Return vector true/predicted median and quantile bands by frequency.
+    """
     true_values = np.asarray(y_true, dtype=float)
     pred_values = np.asarray(y_pred, dtype=float)
     if true_values.shape != pred_values.shape:
@@ -361,7 +385,9 @@ def plot_vector_prediction_bands_by_frequency(
     upper_quantile: float = 0.90,
     model_name: str = "Vector Ridge",
 ) -> Figure:
-    """Plot vector IL distributions across designs for each target."""
+    """
+    Plot vector IL distributions across designs for each target.
+    """
     summary = vector_prediction_summary_by_frequency(
         dataframe,
         y_true,
@@ -423,10 +449,10 @@ def plot_vector_prediction_bands_by_frequency(
         )
         ax.set_title(target_name)
         ax.set_xlabel("Frequency (GHz)")
-        ax.set_ylabel("Transmission Magnitude (dB)")
+        ax.set_ylabel("Insertion Loss (dB)")
         ax.grid(True, alpha=0.3)
     axes[0, 0].legend()
-    fig.suptitle(f"{model_name} Transmission Magnitude Distributions", y=1.02)
+    fig.suptitle(f"{model_name} Insertion-Loss Distributions", y=1.02)
     fig.tight_layout()
     return fig
 
@@ -437,7 +463,9 @@ def plot_vector_true_vs_predicted(
     names: tuple[str, ...],
     model_name: str = "Vector Ridge",
 ) -> Figure:
-    """Plot true-vs-predicted scatter for each vector target."""
+    """
+    Plot true-vs-predicted scatter for each vector target.
+    """
     positions = sample_positions(y_true.shape[0])
     fig, axes = plt.subplots(2, 3, figsize=(13, 8))
     for column_index, ax in enumerate(np.asarray(axes).ravel()):
@@ -452,8 +480,8 @@ def plot_vector_true_vs_predicted(
         )
         add_diagonal_reference(ax, true_values, pred_values)
         ax.set_title(names[column_index])
-        ax.set_xlabel("True Transmission Magnitude (dB)")
-        ax.set_ylabel("Predicted Transmission Magnitude (dB)")
+        ax.set_xlabel("True Insertion Loss (dB)")
+        ax.set_ylabel("Predicted Insertion Loss (dB)")
         ax.grid(True, alpha=0.3)
     fig.suptitle(f"{model_name} Predicted vs True", y=1.02)
     fig.tight_layout()
@@ -466,7 +494,9 @@ def vector_mae_by_frequency(
     y_pred: np.ndarray,
     names: tuple[str, ...],
 ) -> pd.DataFrame:
-    """Return per-target MAE grouped by frequency."""
+    """
+    Return per-target MAE grouped by frequency.
+    """
     errors = pd.DataFrame(np.abs(y_pred - y_true), columns=names)
     errors["FREQ_GHZ"] = dataframe["FREQ_GHZ"].to_numpy(dtype=float)
     return errors.groupby("FREQ_GHZ", sort=True).mean()
@@ -479,7 +509,9 @@ def plot_vector_mae_by_frequency(
     names: tuple[str, ...],
     model_name: str = "Vector Ridge",
 ) -> Figure:
-    """Plot all vector-target MAE-by-frequency curves on one axis."""
+    """
+    Plot all vector-target MAE-by-frequency curves on one axis.
+    """
     mae_curves = vector_mae_by_frequency(dataframe, y_true, y_pred, names)
 
     fig, ax = plt.subplots(figsize=(9, 5))
@@ -505,7 +537,9 @@ def plot_model_mae_comparison_by_frequency(
     predictions: dict[str, np.ndarray],
     names: tuple[str, ...],
 ) -> Figure:
-    """Plot mean vector-target MAE by frequency for several models."""
+    """
+    Plot mean vector-target MAE by frequency for several models.
+    """
     fig, ax = plt.subplots(figsize=(9, 5))
     for model_name, y_pred in predictions.items():
         mae_curves = vector_mae_by_frequency(dataframe, y_true, y_pred, names)

@@ -11,11 +11,19 @@ from .paths import (
     notebook_resource_path,
     relative_to_project_root,
 )
+from .surrogate_config import (
+    CurveNeuralModelConfig,
+    ModelsConfig,
+    PathsConfig,
+    PreprocessingConfig,
+    SurrogateConfig,
+)
 
 __all__ = [
     "PROJECT_ROOT",
     "NOTEBOOK_RESOURCE_DIR",
     "configure_stdio_relative_path",
+    "CurveNeuralModelConfig",
     "find_project_root",
     "notebook_resource_path",
     "relative_to_project_root",
@@ -24,4 +32,8 @@ __all__ = [
     "MarkdownLogger",
     "MarkdownFormatter",
     "load_config",
+    "ModelsConfig",
+    "PreprocessingConfig",
+    "PathsConfig",
+    "SurrogateConfig",
 ]

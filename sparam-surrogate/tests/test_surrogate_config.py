@@ -1,0 +1,319 @@
+#!/usr/bin/env python3
+"""
+Tests for typed surrogate configuration resolution.
+"""
+
+import json
+from pathlib import Path
+
+from sparam_surrogate.config import basic_cfg
+from sparam_surrogate.config.surrogate_config import (
+    CurveNeuralModelConfig,
+    SurrogateConfig,
+)
+
+
+class TestSurrogateConfig:
+    """
+    Unit tests for ``SurrogateConfig``.
+    """
+
+    def test_curve_neural_defaults_use_selection_callback_patience(self) -> None:
+        """
+        Curve-model defaults use the predeclared MAE-selection patience values.
+        """
+        cfg = CurveNeuralModelConfig()
+        resolved = CurveNeuralModelConfig.resolve({})
+
+        assert cfg.latent_dim == 32
+        assert cfg.decoder_channels == (32, 16, 8)
+        assert cfg.derivative_loss_weight == 11.626038
+        assert cfg.early_stopping_patience == 8
+        assert cfg.reduce_lr_patience == 3
+        assert resolved.latent_dim == 32
+        assert resolved.decoder_channels == (32, 16, 8)
+        assert resolved.derivative_loss_weight == 11.626038
+        assert resolved.early_stopping_patience == 8
+        assert resolved.reduce_lr_patience == 3
+
+    def test_from_config_exposes_split_fractions_only_on_preprocessing(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        """
+        Split fractions belong to preprocessing, with no top-level training.
+        """
+        monkeypatch.setattr(basic_cfg, "PROJECT_ROOT", tmp_path)
+        self._write_json(tmp_path / "configs" / "default.json", self._config_data())
+
+        cfg = SurrogateConfig.from_config()
+
+        assert cfg.preprocessing.val_fraction == 0.2
+        assert cfg.preprocessing.test_fraction == 0.1
+        assert not hasattr(cfg, "training")
+
+    def test_from_config_resolves_preprocessing_csv_paths(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        """
+        Preprocessing CSVs resolve under their corresponding data directories.
+        """
+        monkeypatch.setattr(basic_cfg, "PROJECT_ROOT", tmp_path)
+        self._write_json(tmp_path / "configs" / "default.json", self._config_data())
+
+        cfg = SurrogateConfig.from_config()
+
+        assert cfg.preprocessing.cleaned_splits_csv == (
+            tmp_path / "data" / "processed" / "cleaned_splits_parameter.csv"
+        )
+        assert cfg.preprocessing.freq_expanded_csv == (
+            tmp_path / "data" / "processed" / "frequency_expanded_dataset.csv"
+        )
+        assert not hasattr(cfg.preprocessing, "processed_csv")
+
+    def test_from_config_exposes_model_config_values(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        """
+        Model defaults are resolved into typed configuration objects.
+        """
+        monkeypatch.setattr(basic_cfg, "PROJECT_ROOT", tmp_path)
+        self._write_json(tmp_path / "configs" / "default.json", self._config_data())
+
+        cfg = SurrogateConfig.from_config()
+
+        assert cfg.models.scalar_ridge.alphas == (0.001, 0.01)
+        assert cfg.models.vector_ridge.alphas == (0.001, 0.01)
+        assert cfg.models.polynomial_ridge.degrees == (3, 4)
+        assert cfg.models.polynomial_ridge.alphas == (100.0, 200.0)
+        assert cfg.models.random_forest.max_depths == (None, 16)
+        assert cfg.models.random_forest.min_samples_leafs == (1, 2)
+        assert cfg.models.random_forest.n_estimators == 128
+        assert cfg.models.neural_mlp.batch_size == 64
+        assert cfg.models.neural_mlp.epochs == 10
+        assert cfg.models.neural_mlp.learning_rate == 0.0001
+        assert cfg.models.polynomial_neural_mlp.polynomial_degree == 5
+        assert cfg.models.polynomial_neural_mlp.batch_size == 64
+        assert cfg.models.polynomial_neural_mlp.epochs == 10
+        assert cfg.models.polynomial_neural_mlp.random_state == 123
+        assert cfg.models.curve_neural.latent_dim == 32
+        assert cfg.models.curve_neural.decoder_channels == (32, 16, 8)
+        assert cfg.models.curve_neural.kernel_size == 3
+        assert cfg.models.curve_neural.frequency_encoding == "fourier"
+        assert cfg.models.curve_neural.fourier_order == 2
+        assert cfg.models.curve_neural.weight_decay == 0.0001
+        assert cfg.models.curve_neural.derivative_loss_weight == 0.0
+
+    def test_from_config_exposes_default_output_paths(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        """
+        Optional output paths default to the planned outputs hierarchy.
+        """
+        monkeypatch.setattr(basic_cfg, "PROJECT_ROOT", tmp_path)
+        self._write_json(tmp_path / "configs" / "default.json", self._config_data())
+
+        cfg = SurrogateConfig.from_config()
+
+        assert not hasattr(cfg.paths, "interim_data")
+        assert cfg.paths.outputs == tmp_path / "outputs"
+        assert cfg.paths.runs == tmp_path / "outputs" / "runs"
+        assert cfg.paths.models == tmp_path / "outputs" / "models"
+        assert cfg.paths.benchmarks == tmp_path / "outputs" / "benchmarks"
+        assert cfg.paths.logs == tmp_path / "outputs" / "logs"
+        assert cfg.paths.figures == tmp_path / "outputs" / "figures"
+        assert cfg.paths.reports == tmp_path / "outputs" / "reports"
+
+    def test_from_config_exposes_configured_output_paths(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        """
+        Configured output paths override the default output hierarchy.
+        """
+        monkeypatch.setattr(basic_cfg, "PROJECT_ROOT", tmp_path)
+        cfg_data = self._config_data()
+        cfg_data["paths"].update(
+            {
+                "outputs": "artifacts",
+                "runs": "artifacts/model-runs",
+                "models": "artifacts/model-index",
+                "benchmarks": "artifacts/comparisons",
+                "logs": "artifacts/logs",
+                "figures": "artifacts/figures",
+                "reports": "artifacts/reports",
+            }
+        )
+        self._write_json(tmp_path / "configs" / "default.json", cfg_data)
+
+        cfg = SurrogateConfig.from_config()
+
+        assert cfg.paths.outputs == tmp_path / "artifacts"
+        assert cfg.paths.runs == tmp_path / "artifacts" / "model-runs"
+        assert cfg.paths.models == tmp_path / "artifacts" / "model-index"
+        assert cfg.paths.benchmarks == tmp_path / "artifacts" / "comparisons"
+        assert cfg.paths.logs == tmp_path / "artifacts" / "logs"
+        assert cfg.paths.figures == tmp_path / "artifacts" / "figures"
+        assert cfg.paths.reports == tmp_path / "artifacts" / "reports"
+
+    def test_from_config_rejects_invalid_dataset_nports(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        """
+        Dataset port count must be positive.
+        """
+        monkeypatch.setattr(basic_cfg, "PROJECT_ROOT", tmp_path)
+        cfg_data = self._config_data()
+        cfg_data["dataset"]["nports"] = 0
+        self._write_json(tmp_path / "configs" / "default.json", cfg_data)
+
+        try:
+            SurrogateConfig.from_config()
+        except ValueError as exc:
+            assert "dataset.nports must be positive" in str(exc)
+        else:
+            raise AssertionError("Expected invalid nports to raise ValueError.")
+
+    def test_from_config_rejects_invalid_dataset_port_pair(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        """
+        Dataset port pairs must use existing one-based ports.
+        """
+        monkeypatch.setattr(basic_cfg, "PROJECT_ROOT", tmp_path)
+        cfg_data = self._config_data()
+        cfg_data["dataset"]["ports"] = [[3, 1]]
+        self._write_json(tmp_path / "configs" / "default.json", cfg_data)
+
+        try:
+            SurrogateConfig.from_config()
+        except ValueError as exc:
+            assert "exceeds dataset.nports" in str(exc)
+        else:
+            raise AssertionError("Expected invalid port pair to raise ValueError.")
+
+    def test_from_config_rejects_wrong_length_dataset_port_pair(
+        self,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        """
+        Dataset port pairs must contain exactly two ports.
+        """
+        monkeypatch.setattr(basic_cfg, "PROJECT_ROOT", tmp_path)
+        cfg_data = self._config_data()
+        cfg_data["dataset"]["ports"] = [[1, 2, 3]]
+        self._write_json(tmp_path / "configs" / "default.json", cfg_data)
+
+        try:
+            SurrogateConfig.from_config()
+        except ValueError as exc:
+            assert "must contain two ports" in str(exc)
+        else:
+            raise AssertionError("Expected malformed port pair to raise ValueError.")
+
+    def _config_data(self) -> dict:
+        """
+        Return valid JSON-compatible test configuration data.
+        """
+        return {
+            "project": {"name": "fake-project", "seed": 123},
+            "paths": {
+                "raw_data": "data/raw",
+                "processed_data": "data/processed",
+            },
+            "dataset": {
+                "name": "fake-dataset",
+                "parameter_file": "parameter.csv",
+                "nports": 2,
+                "ports": [[1, 2]],
+            },
+            "preprocessing": {
+                "cleaned_splits_csv": "cleaned_splits_parameter.csv",
+                "freq_expanded_csv": "frequency_expanded_dataset.csv",
+                "val_fraction": 0.2,
+                "test_fraction": 0.1,
+            },
+            "models": {
+                "scalar_ridge": {
+                    "alphas": [0.001, 0.01],
+                },
+                "vector_ridge": {
+                    "alphas": [0.001, 0.01],
+                },
+                "polynomial_ridge": {
+                    "degrees": [3, 4],
+                    "alphas": [100.0, 200.0],
+                },
+                "random_forest": {
+                    "n_estimators": 128,
+                    "max_depths": [None, 16],
+                    "min_samples_leafs": [1, 2],
+                    "random_state": 123,
+                    "n_jobs": 1,
+                },
+                "neural_mlp": {
+                    "batch_size": 64,
+                    "epochs": 10,
+                    "prediction_batch_size": 2048,
+                    "learning_rate": 0.0001,
+                    "gradient_clip_norm": 1.0,
+                    "early_stopping_patience": 8,
+                    "reduce_lr_patience": 3,
+                    "reduce_lr_factor": 0.5,
+                    "min_learning_rate": 0.000001,
+                    "random_state": 123,
+                },
+                "polynomial_neural_mlp": {
+                    "polynomial_degree": 5,
+                    "batch_size": 64,
+                    "epochs": 10,
+                    "prediction_batch_size": 2048,
+                    "learning_rate": 0.0001,
+                    "gradient_clip_norm": 1.0,
+                    "early_stopping_patience": 8,
+                    "reduce_lr_patience": 3,
+                    "reduce_lr_factor": 0.5,
+                    "min_learning_rate": 0.000001,
+                    "random_state": 123,
+                },
+                "curve_neural": {
+                    "latent_dim": 32,
+                    "decoder_channels": [32, 16, 8],
+                    "kernel_size": 3,
+                    "frequency_encoding": "fourier",
+                    "fourier_order": 2,
+                    "weight_decay": 0.0001,
+                    "derivative_loss_weight": 0.0,
+                    "batch_size": 32,
+                    "epochs": 20,
+                    "prediction_batch_size": 512,
+                    "learning_rate": 0.001,
+                    "gradient_clip_norm": 0.5,
+                    "early_stopping_patience": 8,
+                    "reduce_lr_patience": 3,
+                    "reduce_lr_factor": 0.5,
+                    "min_learning_rate": 0.000001,
+                    "random_state": 123,
+                },
+            },
+        }
+
+    def _write_json(self, path: Path, data: dict) -> None:
+        """
+        Write JSON test configuration data.
+        """
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data), encoding="utf-8")

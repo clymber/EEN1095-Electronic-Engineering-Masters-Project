@@ -24,15 +24,14 @@
 Analytical exploration of dataset linkOn8CavityStackBetween10x10Array_19_08_2021
 """
 
-from pathlib import Path
-
 import numpy as np
+import numpy.typing  # noqa: F401
 import skrf as rf
 from IPython.display import Image, display
 from matplotlib import pyplot as plt
 
 from sparam_surrogate.config import (
-    load_config,
+    SurrogateConfig,
     notebook_resource_path,
 )
 from sparam_surrogate.data import (
@@ -42,10 +41,7 @@ from sparam_surrogate.data import (
 )
 from sparam_surrogate.utils.filesystem import directory_tree
 
-DS_NAME = "linkOn8CavityStackBetween10x10Array_19_08_2021"
-cfg = load_config()  # Runtime configuration
-dataset = Path(cfg["paths"]["raw_data"]) / DS_NAME  # Target dataset
-nports = cfg["dataset"]["nports"]  # Number of ports
+cfg = SurrogateConfig.from_config()
 
 # %% [markdown]
 # ## 1. Dataset Structure
@@ -54,7 +50,7 @@ nports = cfg["dataset"]["nports"]  # Number of ports
 # uniform archive structure, shown by the following procedure:
 
 # %%
-print(directory_tree(dataset, max_depth=2, max_children=5))
+print(directory_tree(cfg.dataset.path, max_depth=2, max_children=5))
 
 
 # %% [markdown]
@@ -79,13 +75,13 @@ print(directory_tree(dataset, max_depth=2, max_children=5))
 # provide convenience for further operation:
 
 # %%
-rawdata = RawData(dataset, nports)
+rawdata = RawData(cfg.dataset.path, cfg.dataset.nports)
 print(f"{len(rawdata.touchstones())} touchstone files found in the dataset.")
 
 # %% [markdown]
 # ## 2. Parameter Storage File - `parameter.csv`
 #
-# The dataset linkOn8CavityStackBetween10x10Array_19_08_2021 contains geometric
+# The dataset `linkOn8CavityStackBetween10x10Array_19_08_2021` contains geometric
 # and material parameters describing PCB interconnect structures and their
 # corresponding electromagnetic simulations. The parameters primarily influence
 # impedance matching, insertion loss, reflections, coupling, resonance behavior,
@@ -111,10 +107,10 @@ print(parameters.preview())
 #
 # | Category | Features |
 # | -------- | -------- |
-# | Material properties | EPS, TAND |
-# | Via geometry | PITCH, VIAR, ANTIPADR |
-# | Transmission line geometry | TRACE_LEN, DISTTL, TLWIDTH |
-# | Global PCB geometry | START, TDIEL |
+# | Material properties | `EPS`, `TAND` |
+# | Via geometry | `PITCH`, `VIAR`, `ANTIPADR` |
+# | Transmission line geometry | `TRACE_LEN`, `DISTTL`, `TLWIDTH` |
+# | Global PCB geometry | `START`, `TDIEL` |
 
 # %% [markdown]
 # This is a brief summary of the features:
@@ -133,7 +129,7 @@ print(parameters.preview())
 # <tr>
 # <td><code>EPS</code></td>
 # <td>/</td>
-# <td>Relative Permittivity - Dielectric constant of PCB substrate material</td>
+# <td>Relative Permittivity: Dielectric constant of PCB substrate material</td>
 # <td>
 #     Higher EPS slows wave propagation, reduces wavelength, changes impedance,
 #     and shifts resonances</td>
@@ -142,7 +138,7 @@ print(parameters.preview())
 # <tr>
 # <td><code>TAND</code></td>
 # <td>/</td>
-# <td>Loss Tangent - Dielectric dissipation factor describing dielectric loss</td>
+# <td>Loss Tangent: Dielectric dissipation factor describing dielectric loss</td>
 # <td>
 #   Higher TAND increases dielectric attenuation and insertion loss,
 #   especially at high frequency
@@ -152,7 +148,7 @@ print(parameters.preview())
 # <tr>
 # <td><code>PITCH</code></td>
 # <td>mil</td>
-# <td>Via Pitch - Center-to-center spacing between adjacent vias in the array</td>
+# <td>Via Pitch: Center-to-center spacing between adjacent vias in the array</td>
 # <td>
 #   Affects electromagnetic coupling, impedance, and crosstalk between vias
 # </td>
@@ -161,7 +157,7 @@ print(parameters.preview())
 # <tr>
 # <td><code>TRACE_LEN</code></td>
 # <td>mil</td>
-# <td>Trace Length - Length of stripline/interconnect trace between via arrays</td>
+# <td>Trace Length: Length of stripline/interconnect trace between via arrays</td>
 # <td>
 #     Longer traces generally increase insertion loss, delay, and resonance
 #     opportunities
@@ -171,7 +167,7 @@ print(parameters.preview())
 # <tr>
 # <td><code>START</code></td>
 # <td>mil</td>
-# <td>Start of Via-Array Region - Defines PCB margin surrounding the via arrays</td>
+# <td>Start of Via-Array Region: Defines PCB margin surrounding the via arrays</td>
 # <td>
 #   Influences boundary effects, return current distribution, and overall
 #   board dimensions
@@ -181,7 +177,7 @@ print(parameters.preview())
 # <tr>
 # <td><code>VIAR</code></td>
 # <td>mil</td>
-# <td>Via Radius - Radius of the via barrel</td>
+# <td>Via Radius: Radius of the via barrel</td>
 # <td>
 #     Changes via inductance/capacitance and therefore impedance and resonance
 #     behavior
@@ -192,7 +188,7 @@ print(parameters.preview())
 # <td><code>ANTIPADR</code></td>
 # <td>mil</td>
 # <td>
-#   Antipad Radius - Radius of the clearance hole around the via in reference planes
+#   Antipad Radius: Radius of the clearance hole around the via in reference planes
 # </td>
 # <td>Strongly affects parasitic capacitance and impedance discontinuity</td>
 # </tr>
@@ -200,7 +196,7 @@ print(parameters.preview())
 # <tr>
 # <td><code>TDIEL</code></td>
 # <td>mil</td>
-# <td>Thickness of Dielectric - Thickness of dielectric layer(s)</td>
+# <td>Thickness of Dielectric: Thickness of dielectric layer(s)</td>
 # <td>
 #     Influences characteristic impedance and electromagnetic field distribution
 # </td>
@@ -210,7 +206,7 @@ print(parameters.preview())
 # <td><code>DISTTL</code></td>
 # <td>mil</td>
 # <td>
-#   Distance between Transmission Lines - Spacing between neighboring traces/links
+#   Distance between Transmission Lines: Spacing between neighboring traces/links
 # </td>
 # <td>Larger spacing reduces coupling and crosstalk</td>
 # </tr>
@@ -218,15 +214,15 @@ print(parameters.preview())
 # <tr>
 # <td><code>TLWIDTH</code></td>
 # <td>mil</td>
-# <td>Transmission Line Width - Width of the stripline/trace</td>
+# <td>Transmission Line Width: Width of the stripline/trace</td>
 # <td>Strongly affects characteristic impedance and conductor loss</td>
 # </tr>
 #
 # <tr>
 # <td><code>SIMU_INDEX</code></td>
-# <td>integer</td>
+# <td>/</td>
 # <td>
-#   Simulation Index - Unique identifier linking parameter row to corresponding
+#   Simulation Index: Unique identifier linking parameter row to corresponding
 #   <code>.s12p</code> Touchstone file
 # </td>
 # <td>Used only for dataset mapping, not a physical parameter</td>
@@ -311,7 +307,7 @@ print(parameters.preview())
 #
 # Via geometry affects: (1) via inductance, (2) parasitic capacitance and (3)
 # impedance discontinuities. Larger vias  may reduce resistance and increase
-# capacitance. These effects may impact high-frequency SI behavior.
+# capacitance. These effects may impact high-frequency SI (Signal Integrity) behavior.
 
 # %% [markdown]
 # #### 2.1.7 ANTIPADR — Antipad Radius
@@ -491,7 +487,7 @@ parameters.statistical_summary()
 # Unlike structural summary aforementioned, which focus on how the technical
 # implementation builds memory structure and stores data, statistical summary
 # describes the data distribution: mean, median, standard deviation, and range.
-# In other words, structural summary describes metadata(data about data), while
+# In other words, structural summary describes metadata(the data about data), while
 # statistical summary describes data itself.
 
 # %% [markdown] vscode={"languageId": "latex"}
@@ -500,9 +496,9 @@ parameters.statistical_summary()
 # For many columns, the median is close to the mean, and the 25% / 75% values
 # are fairly symmetric. Examples:
 #
-# EPS: mean ≈ 4.0009, median ≈ 4.0015
-# PITCH: mean ≈ 60.08, median ≈ 60.12
-# START: mean ≈ 120.16, median ≈ 120.24
+# EPS: mean ≈ 4.0009, median ≈ 4.0015  
+# PITCH: mean ≈ 60.08, median ≈ 60.12  
+# START: mean ≈ 120.16, median ≈ 120.24  
 #
 # This suggests the design space may have been sampled deliberately, likely to
 # cover the parameter range evenly.
@@ -539,9 +535,8 @@ parameters.statistical_summary()
 # - the model should learn the effect of dielectric loss separately from
 # geometry effects.
 #
-# Later, you should check correlation between TAND and insertion loss at high
-# frequency. Its effect may be weak at low frequency but stronger at high
-# frequency.
+# Correlation between TAND and insertion loss at high frequency will be checked later.
+# Its effect may be weak at low frequency but stronger at high frequency.
 
 # %% [markdown]
 # #### 2.3.5 Feature scaling will be required before neural networks
@@ -590,7 +585,7 @@ _ = parameters.check_physical_range()
 # Width = 2 \cdot START + TRACE\_LEN + 18 \cdot PITCH
 # $$
 #
-# This indicates three potential board dimensions, PCB height/width and area,
+# This indicates three potential board dimensions, PCB height, width and area,
 # could be derived from existed `START`, `PITCH` and `TRACE_LEN` if needed:
 
 # %%
@@ -615,7 +610,7 @@ eda.statistical_summary(["BOARD_HEIGHT", "BOARD_WIDTH", "BOARD_AREA"])
 # %% [markdown]
 # 2. **Ratio of tranmission line width to dielectric thickness**
 #
-# Measures trace width relative to dielectric thickness.
+# It measures trace width relative to dielectric thickness.
 # $$
 #     \mathrm{TLWIDTH\_TO\_DIEL\_RATIO} = \frac{TLWIDTH}{TDIEL}
 # $$
@@ -820,10 +815,6 @@ _ = eda.plot_ratio_relationships()
 #   matrix, $\mathbf{S}(f) \in \mathbb{C}^{12 \times 12}$.
 # - First response targets for modelling: the six through paths declared in
 #   configuration, `(7,1)` through `(12,6)`.
-#
-# Since the raw response directory is large, response targets are no longer
-# extracted into a notebook cache. The preprocessing pipeline records
-# `TOUCHSTONE_REL_PATH`, and training loads targets lazily from Touchstone files.
 
 # %% [markdown]
 # ### 3.1 Touchstone matrix structure
@@ -841,15 +832,15 @@ _ = eda.plot_ratio_relationships()
 # $$
 #
 # Each element $S_{ij}(f)$ is the complex ratio between the outgoing wave at
-# port $i$ and the incoming wave at port $j$ at frequency $f$. Diagonal terms
-# such as $S_{11}$ are reflection responses, while off-diagonal terms such as
-# $S_{7,1}$ are transmission or coupling responses between two different ports.
+# port $i$ and the incoming wave at port $j$ at frequency $f$. Diagonal terms,
+# such as $S_{11}$ and $S_{22}$, are reflection responses, while off-diagonal terms, such as
+# $S_{71}$ and $S_{82}$, are transmission or coupling responses between two different ports.
 #
 # The port configuration is shown in the dataset documentation [2] and is
 # collected into `sparam-surrogate/configs/default.json`:
 
 # %%
-print("ports: ", cfg["dataset"]["ports"])
+print("Number of ports: ", cfg.dataset.nports)
 
 # %% [markdown]
 # The top view of the PCB helps connect these port numbers to the physical
@@ -961,10 +952,7 @@ print(f"S{demo_pair[0]}{demo_pair[1]} first 5 dB values:", *demo_curve_db[:5])
 # only; full training targets are loaded lazily later.
 
 # %%
-port_pairs = [tuple(pair) for pair in cfg["dataset"]["ports"]]
-frequency_ghz = np.asarray(network.f) / 1e9
-
-for pair in port_pairs:
+for pair in cfg.dataset.ports:
     curve = response_db[:, pair[0] - 1, pair[1] - 1]
     print(
         f"S{pair[0]}_{pair[1]}_DB: "
@@ -974,8 +962,9 @@ for pair in port_pairs:
     )
 
 # %%
+frequency_ghz = np.asarray(network.f) / 1e9
 fig, ax = plt.subplots(figsize=(8, 4), constrained_layout=True)
-for pair in port_pairs:
+for pair in cfg.dataset.ports:
     curve = response_db[:, pair[0] - 1, pair[1] - 1]
     ax.plot(frequency_ghz, curve, label=f"S{pair[0]}_{pair[1]}_DB")
 ax.set_xlabel("Frequency (GHz)")
