@@ -1,19 +1,18 @@
 % !TEX root = ../main.tex
 \begin{abstract}
-Printed circuit board (PCB) interconnects introduce broadband loss, reflection
-and crosstalk, while repeated electromagnetic simulation can be expensive.
-The reviewed approaches either predict selected responses or do not guarantee
-physical consistency. This staged investigation considers one PCB topology,
-progressing from point-wise regression to whole-curve prediction and a
-design-conditioned model of the reciprocal complex 12-port scattering matrix
-at 200 frequencies. On designs held out from fitting, the full-matrix model
-reduced complex mean absolute error from 0.0804 for a training-mean reference to
-0.0686. Reciprocity was guaranteed by construction, and no passivity violations
-were observed on the sampled grid; causality remained a finite-band diagnostic
-rather than an enforced property. The whole-curve model achieved lower
-$S_{7,1}$ insertion-loss error, while sharp nulls remained difficult. The
-results establish feasibility beyond a design-independent reference while
-separating selected-path accuracy, output scope and physical validity.
+Printed circuit board (PCB) interconnects introduce several forms of signal degradation.
+However, it is expensive to repeatedly evaluating their effects using electromagnetic
+simulations. The reviewed approaches either predict selected responses or do not
+guarantee physical consistency. This staged investigation considers one PCB topology,
+progressing from point-wise regression to whole-curve prediction. Finally, a
+design-conditioned model predicts the reciprocal complex 12-port scattering matrix at
+200 frequencies. On designs held out from fitting, the full-matrix model reduced complex
+mean absolute error from 0.0804 for a training-mean reference to 0.0686. Reciprocity was
+guaranteed by construction, and no passivity violations were observed on the sampled
+grid; causality remained a finite-band diagnostic rather than an enforced property. The
+whole-curve model achieved lower $S_{7,1}$ insertion-loss error, while sharp nulls
+remained difficult. The results establish feasibility beyond a design-independent
+reference and assess both predictive performance and physical validity.
 \end{abstract}
 
 \begin{IEEEkeywords}

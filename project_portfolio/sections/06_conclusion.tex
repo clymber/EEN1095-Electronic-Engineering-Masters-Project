@@ -1,15 +1,15 @@
 % !TEX root = ../main.tex
 % Keep the bounded answer and references on the final paper page.
-\clearpage
+% \clearpage
 \balance
 \section{Conclusion}
 \label{sec:conclusion}
 
 The approved research question was only partly answered. A documented staged
-investigation progressed from point-wise insertion-loss baselines to a
-whole-curve model and then to a design-conditioned approximation of the
-complete complex 12-port response over 200 frequencies for one PCB topology.
-The full-matrix model reduced test complex MAE from 0.0804 for the training-mean
+investigation advanced from point-wise insertion-loss baselines to a whole-curve model
+and then to a design-conditioned approximation of the complete complex 12-port response
+over 200 frequencies for one PCB topology. The full-matrix model reduced test complex
+MAE from 0.0804 for the training-mean
 matrix to 0.0686 and guaranteed reciprocity by construction. This establishes
 feasibility beyond a design-independent reference, but not task-specific
 accuracy sufficient for signal-integrity decisions: no engineering tolerance
@@ -18,10 +18,10 @@ or downstream decision criterion was evaluated.
 The physical-validity findings were more nuanced. The non-physical negative
 insertion-loss behaviour reported by Chen and Tan \cite{chen2021physics} was not
 observed in the selected full-matrix predictions on the sampled test grid: none
-of the 281,200 design--frequency matrices violated passivity. The evaluated
-cases therefore did not reveal a passivity failure requiring correction. The
-causality residual was a relative finite-band diagnostic rather than a
-pass/fail test; it neither identified a specific causality violation nor
+of the 281,200 design--frequency matrices violated passivity. Thus, the evaluated
+cases did not reveal a passivity failure requiring correction. The
+causality residual was a relative finite-band diagnostic instead of a
+pass/fail test. It neither identified a specific causality violation nor
 certified causal behaviour. Neither property was enforced, so the planned
 enforcement and constrained-versus-unconstrained comparison were not completed.
 The controlled study varying each physical parameter was also not completed.
@@ -30,13 +30,13 @@ demonstrated. The findings are limited to the selected topology and sampled
 ranges, one selected training seed, and a test set that was held out from
 fitting but inspected during development.
 
-The principal contribution is therefore a documented exploration in which
+Thereby, the principal contribution is a documented exploration in which
 selected-path accuracy, coverage of the complete matrix and physical validity
 are evaluated separately. Generic point-wise complexity did not consistently lower
-$IL_{7,1}$ error, the whole-curve formulation produced the strongest retained
-selected-path result, and reciprocal reconstruction enabled complete-matrix
+$IL_{7,1}$ error. The whole-curve formulation produced the strongest retained
+selected-path result. In addition, reciprocal reconstruction enabled complete-matrix
 prediction. Reciprocity was guaranteed, passivity was observed on the sampled
-grid, and causality remained a limited diagnostic.
+grid. Meanwhile, causality remained a limited diagnostic.
 
 Future work follows directly from these limits. Loss weighting should target
 weak responses and deep transmission nulls. To test physical validity beyond

@@ -1,15 +1,15 @@
 % !TEX root = ../main.tex
 % Keep the technical description on its prescribed second and third pages.
-\clearpage
+% \clearpage
 \section{Dataset and Methodology}
 \label{sec:methodology}
 
 \subsection{Dataset and Preprocessing}
-Experiments used the ``Link on 8 Cavity PCB with two 10$\times$10 Via-Arrays''
-topology from the signal-integrity/power-integrity (SI/PI) Database
-\cite{schierholz2021sipi}. As shown in Fig.~\ref{fig:pcb-topology}, six traces
-connect ports $P_1$--$P_6$ to $P_7$--$P_{12}$. Table~\ref{tab:pcb-variables}
-lists the ten continuous design variables.
+Experiments used the ``Link on 8 Cavity PCB with two 10$\times$10 Via-Arrays'' topology
+from the signal-integrity/power-integrity (SI/PI) Database \cite{schierholz2021sipi}. As
+shown in Fig.~\ref{fig:pcb-topology}, six traces connect ports $P_1$--$P_6$ to
+$P_7$--$P_{12}$. Table~\ref{tab:pcb-variables} lists the ten continuous design
+variables.
 
 \begin{table}[htbp]
     \caption{Ten PCB design variables used as model inputs.}
@@ -21,29 +21,25 @@ lists the ten continuous design variables.
         \toprule
         \textbf{Code} & \textbf{Meaning} & \textbf{Code} & \textbf{Meaning} \\
         \midrule
-        \texttt{EPS}        & Relative permittivity
-          & \texttt{TAND}      & Loss tangent \\
-        \texttt{PITCH}      & Via pitch
-          & \texttt{TRACE\_LEN} & Trace length \\
-        \texttt{START}      & Via-array offset
-          & \texttt{VIAR}      & Via radius \\
-        \texttt{ANTIPADR}   & Antipad radius
-          & \texttt{TDIEL}     & Dielectric thickness \\
-        \texttt{DISTTL}     & Inter-trace spacing
-          & \texttt{TLWIDTH}   & Trace width \\
+        \texttt{EPS}        & Relative permittivity & \texttt{TAND}      & Loss tangent
+          \\
+        \texttt{PITCH}      & Via pitch & \texttt{TRACE\_LEN} & Trace length \\
+        \texttt{START}      & Via-array offset & \texttt{VIAR}      & Via radius \\
+        \texttt{ANTIPADR}   & Antipad radius & \texttt{TDIEL}     & Dielectric thickness
+          \\
+        \texttt{DISTTL}     & Inter-trace spacing & \texttt{TLWIDTH}   & Trace width \\
         \bottomrule
     \end{tabular}
 \end{table}
 
-The material variables \texttt{EPS} and \texttt{TAND} are dimensionless; all
-geometric variables are recorded in mil. During data cleaning, 18 parameter
-records without matching Touchstone files were removed, and 609 Touchstone
-files without matching design records were ignored. This left 7,030 aligned
-designs. Each file was parsed as a complex
-$12\times12$ S-matrix at 200 uniformly spaced frequencies from 0.5 to 100~GHz.
-Selected-path experiments used positive insertion loss (IL)
+The material variables \texttt{EPS} and \texttt{TAND} are dimensionless; all geometric
+variables are recorded in mil. During data cleaning, 18 parameter records without
+matching Touchstone files were removed, and 609 Touchstone files without matching design
+records were ignored. The resulting dataset contained 7,030 aligned designs. Each file
+was parsed as a complex $12\times12$ S-matrix at 200 uniformly spaced frequencies from
+0.5 to 100~GHz. Selected-path experiments used positive IL
 \begin{equation}
-    IL_{i,j}(f)=-20\log_{10}|S_{i,j}(f)|.
+    IL_{ij}(f)=-20\log_{10}|S_{ij}(f)|.
     \label{eq:insertion-loss}
 \end{equation}
 
@@ -52,58 +48,52 @@ reported experiments, and split at design level into 60\% training (4,218 design
 validation (1,406), and 20\% test (1,406). All 200 frequencies from each design remained
 in the same split. Three data representations were then constructed. The point-wise
 models expanded each design into 200 frequency rows, with the ten parameters and
-frequency as 11 inputs and one or six insertion-loss targets. The curve and
-full-S-matrix models instead retained one sample per design, pairing 10 inputs with
-respective $200\times6$ insertion-loss and $200\times288$ real/imaginary matrix tensors.
-Neither used the frequency-expanded table.
+frequency as 11 inputs and one or six IL targets. The curve and full-S-matrix models
+alternatively retained one sample per design, pairing 10 inputs with respective
+$200\times6$ IL and $200\times288$ real/imaginary matrix tensors. Neither used the
+frequency-expanded table.
 
-Preprocessing was fitted separately for each model. Point-wise Ridge and neural
-models owned their training-fitted standardisation and, where applicable,
-polynomial expansion; the random forest used the unscaled inputs. The curve
-model standardised the ten design inputs and each of its six target channels
-using pooled training-curve points. The full-S-matrix model standardised its
-design inputs and scaled each complex entry by one training-set root-mean-square
-magnitude shared by its real and imaginary components. Every fitted transform
-was applied unchanged to validation and test data. Consequently, no design or
-frequency sample contributed statistics across split boundaries. Training
-fitted model parameters, while validation results selected hyperparameters and
-neural checkpoints. Test designs were held out from fitting, but intermediate
-test results were inspected during model development; the reported test
-evaluation is therefore retrospective rather than an untouched confirmatory
-experiment.
+Preprocessing was fitted separately for each model. Point-wise Ridge and neural models
+owned their training-fitted standardisation and, where applicable, polynomial expansion.
+The random forest used the unscaled inputs. The curve model standardised the ten design
+inputs and each of its six target channels using pooled training-curve points. The
+full-S-matrix model standardised its design inputs and scaled each complex entry by one
+training-set root-mean-square magnitude shared by its real and imaginary components.
+Every fitted transform was applied unchanged to validation and test data. Consequently,
+no design or frequency sample contributed statistics across split boundaries. Training
+fitted model parameters. At the same time, validation results selected hyperparameters
+and neural checkpoints. Test designs were held out from fitting, but intermediate test
+results were inspected during model development. Accordingly, the reported test
+evaluation is retrospective instead of an untouched confirmatory experiment.
 
 \subsection{Evaluation Protocol}
-Selected-path errors were reported as mean absolute error (MAE) in decibels.
-Deep-null MAE applies the same error only where the reference insertion loss
-exceeds a threshold calculated from the training responses. Complete-matrix
-accuracy was measured directly in the complex domain using complex MAE and
-normalised root-mean-square error (NRMSE) across every design, frequency and
-port pair. The decibel and complex-domain values answer different questions and
-were not compared numerically.
+Selected-path errors were reported as mean absolute error (MAE) in decibels. Deep-null
+MAE applies the same error only where the reference IL exceeds a threshold calculated
+from the training responses. Complete-matrix accuracy was measured directly in the
+complex domain using complex MAE and normalised root-mean-square error (NRMSE) across
+every design, frequency and port pair. The decibel and complex-domain values answer
+different questions and were not compared numerically.
 
-For each headline model transition, absolute $IL_{7,1}$ error was first averaged
-over the 200 frequencies of each test design. A paired percentile bootstrap then
-resampled the 1,406 complete designs 5,000 times and formed the current-minus-
-predecessor difference. These intervals quantify variation across the fixed
-test designs; they do not include retraining or model-selection uncertainty.
-The project-defined $\pm0.10$~dB band aids interpretation of paired intervals;
-it is not an engineering acceptance tolerance.
+For each headline model transition, absolute $IL_{7,1}$ error was first averaged over
+the 200 frequencies of each test design. A paired percentile bootstrap later resampled
+the 1,406 complete designs 5,000 times and formed the current-minus- predecessor
+difference. These intervals quantify variation across the fixed test design. They do not
+include retraining or model-selection uncertainty. The project-defined $\pm0.10$~dB band
+aids interpretation of paired intervals. It is not an engineering acceptance tolerance.
 
-\begin{figure}[t]
+\begin{figure}[h]
     \centering
     \includegraphics[width=\columnwidth]{pcb_topology.png}
     \caption{Selected PCB topology showing the six traces, port numbering and
-    representative geometric inputs. Reproduced from
-    \cite{schierholz2021sipi} under the
-    \href{https://creativecommons.org/licenses/by/4.0/}{Creative Commons
-    Attribution 4.0 (CC BY 4.0) licence}.}
+    representative geometric inputs. Reproduced from \cite{schierholz2021sipi} under the
+    \href{https://creativecommons.org/licenses/by/4.0/}{Creative Commons Attribution 4.0
+    (CC BY 4.0) licence}.}
     \label{fig:pcb-topology}
 \end{figure}
 
 \subsection{Point-Wise Baseline Models}
 \label{sec:pointwise-baselines}
-For design $n$ at sampled frequency $f_k$, all six baselines received the same
-input
+For design $n$ at sampled frequency $f_k$, all six baselines received the same input
 \begin{equation}
     \mathbf{x}^{(n,k)}=
     [(\mathbf{u}^{(n)})^{\mathsf{T}},f_k]^{\mathsf{T}}
@@ -111,8 +101,8 @@ input
     \label{eq:pointwise-input}
 \end{equation}
 where $\mathbf{u}^{(n)}=[u_1^{(n)},\ldots,u_p^{(n)}]^{\mathsf{T}}$ is the
-design-parameter vector, $p=10$, and $f_k$ is recorded in GHz. Scalar Ridge
-predicted only $IL_{7,1}^{(n)}(f_k)$; the remaining models predicted
+design-parameter vector, $p=10$, and $f_k$ is recorded in GHz. Scalar Ridge predicted
+only $IL_{7,1}^{(n)}(f_k)$; the remaining models predicted
 \begin{equation}
     \begin{aligned}
     \mathbf{y}^{(n,k)}=[
@@ -125,70 +115,64 @@ predicted only $IL_{7,1}^{(n)}(f_k)$; the remaining models predicted
 \end{equation}
 
 The first phase tested the linear formulation. Scalar and Vector Ridge fitted
-$\ell_2$-regularised least-squares models to standardised inputs, with the
-regularisation strength selected by validation MAE. For Vector Ridge, this MAE
-was averaged over all six outputs. Multi-output Ridge fits one coefficient
-vector per target without coupling the targets; with the common selected
-regularisation, its $IL_{7,1}$ component is therefore the same fitted problem as
-Scalar Ridge. Their comparison tests output scope rather than additional
-predictive capacity.
+$\ell_2$-regularised least-squares models to standardised inputs. The regularisation
+strength were selected by validation MAE. For Vector Ridge, this MAE was averaged over
+all six outputs. Multi-output Ridge fits one coefficient vector per target without
+coupling the targets. With the common selected regularisation, its $IL_{7,1}$ component
+is the same fitted problem as Scalar Ridge. Their comparison tests output scope more
+than additional predictive capacity.
 
-The second phase added explicit or local nonlinearity while retaining the
-six-output task. Polynomial Ridge first standardised the inputs, expanded each
-feature independently as
-$x_\ell\mapsto[x_\ell,x_\ell^2,\ldots,x_\ell^D]$, standardised the expanded
-columns, and
-then fitted Ridge regression. The degree $D$ and regularisation strength were
-selected jointly by validation MAE. This powers-only map contains no interaction
-terms such as $x_\ell x_r$. Random Forest instead fitted an ensemble of regression
-trees to the unscaled inputs, allowing local partitions of the joint
-design-frequency space; its configured depth and leaf-size candidates were
-evaluated using validation MAE.
+The second phase added explicit or local nonlinearity in the time retaining the
+six-output task. Polynomial Ridge first standardised the inputs, expanded each feature
+independently as $x_\ell\mapsto[x_\ell,x_\ell^2,\ldots,x_\ell^D]$, standardised the
+expanded columns, and finally fitted Ridge regression. The degree $D$ and regularisation
+strength were selected jointly by validation MAE. This powers-only map contains no
+interaction terms such as $x_\ell x_{\ell'}$. Random Forest instead fitted an ensemble
+of regression trees to the unscaled inputs, which allows local partitions of the joint
+design-frequency space. Its configured depth and leaf-size candidates were evaluated
+using validation MAE.
 
-The third phase tested learned nonlinear features. The neural multilayer
-perceptron (MLP) mapped the standardised inputs through rectified linear unit
-(ReLU) layers of widths 128, 128, and 64 to a linear six-unit output. Inputs and
-targets were standardised using training data, and the Adam optimiser minimised
-mean squared error (MSE) in the scaled target space. Learning-rate reduction and
-early stopping monitored validation loss, with the best weights restored. The
-Polynomial Neural MLP used the same architecture and training procedure after a
-fixed fifth-degree powers-only expansion and a second training-fitted feature
-standardisation. Comparing these two MLPs therefore isolates the explicit
-univariate powers from the learned nonlinear mapping.
+The third phase tested learned non-linear features. The neural multilayer perceptron
+(MLP) mapped the standardised inputs through rectified linear unit (ReLU) layers of
+widths 128, 128, and 64 to a linear six-unit output. Inputs and targets were
+standardised using training data. The Adam optimiser minimised mean squared error (MSE)
+in the scaled target space. Learning-rate reduction and early stopping monitored
+validation loss, with the best weights restored. The Polynomial Neural MLP used the same
+architecture and training procedure after a fixed fifth-degree powers-only expansion and
+a second training-fitted feature standardisation. Comparing these, two MLPs isolates the
+explicit univariate powers from the learned non-linear mapping.
 
-A pooled global reference assigned the mean of every training $IL_{7,1}$ value
-to all designs and frequencies. A stronger frequency-dependent reference was
-also defined from the training designs:
+A pooled global reference assigned the mean of every training $IL_{7,1}$ value to all
+designs and frequencies. A stronger frequency-dependent reference was also defined from
+the training designs:
 \begin{equation}
     \overline{IL}_{7,1}^{\mathrm{train}}(f_k)=
     \frac{1}{N_{\mathrm{train}}}
     \sum_{n\in\mathcal{D}_{\mathrm{train}}}IL_{7,1}^{(n)}(f_k).
     \label{eq:mean-il-reference}
 \end{equation}
-It predicts this same frequency-dependent mean curve for every validation or
-test design and thus measures the value added by conditioning on the design
-parameters.
+It predicts this same frequency-dependent mean curve for every validation or test design
+and thus measures the value added by conditioning on the design parameters.
 
 \subsection{Broadband Neural Model}
 \label{sec:broadband-neural}
-The whole-curve neural model, labelled Curve Neural in the results, replaced
-independent design-frequency rows with one sample per design. For $K=200$
-frequencies and $q=6$ paths, its target was
-$\mathbf{L}^{(n)}\in\mathbb{R}^{K\times q}$, where
-$L_{k,c}^{(n)}$ is the positive insertion loss of path $c$ for design $n$ at
-$f_k$. Thus, the model mapped only $\mathbf{u}^{(n)}\in\mathbb{R}^{10}$ to all
-six curves in one forward pass; frequency was not an eleventh input feature.
-The design variables were standardised using the training designs, while each
-target channel was standardised using its pooled training-curve samples.
+The whole-curve neural model, labelled Curve Neural in the results, replaced independent
+design-frequency rows with one sample per design. For $K=200$ frequencies, its target
+was $\mathbf{L}^{(n)}\in\mathbb{R}^{K\times6}$, where $L_{k,c}^{(n)}$ is the positive IL
+of path $c\in\{1,\ldots,6\}$ for design $n$ at $f_k$. Thus, the model mapped only
+$\mathbf{u}^{(n)}\in\mathbb{R}^{10}$ to all six curves in one forward pass; frequency
+was not an eleventh input feature. The design variables were standardised using the
+training designs. Meantime each target channel was standardised using its pooled
+training-curve samples.
 
-The decoder was S-TCNN-style rather than an exact reproduction of
-\cite{torun2019spectral}. A width-32 dense encoder was projected and reshaped to
-a $25\times32$ latent sequence. Three stride-two transposed convolutions, with
-32, 16, and 8 channels, expanded this sequence to 200 positions. Each position
-was augmented with its normalised frequency and four Fourier sine/cosine pairs,
-then processed by a convolutional refinement layer and a linear six-channel
-output. This construction lets decoded features interact across neighbouring
-frequency positions while retaining an explicit coordinate for each output.
+The decoder was S-TCNN-style not an exact reproduction of \cite{torun2019spectral}. A
+width-32 dense encoder was projected and reshaped to a $25\times32$ latent sequence.
+Three stride-two transposed convolutions, including 32, 16, and 8 channels, expanded
+this sequence to 200 positions. Each position was augmented with its normalised
+frequency and four Fourier sine/cosine pairs. They were processed by a convolutional
+refinement layer and a linear six-channel output. This construction lets decoded
+features interact across neighbouring frequency positions whilst keeping an explicit
+coordinate for each output.
 
 Training used the curve-aware objective
 \begin{equation}
@@ -198,63 +182,56 @@ Training used the curve-aware objective
     (\Delta_f\widehat{\mathbf{L}},\Delta_f\mathbf{L}),
     \label{eq:curve-loss}
 \end{equation}
-where $\Delta_f$ is the first difference along the frequency grid.
-$\lambda_{\Delta}$ was calculated from the training targets so that the
-reference derivative term contributed 10\% of the point-wise MSE. Validation
-experiments compared absent, linear, and Fourier frequency coordinates;
-current-size and compact decoders; and point-wise and curve-aware losses. The
-compact Fourier curve-aware configuration was retained, and early stopping
-restored the epoch selected by inverse-scaled validation MAE across all six
-curves. Because this model also changed the data interface, scaling, architecture
-and loss, its comparison with the point-wise MLPs does not isolate any one of
-those changes.
+where $\Delta_f$ is the first difference along the frequency grid. $\lambda_{\Delta}$
+was calculated from the training targets so that the reference derivative term
+contributed 10\% of the point-wise MSE. Validation experiments compared absent, linear,
+and Fourier frequency coordinates; current-size and compact decoders; and point-wise and
+curve-aware losses. The compact Fourier curve-aware configuration was retained. Early
+stopping restored the epoch selected by inverse-scaled validation MAE across all six
+curves. Because this model also changed the data interface, scaling, architecture and
+loss, its comparison with the point-wise MLPs does not isolate any one of those changes.
 
 \subsection{Reciprocal Full-S-Matrix and Physical Diagnostics}
 \label{sec:full-smatrix}
-The final model extended the target to
-$\{\mathbf{S}^{(n)}(f_k)\}_{k=1}^{K}$, where
-$\mathbf{S}^{(n)}(f_k)\in\mathbb{C}^{m\times m}$ and $m=12$. The external data
-contract stored the real and imaginary parts of all $m^2=144$ entries as a
-$K\times288$ real-valued tensor. Internally, only the
-$r=m(m+1)/2=78$ upper-triangle complex entries were predicted, giving 156 real
-channels per frequency. The lower triangle was reconstructed as
+The final model extended the target to $\{\mathbf{S}^{(n)}(f_k)\}_{k=1}^{K}$, where
+$\mathbf{S}^{(n)}(f_k)\in\mathbb{C}^{m\times m}$ and $m=12$. The external data contract
+stored the real and imaginary parts of all $m^2=144$ entries as a $K\times288$
+real-valued tensor. Internally, only the $r=m(m+1)/2=78$ upper-triangle complex entries
+were predicted, giving 156 real channels per frequency. The lower triangle was
+reconstructed as
 \begin{equation}
-    \widehat{S}_{i,j}^{(n)}(f_k)
-    =\widehat{S}_{j,i}^{(n)}(f_k),\qquad i>j,
+    \widehat{S}_{ij}^{(n)}(f_k)
+    =\widehat{S}_{ji}^{(n)}(f_k),\qquad i>j,
     \label{eq:reciprocal-reconstruction}
 \end{equation}
-so every returned matrix was reciprocal by construction rather than by a soft
-penalty.
+so every returned matrix was reciprocal by construction not by a soft penalty.
 
-As in the curve model, the interface accepted one design vector rather than the
-frequency-expanded table. The standardised design vector was repeated over the
-fixed grid and concatenated at each position with 41 frequency features:
-normalised frequency, four Fourier sine/cosine pairs, and 32 Gaussian
-radial-basis functions. An input projection followed by three width-128 residual
-MLP blocks produced the upper-triangle real and imaginary channels. The same
-blocks were applied at every frequency position, so the model returned the
-whole grid in one pass but did not use the transposed-convolution decoder of
-Section~\ref{sec:broadband-neural}.
+As in the curve model, compared to the frequency-expanded table the interface accepted
+one design vector. The standardised design vector was repeated over the fixed grid and
+concatenated at each position with 41 frequency features: normalised frequency, four
+Fourier sine/cosine pairs, and 32 Gaussian radial-basis functions. An input projection
+followed by three width-128 residual MLP blocks produced the upper-triangle real and
+imaginary channels. The same blocks were applied at every frequency position. So, the
+model returned the whole grid in one pass but did not use the transposed-convolution
+decoder of Section~\ref{sec:broadband-neural}.
 
-Each complex entry was scaled by one training-set root-mean-square magnitude
-shared by its real and imaginary components. The selected loss combined
-normalised complex MSE with a weight-0.1 Huber penalty on off-diagonal
-log-magnitude error. Validation complex NRMSE selected the restored checkpoint.
-The passivity-loss weight was zero and the loss contained no causality term;
-therefore, neither property was enforced during training.
+Each complex entry was scaled by one training-set root-mean-square magnitude shared by
+its real and imaginary components. The selected loss combined normalised complex MSE
+with a weight-0.1 Huber penalty on off-diagonal log-magnitude error. Validation complex
+NRMSE selected the restored checkpoint. The passivity-loss weight was zero and the loss
+contained no causality term. Eventually, neither property was enforced during training.
 
-Physical behaviour was evaluated after reconstruction. Reciprocity was checked
-using the normalised Frobenius residual between
-$\widehat{\mathbf{S}}$ and $\widehat{\mathbf{S}}^{\mathsf{T}}$. A matrix was
-counted as passive on the sampled grid when its largest singular value satisfied
-$\sigma_{\max}(\widehat{\mathbf{S}})\leq1$. Causality was assessed using a
-normalised Hilbert-transform residual between the real and imaginary responses
-over the available positive-frequency band. This last quantity is only a
-finite-band diagnostic: the data omit direct current (DC), negative frequencies,
-and frequencies above 100~GHz, so it cannot establish full-band causality.
+Physical behaviour was evaluated after reconstruction. Reciprocity was checked using the
+normalised Frobenius residual between $\widehat{\mathbf{S}}$ and
+$\widehat{\mathbf{S}}^{\mathsf{T}}$. A matrix was counted as passive on the sampled grid
+when its largest singular value satisfied $\sigma_{\max}(\widehat{\mathbf{S}})\leq1$.
+Causality was assessed using a normalised Hilbert-transform residual between the real
+and imaginary responses over the available positive-frequency band. This last quantity
+is only a finite-band diagnostic: the data omit direct current (DC), negative
+frequencies, and frequencies above 100~GHz, so it cannot establish full-band causality.
 
-For a same-task reference, the training-mean response below was assigned to
-every validation and test design and evaluated using the same complex metrics:
+For a same-task reference, the training-mean response below was assigned to every
+validation and test design and evaluated using the same complex metrics:
 \begin{equation}
     \overline{\mathbf{S}}_{\mathrm{train}}(f_k)=
     \frac{1}{N_{\mathrm{train}}}
