@@ -25,6 +25,7 @@ Analytical exploration of dataset linkOn8CavityStackBetween10x10Array_19_08_2021
 """
 
 import numpy as np
+import numpy.typing  # noqa: F401
 import skrf as rf
 from IPython.display import Image, display
 from matplotlib import pyplot as plt

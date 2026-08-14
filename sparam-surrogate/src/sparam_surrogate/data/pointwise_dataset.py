@@ -10,11 +10,11 @@ from typing import Any, cast
 
 import numpy as np
 import pandas as pd
-import skrf as rf
 from tqdm import tqdm
 
 from sparam_surrogate.config import PROJECT_ROOT
 
+from ._skrf_compat import rf
 from .parameter_dataset_builder import ParameterDatasetBuilder
 
 

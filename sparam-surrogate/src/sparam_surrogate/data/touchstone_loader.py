@@ -8,9 +8,10 @@ from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
 import numpy as np
-import skrf as rf
 
 from sparam_surrogate.config import PROJECT_ROOT, SurrogateConfig
+
+from ._skrf_compat import rf
 
 
 class TouchstoneCacheInfo(NamedTuple):
